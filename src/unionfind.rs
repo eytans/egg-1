@@ -1,6 +1,7 @@
 use crate::Id;
 use std::cell::Cell;
 use std::fmt::Debug;
+use indexmap::{indexmap, indexset, IndexMap, IndexSet};
 
 // The Key bound on UnionFind is necessary to derive clone. We only
 // instantiate UnionFind in one place (EGraph), so this type bound
@@ -57,6 +58,18 @@ impl UnionFind {
             (root1, root2)
         }
     }
+
+    pub fn build_sets(&self) -> IndexMap<Id, IndexSet<Id>> {
+        let mut map: IndexMap<Id, IndexSet<Id>> = Default::default();
+
+        for i in 0..self.parents.len() {
+            let i = Id::from(i);
+            let leader = self.find(i);
+            map.entry(leader).or_default().insert(i);
+        }
+
+        map
+    }
 }
 
 #[cfg(test)]
@@ -64,20 +77,6 @@ mod tests {
     use super::*;
 
     use indexmap::{indexmap, indexset, IndexMap, IndexSet};
-
-    impl UnionFind {
-        pub fn build_sets(&self) -> IndexMap<Id, IndexSet<Id>> {
-            let mut map: IndexMap<Id, IndexSet<Id>> = Default::default();
-
-            for i in 0..self.parents.len() {
-                let i = Id::from(i);
-                let leader = self.find(i);
-                map.entry(leader).or_default().insert(i);
-            }
-
-            map
-        }
-    }
 
     fn make_union_find(n: usize) -> UnionFind {
         let mut uf = UnionFind::default();

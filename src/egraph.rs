@@ -10,6 +10,9 @@ use log::*;
 use crate::{
     Analysis, AstSize, Dot, EClass, Extractor, Id, Language, Pattern, RecExpr, Searcher, UnionFind,
 };
+use indexmap::map::MutableKeys;
+use std::collections::hash_map::RandomState;
+use indexmap::set::IndexSet;
 
 /** A data structure to keep track of equalities between expressions.
 
@@ -134,10 +137,19 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     pub analysis: N,
     memo: HashMap<L, Id>,
     unionfind: UnionFind,
+    /// To be used as a mechanism of case splitting.
+    /// Need to rebuild these, but can probably use original memo for that purpose.
+    /// For each inner vector of union finds, if there is a union common to all of them then it will
+    /// be applied on the main union find (case split mechanism). Not true for UnionFinds of size 1.
+    colored_ufs: Vec<Vec<UnionFind>>,
     classes: SparseVec<EClass<L, N::Data>>,
     dirty_unions: Vec<Id>,
+    /// Used for rebuilding colored ufs
+    colored_dirty_unions: Vec<Vec<Vec<Id>>>,
     repairs_since_rebuild: usize,
     pub(crate) classes_by_op: IndexMap<std::mem::Discriminant<L>, indexmap::IndexSet<Id>>,
+    /// Maintain for each EClass if it was merged in colored
+    colored_union_ids: HashMap<(Id, Id), Vec<(usize, usize)>>,
 }
 
 type SparseVec<T> = Vec<Option<Box<T>>>;
@@ -166,14 +178,17 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             memo: Default::default(),
             classes: Default::default(),
             unionfind: Default::default(),
+            colored_ufs: Default::default(),
             dirty_unions: Default::default(),
+            colored_dirty_unions: Default::default(),
             classes_by_op: IndexMap::default(),
             repairs_since_rebuild: 0,
+            colored_union_ids: Default::default(),
         }
     }
 
     /// Returns an iterator over the eclasses in the egraph.
-    pub fn classes(&self) -> impl Iterator<Item = &EClass<L, N::Data>> {
+    pub fn classes(&self) -> impl Iterator<Item=&EClass<L, N::Data>> {
         self.classes
             .iter()
             .filter_map(Option::as_ref)
@@ -181,7 +196,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     }
 
     /// Returns an mutating iterator over the eclasses in the egraph.
-    pub fn classes_mut(&mut self) -> impl Iterator<Item = &mut EClass<L, N::Data>> {
+    pub fn classes_mut(&mut self) -> impl Iterator<Item=&mut EClass<L, N::Data>> {
         self.classes
             .iter_mut()
             .filter_map(Option::as_mut)
@@ -249,6 +264,10 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// ```
     pub fn find(&self, id: Id) -> Id {
         self.unionfind.find(id)
+    }
+
+    pub fn colored_find(&self, idx1: usize, idx2: usize, id: Id) -> Id {
+        self.colored_ufs[idx1][idx2].find(id)
     }
 
     /// Creates a [`Dot`] to visualize this egraph. See [`Dot`].
@@ -337,8 +356,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// assert_eq!(node_f_ac, SymbolLang::new("f", vec![a, b]));
     /// ```
     pub fn lookup<B>(&self, mut enode: B) -> Option<Id>
-    where
-        B: BorrowMut<L>,
+        where
+            B: BorrowMut<L>,
     {
         let enode = enode.borrow_mut();
         enode.update_children(|id| self.find(id));
@@ -474,6 +493,22 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         union
     }
 
+    pub fn union_colored(&mut self, idx1: usize, idx2: usize, id1: Id, id2: Id) -> (Id, bool) {
+        let (to, from) = self.colored_ufs[idx1][idx2].union(id1, id2);
+        debug_assert_eq!(to, self.colored_find(idx1, idx2, id1));
+        debug_assert_eq!(to, self.colored_find(idx1, idx2, id2));
+        if to != from {
+            self.colored_dirty_unions[idx1][idx2].push(to);
+            self.colored_union_ids.entry((id1, id2)).or_insert(vec![]).push((idx1, idx2));
+        }
+        let union = (to, to != from);
+        if union.1 && cfg!(feature = "upward-merging") {
+            // TODO: process relevant colored unions only
+            self.process_unions();
+        }
+        union
+    }
+
     /// Returns a more debug-able representation of the egraph.
     ///
     /// [`EGraph`]s implement [`Debug`], but it ain't pretty. It
@@ -513,7 +548,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             // maybe
             let mut add = |n: &L| {
                 #[allow(clippy::mem_discriminant_non_enum)]
-                classes_by_op
+                    classes_by_op
                     .entry(std::mem::discriminant(&n))
                     .or_default()
                     .insert(class.id)
@@ -582,8 +617,82 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         true
     }
 
+    fn process_colored_unions(&mut self, black_merged: Vec<(Id, Id)>) {
+        let mut dirty_unions = std::mem::take(&mut self.colored_dirty_unions);
+        let mut ufs = std::mem::take(&mut self.colored_ufs);
+        for (i, dus) in dirty_unions.iter_mut().enumerate() {
+            for (j, du) in dus.iter_mut().enumerate() {
+                let mut uf = &mut ufs[i][j];
+                for (id1, id2) in black_merged.iter() {
+                    let (to, from) = uf.union(*id1, *id2);
+                    debug_assert_eq!(to, uf.find(*id1));
+                    debug_assert_eq!(to, uf.find(*id2));
+                    if to != from {
+                        du.push(to);
+                    }
+                }
+
+                let mut to_union = vec![];
+
+                while !du.is_empty() {
+                    // take the worklist, we'll get the stuff that's added the next time around
+                    // deduplicate the dirty list to avoid extra work
+                    let mut todo = std::mem::take(du);
+                    for id in todo.iter_mut() {
+                        *id = uf.find(*id);
+                    }
+                    if cfg!(not(feature = "upward-merging")) {
+                        panic!("Unimplemented");
+                        todo.sort_unstable();
+                        todo.dedup();
+                    }
+                    assert!(!todo.is_empty());
+
+                    // rep to all contained
+                    let all_groups = uf.build_sets();
+                    for id in todo {
+                        // TODO: parents should include union find additionals
+                        let mut parents: Vec<(L, Id)> = all_groups.get(&id).unwrap().iter()
+                            .flat_map(|g| self[id].parents.iter())
+                            .map(|(n, id)| {
+                                let mut res = n.clone();
+                                res.update_children(|child| uf.find(child));
+                                (res, (uf.find(*id)))
+                            }).collect();
+
+                        parents.sort_unstable();
+                        parents.dedup_by(|(n1, e1), (n2, e2)| {
+                            n1 == n2 && {
+                                to_union.push((*e1, *e2));
+                                true
+                            }
+                        });
+
+                        for (n, e) in &parents {
+                            if let Some(old) = self.memo.insert(n.clone(), *e) {
+                                to_union.push((old, *e));
+                            }
+                        }
+                    }
+
+                    for (id1, id2) in to_union.drain(..) {
+                        let (to, did_something) = self.union_impl(id1, id2);
+                        if did_something {
+                            self.dirty_unions.push(to);
+                        }
+                    }
+                }
+
+                assert!(self.dirty_unions.is_empty());
+                assert!(to_union.is_empty());
+            }
+        }
+        self.colored_dirty_unions = dirty_unions;
+        self.colored_ufs = ufs;
+    }
+
     #[inline(never)]
-    fn process_unions(&mut self) {
+    fn process_unions(&mut self) -> Vec<(Id, Id)> {
         let mut to_union = vec![];
 
         while !self.dirty_unions.is_empty() {
@@ -619,6 +728,9 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
                 for (n, e) in &parents {
                     if let Some(old) = self.memo.insert(n.clone(), *e) {
+                        if to_union.contains(&(old, *e)) {
+                            println!("{:#?} {:#?}", old, e);
+                        }
                         to_union.push((old, *e));
                     }
                 }
@@ -629,6 +741,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 N::modify(self, id);
             }
 
+            res.extend_from_slice(&to_union);
             for (id1, id2) in to_union.drain(..) {
                 let (to, did_something) = self.union_impl(id1, id2);
                 if did_something {
@@ -639,6 +752,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
         assert!(self.dirty_unions.is_empty());
         assert!(to_union.is_empty());
+        res
     }
 
     /// Restores the egraph invariants of congruence and enode uniqueness.
@@ -679,17 +793,19 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
         let start = instant::Instant::now();
 
-        self.process_unions();
+        let merged = self.process_unions();
         let n_unions = std::mem::take(&mut self.repairs_since_rebuild);
         let trimmed_nodes = self.rebuild_classes();
+
+        self.process_colored_unions(merged);
 
         let elapsed = start.elapsed();
         info!(
             concat!(
-                "REBUILT! in {}.{:03}s\n",
-                "  Old: hc size {}, eclasses: {}\n",
-                "  New: hc size {}, eclasses: {}\n",
-                "  unions: {}, trimmed nodes: {}"
+            "REBUILT! in {}.{:03}s\n",
+            "  Old: hc size {}, eclasses: {}\n",
+            "  New: hc size {}, eclasses: {}\n",
+            "  unions: {}, trimmed nodes: {}"
             ),
             elapsed.as_secs(),
             elapsed.subsec_millis(),
@@ -739,7 +855,6 @@ impl<'a, L: Language, N: Analysis<L>> Debug for EGraphDump<'a, L, N> {
 
 #[cfg(test)]
 mod tests {
-
     use crate::*;
 
     #[test]
