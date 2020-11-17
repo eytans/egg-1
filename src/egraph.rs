@@ -14,6 +14,8 @@ use indexmap::map::MutableKeys;
 use std::collections::hash_map::RandomState;
 use indexmap::set::IndexSet;
 
+type Color = (usize, usize);
+
 /** A data structure to keep track of equalities between expressions.
 
 # What's an egraph?
@@ -149,7 +151,7 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     repairs_since_rebuild: usize,
     pub(crate) classes_by_op: IndexMap<std::mem::Discriminant<L>, indexmap::IndexSet<Id>>,
     /// Maintain for each EClass if it was merged in colored
-    colored_union_ids: HashMap<(Id, Id), Vec<(usize, usize)>>,
+    colored_union_ids: HashMap<(Id, Id), Vec<Color>>,
 }
 
 type SparseVec<T> = Vec<Option<Box<T>>>;
@@ -266,8 +268,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         self.unionfind.find(id)
     }
 
-    pub fn colored_find(&self, idx1: usize, idx2: usize, id: Id) -> Id {
-        self.colored_ufs[idx1][idx2].find(id)
+    pub fn colored_find(&self, color: Color, id: Id) -> Id {
+        self.colored_ufs[color.0][color.1].find(id)
     }
 
     /// Creates a [`Dot`] to visualize this egraph. See [`Dot`].
@@ -464,6 +466,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         debug_assert_eq!(to, self.find(id1));
         debug_assert_eq!(to, self.find(id2));
         if to != from {
+            self.colored_union_ids.remove(&Self::id_to_key(to, from));
             self.dirty_unions.push(to);
 
             // update the classes data structure
@@ -488,25 +491,40 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     pub fn union(&mut self, id1: Id, id2: Id) -> (Id, bool) {
         let union = self.union_impl(id1, id2);
         if union.1 && cfg!(feature = "upward-merging") {
-            self.process_unions();
+            let merged = self.process_unions();
+            if !self.colored_ufs.is_empty() {
+                self.process_colored_unions(merged);
+            }
         }
         union
     }
 
-    pub fn union_colored(&mut self, idx1: usize, idx2: usize, id1: Id, id2: Id) -> (Id, bool) {
-        let (to, from) = self.colored_ufs[idx1][idx2].union(id1, id2);
-        debug_assert_eq!(to, self.colored_find(idx1, idx2, id1));
-        debug_assert_eq!(to, self.colored_find(idx1, idx2, id2));
+    fn id_to_key(id1: Id, id2: Id) -> (Id, Id) {
+        if id1 > id2 {
+            (id2, id1)
+        } else {
+            (id1, id2)
+        }
+    }
+
+    fn colored_union_impl(c_uf: &mut UnionFind, c_dirty_unions: &mut Vec<Id>, c_union_ids: &mut HashMap<(Id, Id), Vec<Color>>, color: Color, id1: Id, id2: Id) -> (Id, bool) {
+        let (to, from) = c_uf.union(id1, id2);
+        debug_assert_eq!(to, c_uf.find(id1));
+        debug_assert_eq!(to, c_uf.find(id2));
         if to != from {
-            self.colored_dirty_unions[idx1][idx2].push(to);
-            self.colored_union_ids.entry((id1, id2)).or_insert(vec![]).push((idx1, idx2));
+            c_dirty_unions.push(to);
+            c_union_ids.entry(Self::id_to_key(id1, id2)).or_insert(vec![]).push(color);
         }
         let union = (to, to != from);
         if union.1 && cfg!(feature = "upward-merging") {
-            // TODO: process relevant colored unions only
-            self.process_unions();
+            unimplemented!("Upward merging not supported for colored graph");
+            // self.process_unions();
         }
         union
+    }
+
+    pub fn colored_union(&mut self, color: Color, id1: Id, id2: Id) -> (Id, bool) {
+        return Self::colored_union_impl(&mut self.colored_ufs[color.0][color.1], &mut self.colored_dirty_unions[color.0][color.1], &mut self.colored_union_ids, color, id1, id2);
     }
 
     /// Returns a more debug-able representation of the egraph.
@@ -617,18 +635,36 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         true
     }
 
+    pub fn create_color(&mut self) -> Color {
+        self.colored_ufs.push(vec![self.unionfind.clone()]);
+        self.colored_dirty_unions.push(vec![vec![]]);
+        Color::from((self.colored_ufs.len() - 1, 0))
+    }
+
+    pub fn create_colors(&mut self, root: Id, cases: Vec<Id>) -> Vec<Color> {
+        let new_colors: Vec<Color> = (0..cases.len()).map(|i| Color::from((self.colored_ufs.len(), i))).collect();
+        let mut du_vecs = vec![];
+        du_vecs.extend(new_colors.iter().map(|_| vec![]));
+        self.colored_dirty_unions.push(du_vecs);
+        let new_ufs = new_colors.iter().map(|_| self.unionfind.clone()).collect();
+        self.colored_ufs.push(new_ufs);
+        new_colors
+    }
+
     fn process_colored_unions(&mut self, black_merged: Vec<(Id, Id)>) {
         let mut dirty_unions = std::mem::take(&mut self.colored_dirty_unions);
         let mut ufs = std::mem::take(&mut self.colored_ufs);
         for (i, dus) in dirty_unions.iter_mut().enumerate() {
             for (j, du) in dus.iter_mut().enumerate() {
-                let mut uf = &mut ufs[i][j];
+                let color = Color::from((i, j));
+                let mut uf = &mut ufs[color.0][color.1];
                 for (id1, id2) in black_merged.iter() {
                     let (to, from) = uf.union(*id1, *id2);
                     debug_assert_eq!(to, uf.find(*id1));
                     debug_assert_eq!(to, uf.find(*id2));
                     if to != from {
                         du.push(to);
+                        self.colored_union_ids.entry(Self::id_to_key(to, from)).or_default().push(color);
                     }
                 }
 
@@ -642,7 +678,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                         *id = uf.find(*id);
                     }
                     if cfg!(not(feature = "upward-merging")) {
-                        panic!("Unimplemented");
                         todo.sort_unstable();
                         todo.dedup();
                     }
@@ -653,10 +688,12 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     for id in todo {
                         // TODO: parents should include union find additionals
                         let mut parents: Vec<(L, Id)> = all_groups.get(&id).unwrap().iter()
-                            .flat_map(|g| self[id].parents.iter())
+                            .flat_map(|g| self[*g].parents.iter())
                             .map(|(n, id)| {
                                 let mut res = n.clone();
+                                println!("{:#?}", res);
                                 res.update_children(|child| uf.find(child));
+                                println!("{:#?}, {:#?}", *id, (uf.find(*id)));
                                 (res, (uf.find(*id)))
                             }).collect();
 
@@ -668,18 +705,19 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                             }
                         });
 
-                        for (n, e) in &parents {
-                            if let Some(old) = self.memo.insert(n.clone(), *e) {
-                                to_union.push((old, *e));
-                            }
-                        }
+                        // Shouldn't be needed according to pseudo code
+                        // Probably neeed for black because it has some optimizations on the way
+
+                        // for (n, e) in &parents {
+                        //     if let Some(old) = self.memo.insert(n.clone(), *e) {
+                        //         to_union.push((old, *e));
+                        //     }
+                        // }
                     }
 
                     for (id1, id2) in to_union.drain(..) {
-                        let (to, did_something) = self.union_impl(id1, id2);
-                        if did_something {
-                            self.dirty_unions.push(to);
-                        }
+                        // TODO: find a way that borrow checker will let me not move values from self.
+                        Self::colored_union_impl(&mut uf, du, &mut self.colored_union_ids, color, id1, id2);
                     }
                 }
 
@@ -693,6 +731,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
     #[inline(never)]
     fn process_unions(&mut self) -> Vec<(Id, Id)> {
+        let mut res = vec![];
         let mut to_union = vec![];
 
         while !self.dirty_unions.is_empty() {
@@ -856,6 +895,8 @@ impl<'a, L: Language, N: Analysis<L>> Debug for EGraphDump<'a, L, N> {
 #[cfg(test)]
 mod tests {
     use crate::*;
+    use std::str::FromStr;
+    use crate::egraph::Color;
 
     #[test]
     fn simple_add() {
@@ -876,5 +917,28 @@ mod tests {
         egraph.dot().to_dot("target/foo.dot").unwrap();
 
         assert_eq!(2 + 2, 4);
+    }
+
+    #[test]
+    fn color_congruent() {
+        use SymbolLang as S;
+
+        crate::init_logger();
+        let mut egraph = EGraph::<S, ()>::default();
+
+        // black x, f(x)
+        // black y, f(y)
+        // blue: x = y => f(x) = f(y)
+
+        let x = egraph.add(S::leaf("x"));
+        let y = egraph.add(S::leaf("y"));
+        let fx = egraph.add_expr(&RecExpr::from_str("(f x)").unwrap());
+        let fy = egraph.add_expr(&RecExpr::from_str("(f y)").unwrap());
+
+        let color = egraph.create_color();
+        egraph.colored_union(color, x, y);
+        egraph.rebuild();
+
+        assert_eq!(egraph.colored_find(color, fx), egraph.colored_find(color, fy));
     }
 }
