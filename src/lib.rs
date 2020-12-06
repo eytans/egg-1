@@ -84,3 +84,4 @@ fn init_logger() {
 
 #[doc(hidden)]
 pub mod test;
+mod expression_ops;
