@@ -1,3 +1,4 @@
+
 #![warn(missing_docs)]
 /*!
 
@@ -17,6 +18,9 @@ describing `egg` and some of its technical novelties.
 !*/
 
 mod macros;
+
+#[macro_use]
+extern crate global_counter;
 
 pub mod tutorials;
 
@@ -85,3 +89,4 @@ fn init_logger() {
 #[doc(hidden)]
 pub mod test;
 mod expression_ops;
+mod colors;
