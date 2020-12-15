@@ -233,7 +233,7 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
     }
 
     fn search_eclass(&self, egraph: &EGraph<L, A>, eclass: Id) -> Option<SearchMatches> {
-        let substs = self.program.run(egraph, eclass);
+        let substs = self.program.colored_run(egraph, eclass);
         if substs.is_empty() {
             None
         } else {
@@ -333,5 +333,31 @@ mod tests {
         let mut ext = Extractor::new(&egraph, AstSize);
         let (_, best) = ext.find_best(plus);
         eprintln!("Best: {:#?}", best);
+    }
+
+    #[test]
+    fn single_colored_find() {
+        crate::init_logger();
+        let mut egraph = EGraph::default();
+
+        let x = egraph.add(S::leaf("x"));
+        let y = egraph.add(S::leaf("y"));
+        let plus = egraph.add(S::new("+", vec![x, y]));
+
+        let z = egraph.add(S::leaf("z"));
+        let w = egraph.add(S::leaf("w"));
+        let plus2 = egraph.add(S::new("+", vec![z, w]));
+
+        let c = egraph.create_color();
+        egraph.colored_union(c, y, z);
+        egraph.rebuild();
+
+        let commute_plus = rewrite!(
+            "commute_plus";
+            "(+ x z)" => "(+ x x)"
+        );
+
+        let matches = commute_plus.search(&egraph);
+        assert!(!matches.is_empty())
     }
 }

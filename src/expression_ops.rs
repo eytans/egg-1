@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Formatter;
 use std::hash::{Hash, Hasher};
-use std::process::exit;
 
 use itertools::Itertools;
 use smallvec::alloc::fmt::Display;
