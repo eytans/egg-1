@@ -1,6 +1,5 @@
 use crate::{UnionFind, Id, EGraph, Language, Analysis};
 use std::collections::{HashSet, HashMap};
-use multimap::Iter;
 
 pub type ColorId = usize;
 
@@ -20,6 +19,10 @@ pub struct Color {
 impl Color {
     pub(crate) fn new(union_find: UnionFind) -> Color {
         Color {union_find, color_id: COLOR_IDS.inc_cloning(), dirty_unions: Default::default(), union_map: Default::default()}
+    }
+
+    pub fn id(&self) -> ColorId {
+        self.color_id
     }
 
     pub fn find(&self, id: Id) -> Id {
@@ -63,7 +66,7 @@ impl Color {
     /// `id1` Should be the id of "to" (after running find in black)
     /// `id2` Should be the id of "from" (after running find in black)
     pub fn black_union(&mut self, id1: Id, id2: Id) -> (Id, bool) {
-        let (to, from, changed) = self.union_impl(id1, id2);
+        let (to, _, changed) = self.union_impl(id1, id2);
         self.update_union_map(to, id2);
         (to, changed)
     }
@@ -113,9 +116,7 @@ impl Color {
                     .flat_map(|g| egraph[*g].parents.iter())
                     .map(|(n, id)| {
                         let mut res = n.clone();
-                        println!("{:#?}", res);
                         res.update_children(|child| self.union_find.find(child));
-                        println!("{:#?}, {:#?}", *id, (self.union_find.find(*id)));
                         (res, (self.union_find.find(*id)))
                     }).collect();
 

@@ -2,6 +2,7 @@ use std::fmt;
 use std::str::FromStr;
 
 use crate::{Id, Symbol};
+use crate::colors::ColorId;
 
 /// A variable for use in [`Pattern`]s or [`Subst`]s.
 ///
@@ -45,6 +46,7 @@ impl fmt::Debug for Var {
 #[derive(Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Subst {
     pub(crate) vec: smallvec::SmallVec<[(Var, Id); 3]>,
+    pub(crate) colors: smallvec::SmallVec<[ColorId; 2]>,
 }
 
 impl Subst {
@@ -52,6 +54,7 @@ impl Subst {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             vec: smallvec::SmallVec::with_capacity(capacity),
+            colors: smallvec::SmallVec::with_capacity(capacity),
         }
     }
 

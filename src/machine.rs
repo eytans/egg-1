@@ -1,13 +1,22 @@
 use crate::{Analysis, EClass, EGraph, ENodeOrVar, Id, Language, PatternAst, Subst, Var};
 use std::cmp::Ordering;
+use crate::colors::ColorId;
+use smallvec::SmallVec;
 
 struct Machine {
     reg: Vec<Id>,
+    colors: SmallVec<[ColorId; 2]>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
+struct ColorMachine {
+    reg: Vec<Id>,
+    colors: SmallVec<[ColorId; 3]>,
 }
 
 impl Default for Machine {
     fn default() -> Self {
-        Self { reg: vec![] }
+        Self { reg: vec![], colors: Default::default() }
     }
 }
 
@@ -28,8 +37,8 @@ enum Instruction<L> {
 
 #[inline(always)]
 fn for_each_matching_node<L, D>(eclass: &EClass<L, D>, node: &L, mut f: impl FnMut(&L))
-where
-    L: Language,
+    where
+        L: Language,
 {
     #[allow(clippy::mem_discriminant_non_enum)]
     if eclass.nodes.len() < 50 {
@@ -37,6 +46,7 @@ where
     } else {
         debug_assert!(node.children().iter().all(|&id| id == Id::from(0)));
         debug_assert!(eclass.nodes.windows(2).all(|w| w[0] < w[1]));
+        // TODO: fix bug here, add API for smarter sort\search and left steps
         let mut start = eclass.nodes.binary_search(node).unwrap_or_else(|i| i);
         let discrim = std::mem::discriminant(node);
         while start > 0 {
@@ -89,14 +99,91 @@ impl Machine {
             match instruction {
                 Instruction::Bind { i, out, node } => {
                     let remaining_instructions = instructions.as_slice();
-                    return for_each_matching_node(&egraph[self.reg(*i)], node, |matched| {
+                    for_each_matching_node(&egraph[self.reg(*i)], node, |matched| {
                         self.reg.truncate(out.0 as usize);
                         self.reg.extend_from_slice(matched.children());
                         self.run(egraph, remaining_instructions, subst, yield_fn)
                     });
+                    return;
                 }
                 Instruction::Compare { i, j } => {
                     if egraph.find(self.reg(*i)) != egraph.find(self.reg(*j)) {
+                        return;
+                    }
+                }
+            }
+        }
+
+        yield_fn(self, subst)
+    }
+
+    fn run_colored<L, N>(
+        &mut self,
+        egraph: &EGraph<L, N>,
+        instructions: &[Instruction<L>],
+        subst: &Subst,
+        max_colors: usize,
+        yield_fn: &mut impl FnMut(&Self, &Subst),
+    ) where
+        L: Language,
+        N: Analysis<L>,
+    {
+        let mut instructions = instructions.iter();
+        while let Some(instruction) = instructions.next() {
+            match instruction {
+                Instruction::Bind { i, out, node } => {
+                    let remaining_instructions = instructions.as_slice();
+                    for_each_matching_node(&egraph[self.reg(*i)], node, |matched| {
+                        self.reg.truncate(out.0 as usize);
+                        self.reg.extend_from_slice(matched.children());
+                        self.run_colored(egraph, remaining_instructions, subst, max_colors, yield_fn)
+                    });
+
+                    // TODO: Add special pattern for when to merge colors so we deal with
+                    for idx in 0..self.colors.len() {
+                        let c = &egraph.colors()[self.colors[idx]];
+                        for id in c.black_ids(self.reg(*i)).unwrap_or(&Default::default()) {
+                            for_each_matching_node(&egraph[*id], node, |matched| {
+                                self.reg.truncate(out.0 as usize);
+                                self.reg.extend_from_slice(matched.children());
+                                self.run_colored(egraph, remaining_instructions, subst, max_colors, yield_fn)
+                            });
+                        }
+                    }
+
+                    for c in egraph.colors().iter() {
+                        if self.colors.contains(&c.id()) {
+                            continue;
+                        }
+                        self.colors.push(c.id());
+                        for id in c.black_ids(self.reg(*i)).unwrap_or(&Default::default()) {
+                            for_each_matching_node(&egraph[*id], node, |matched| {
+                                self.reg.truncate(out.0 as usize);
+                                self.reg.extend_from_slice(matched.children());
+                                self.run_colored(egraph, remaining_instructions, subst, max_colors, yield_fn)
+                            });
+                        }
+                        self.colors.pop();
+                    }
+                    return;
+                }
+                Instruction::Compare { i, j } => {
+                    if self.colors.len() < max_colors {
+                        for c in egraph.colors() {
+                            if self.colors.contains(&c.id()) {
+                                continue;
+                            }
+                            if (!self.colors.contains(&c.id())) && c.find(self.reg(*j)) == c.find(self.reg(*i)) {
+                                self.colors.push(c.id());
+                                self.run_colored(egraph, instructions.as_slice(), subst, max_colors, yield_fn);
+                                self.colors.pop();
+                            }
+                        }
+                    }
+                    if egraph.find(self.reg(*i)) != egraph.find(self.reg(*j)) &&
+                        self.colors.iter().all(|c|
+                            egraph.colored_find(*c, self.reg(*i)) != egraph.colored_find(*c, self.reg(*j))
+                        ) {
                         return;
                     }
                 }
@@ -209,8 +296,8 @@ impl<L: Language> Program<L> {
     }
 
     pub fn run<A>(&self, egraph: &EGraph<L, A>, eclass: Id) -> Vec<Subst>
-    where
-        A: Analysis<L>,
+        where
+            A: Analysis<L>,
     {
         let mut machine = Machine::default();
 
@@ -229,7 +316,37 @@ impl<L: Language> Program<L> {
                     // HACK we are reusing Ids here, this is bad
                     .map(|(v, reg_id)| (*v, machine.reg(Reg(usize::from(*reg_id) as u32))))
                     .collect();
-                substs.push(Subst { vec: subst_vec })
+                substs.push(Subst { vec: subst_vec, colors: machine.colors.clone() })
+            },
+        );
+
+        log::trace!("Ran program, found {:?}", substs);
+        substs
+    }
+
+    pub fn colored_run<A>(&self, egraph: &EGraph<L, A>, eclass: Id) -> Vec<Subst>
+        where
+            A: Analysis<L>,
+    {
+        let mut machine = Machine::default();
+
+        assert_eq!(machine.reg.len(), 0);
+        machine.reg.push(eclass);
+
+        let mut substs = Vec::new();
+        machine.run_colored(
+            egraph,
+            &self.instructions,
+            &self.subst,
+            2,
+            &mut |machine, subst| {
+                let subst_vec = subst
+                    .vec
+                    .iter()
+                    // HACK we are reusing Ids here, this is bad
+                    .map(|(v, reg_id)| (*v, machine.reg(Reg(usize::from(*reg_id) as u32))))
+                    .collect();
+                substs.push(Subst { vec: subst_vec, colors: machine.colors.clone() })
             },
         );
 

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 use std::{
     borrow::BorrowMut,
     fmt::{self, Debug},
@@ -10,9 +10,7 @@ use log::*;
 use crate::{
     Analysis, AstSize, Dot, EClass, Extractor, Id, Language, Pattern, RecExpr, Searcher, UnionFind,
 };
-use indexmap::map::MutableKeys;
-use std::collections::hash_map::RandomState;
-use indexmap::set::IndexSet;
+
 use crate::colors::{Color, ColorId};
 
 /** A data structure to keep track of equalities between expressions.
@@ -266,6 +264,10 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
     pub fn colored_find(&self, color: ColorId, id: Id) -> Id {
         self.colors[usize::from(color)].find(id)
+    }
+
+    pub fn colors(&self) -> &[Color] {
+        &self.colors
     }
 
     /// Creates a [`Dot`] to visualize this egraph. See [`Dot`].
@@ -806,8 +808,6 @@ impl<'a, L: Language, N: Analysis<L>> Debug for EGraphDump<'a, L, N> {
 mod tests {
     use crate::*;
     use std::str::FromStr;
-    use crate::egraph::Color;
-    use std::mem::discriminant;
 
     #[test]
     fn simple_add() {
@@ -929,7 +929,7 @@ mod tests {
         egraph.colored_union(c, ex1, ex3);
         egraph.colored_union(c, ex1, ex4);
         egraph.colored_union(c, ex5, ex6);
-        let (to, changed) = egraph.colored_union(c, ex1, ex5);
+        let (to, _) = egraph.colored_union(c, ex1, ex5);
         assert_eq!(egraph.colors[c].union_map[&to].len(), 5);
 
         egraph.union(ex5, ex6);
