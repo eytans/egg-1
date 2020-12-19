@@ -7,11 +7,10 @@ use std::{
 use indexmap::IndexMap;
 use log::*;
 
-use crate::{
-    Analysis, AstSize, Dot, EClass, Extractor, Id, Language, Pattern, RecExpr, Searcher, UnionFind,
-};
+use crate::{Analysis, AstSize, Dot, EClass, Extractor, Id, Language, Pattern, RecExpr, Searcher, UnionFind};
 
-use crate::colors::{Color, ColorId};
+pub use crate::colors::{Color, ColorParents, ColorId};
+use itertools::Itertools;
 
 /** A data structure to keep track of equalities between expressions.
 
@@ -145,8 +144,9 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     /// For each inner vector of union finds, if there is a union common to all of them then it will
     /// be applied on the main union find (case split mechanism). Not true for UnionFinds of size 1.
     colors: Vec<Color>,
-    /// Maintain for each EClass if it was merged in colored
-    colored_union_ids: HashMap<(Id, Id), Vec<ColorId>>,
+    // TODO: colored union tracking
+    // Maintain for each EClass if it was merged in colored
+    // colored_union_ids: HashMap<Id, Vec<ColorId>>,
 }
 
 type SparseVec<T> = Vec<Option<Box<T>>>;
@@ -179,7 +179,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             dirty_unions: Default::default(),
             classes_by_op: IndexMap::default(),
             repairs_since_rebuild: 0,
-            colored_union_ids: Default::default(),
+            // TODO: colored union tracking
+            // colored_union_ids: Default::default(),
         }
     }
 
@@ -471,7 +472,15 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         debug_assert_eq!(to, self.find(id1));
         debug_assert_eq!(to, self.find(id2));
         if changed {
-            self.colored_union_ids.remove(&Self::id_to_key(to, from));
+            // TODO: colored union tracking
+            // colored_union tracking: id1 and id2 are not changed in colored?
+            // for id in vec![from, to] {
+            //     self.colored_union_ids.get(&id).map(|vec| vec.iter()
+            //         .filter())
+            //     if self.colored_union_ids.contains_key(&id) {
+            //         self.colored_union_ids[&id].
+            //     }
+            // }
             self.dirty_unions.push(to);
 
             // update the classes data structure
@@ -504,18 +513,16 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         union
     }
 
-    fn id_to_key(id1: Id, id2: Id) -> (Id, Id) {
-        if id1 > id2 {
-            (id2, id1)
-        } else {
-            (id1, id2)
-        }
-    }
-
     pub fn colored_union(&mut self, color: ColorId, id1: Id, id2: Id) -> (Id, bool) {
-        let union = self.colors[usize::from(color)].colored_union(id1, id2);
+        let c = self.colors.get_mut(usize::from(color)).unwrap();
+        let union = c.colored_union(id1, id2);
         if union.1 {
-            self.colored_union_ids.entry(Self::id_to_key(id1, id2)).or_insert(vec![]).push(color);
+            for child in c.children().iter().copied().collect_vec() {
+                self.colored_union(child, id1, id2);
+            }
+            // TODO: colored union tracking
+            // self.colored_union_ids.entry(self.find(id1)).or_insert(vec![]).push(color);
+            // self.colored_union_ids.entry(self.find(id2)).or_insert(vec![]).push(color);
         }
         union
     }
@@ -629,7 +636,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     }
 
     pub fn create_color(&mut self) -> ColorId {
-        self.colors.push(Color::new(self.unionfind.clone()));
+        self.colors.push(Color::new(self.unionfind.clone(), ColorId::from(self.colors.len())));
         ColorId::from(self.colors.len() - 1)
     }
 
@@ -787,6 +794,15 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             }
         }
     }
+
+    pub fn create_combined_color(&mut self, color1: ColorId, color2: ColorId) -> ColorId {
+        let new_id = ColorId::from(self.colors.len());
+        let mut c2 = std::mem::take(&mut self.colors[color2.0]);
+        let new_color = self.colors[color1.0].merge_uf(&mut c2, new_id);
+        self.colors.push(new_color);
+        self.colors[color2.0] = c2;
+        new_id
+    }
 }
 
 struct EGraphDump<'a, L: Language, N: Analysis<L>>(&'a EGraph<L, N>);
@@ -930,11 +946,63 @@ mod tests {
         egraph.colored_union(c, ex1, ex4);
         egraph.colored_union(c, ex5, ex6);
         let (to, _) = egraph.colored_union(c, ex1, ex5);
-        assert_eq!(egraph.colors[c].union_map[&to].len(), 5);
+        assert_eq!(egraph.colors[c.0].union_map[&to].len(), 5);
 
         egraph.union(ex5, ex6);
         egraph.union(ex1, ex5);
-        println!("{:#?}", egraph.colors[c].union_map[&to]);
-        assert_eq!(egraph.colors[c].union_map[&to].len(), 3);
+        println!("{:#?}", egraph.colors[c.0].union_map[&to]);
+        assert_eq!(egraph.colors[c.0].union_map[&to].len(), 3);
+    }
+
+    #[test]
+    fn color_hierarchy_union() {
+        use SymbolLang as S;
+
+        crate::init_logger();
+        let mut egraph = EGraph::<S, ()>::default();
+
+        let ex1 = egraph.add_expr(&"x".parse().unwrap());
+        let ex2 = egraph.add_expr(&"y".parse().unwrap());
+        let ex3 = egraph.add_expr(&"z".parse().unwrap());
+        let ex4 = egraph.add_expr(&"a".parse().unwrap());
+        let ex5 = egraph.add_expr(&"s".parse().unwrap());
+        let ex6 = egraph.add_expr(&"d".parse().unwrap());
+
+        let c1 = egraph.create_color();
+        let c2 = egraph.create_color();
+        let c3 = egraph.create_combined_color(c1, c2);
+
+        egraph.colored_union(c1, ex1, ex2);
+        egraph.colored_union(c1, ex3, ex4);
+        egraph.colored_union(c2, ex1, ex3);
+        egraph.colored_union(c2, ex5, ex6);
+        let (to, _) = egraph.colored_union(c2, ex1, ex5);
+        assert_eq!(egraph.colored_find(c3, ex5), egraph.colored_find(c3, ex6));
+        assert_eq!(egraph.colored_find(c3, ex3), egraph.colored_find(c3, ex4));
+        assert_eq!(egraph.colors[c3.0].union_map[&to].len(), 5);
+    }
+
+    #[test]
+    fn color_congruence_closure() {
+        use SymbolLang as S;
+
+        crate::init_logger();
+        let mut egraph = EGraph::<S, ()>::default();
+
+        let x = egraph.add(S::leaf("x"));
+        let y = egraph.add(S::leaf("y"));
+        let w = egraph.add(S::leaf("w"));
+        let fx = egraph.add_expr(&RecExpr::from_str("(f x)").unwrap());
+        let fy = egraph.add_expr(&RecExpr::from_str("(f y)").unwrap());
+
+        let color1 = egraph.create_color();
+        let color2 = egraph.create_color();
+        let color3 = egraph.create_combined_color(color1, color2);
+
+        egraph.colored_union(color1, w, x);
+        egraph.colored_union(color2, w, y);
+        assert_ne!(egraph.colored_find(color3, fx), egraph.colored_find(color3, fy));
+        egraph.rebuild();
+        assert_eq!(egraph.colored_find(color3, fx), egraph.colored_find(color3, fy));
     }
 }

@@ -287,6 +287,7 @@ fn apply_pat<L: Language, A: Analysis<L>>(
 mod tests {
 
     use crate::{SymbolLang as S, *};
+    use std::str::FromStr;
 
     type EGraph = crate::EGraph<S, ()>;
 
@@ -358,6 +359,7 @@ mod tests {
         );
 
         let matches = commute_plus.search(&egraph);
-        assert!(!matches.is_empty())
+        assert!(!matches.is_empty());
+        assert!(matches.iter().all(|x| x.substs.iter().all(|s| !s.colors.is_empty())));
     }
 }

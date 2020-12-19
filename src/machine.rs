@@ -1,17 +1,12 @@
 use crate::{Analysis, EClass, EGraph, ENodeOrVar, Id, Language, PatternAst, Subst, Var};
 use std::cmp::Ordering;
-use crate::colors::ColorId;
 use smallvec::SmallVec;
+use crate::ColorId;
 
 struct Machine {
     reg: Vec<Id>,
+    // TODO: use colorid
     colors: SmallVec<[ColorId; 2]>,
-}
-
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
-struct ColorMachine {
-    reg: Vec<Id>,
-    colors: SmallVec<[ColorId; 3]>,
 }
 
 impl Default for Machine {
@@ -133,35 +128,34 @@ impl Machine {
             match instruction {
                 Instruction::Bind { i, out, node } => {
                     let remaining_instructions = instructions.as_slice();
-                    for_each_matching_node(&egraph[self.reg(*i)], node, |matched| {
-                        self.reg.truncate(out.0 as usize);
-                        self.reg.extend_from_slice(matched.children());
-                        self.run_colored(egraph, remaining_instructions, subst, max_colors, yield_fn)
-                    });
+                    let mut run_matches = |machine: &mut Machine, eclass: &EClass<L, N::Data>| {
+                        for_each_matching_node(eclass, node, |matched| {
+                            machine.reg.truncate(out.0 as usize);
+                            machine.reg.extend_from_slice(matched.children());
+                            machine.run_colored(egraph, remaining_instructions, subst, max_colors, yield_fn)
+                        });
+                    };
+
+                    run_matches(self, &egraph[self.reg(*i)]);
 
                     // TODO: Add special pattern for when to merge colors so we deal with
                     for idx in 0..self.colors.len() {
-                        let c = &egraph.colors()[self.colors[idx]];
+                        let c = &egraph.colors()[self.colors[idx].0];
                         for id in c.black_ids(self.reg(*i)).unwrap_or(&Default::default()) {
-                            for_each_matching_node(&egraph[*id], node, |matched| {
-                                self.reg.truncate(out.0 as usize);
-                                self.reg.extend_from_slice(matched.children());
-                                self.run_colored(egraph, remaining_instructions, subst, max_colors, yield_fn)
-                            });
+                            run_matches(self, &egraph[*id]);
                         }
                     }
 
+                    if self.colors.len() >= max_colors {
+                        return;
+                    }
                     for c in egraph.colors().iter() {
-                        if self.colors.contains(&c.id()) {
+                        if self.colors.contains(&c.get_id()) {
                             continue;
                         }
-                        self.colors.push(c.id());
+                        self.colors.push(c.get_id());
                         for id in c.black_ids(self.reg(*i)).unwrap_or(&Default::default()) {
-                            for_each_matching_node(&egraph[*id], node, |matched| {
-                                self.reg.truncate(out.0 as usize);
-                                self.reg.extend_from_slice(matched.children());
-                                self.run_colored(egraph, remaining_instructions, subst, max_colors, yield_fn)
-                            });
+                            run_matches(self, &egraph[*id]);
                         }
                         self.colors.pop();
                     }
@@ -170,11 +164,11 @@ impl Machine {
                 Instruction::Compare { i, j } => {
                     if self.colors.len() < max_colors {
                         for c in egraph.colors() {
-                            if self.colors.contains(&c.id()) {
+                            if self.colors.contains(&c.get_id()) {
                                 continue;
                             }
-                            if (!self.colors.contains(&c.id())) && c.find(self.reg(*j)) == c.find(self.reg(*i)) {
-                                self.colors.push(c.id());
+                            if (!self.colors.contains(&c.get_id())) && c.find(self.reg(*j)) == c.find(self.reg(*i)) {
+                                self.colors.push(c.get_id());
                                 self.run_colored(egraph, instructions.as_slice(), subst, max_colors, yield_fn);
                                 self.colors.pop();
                             }

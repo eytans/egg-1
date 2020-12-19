@@ -42,6 +42,11 @@ mod util;
 #[derive(Clone, Copy, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Id(u32);
 
+
+#[derive(Clone, Copy, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct ColorId(usize);
+
+
 impl From<usize> for Id {
     fn from(n: usize) -> Id {
         Id(n as u32)
@@ -61,6 +66,30 @@ impl std::fmt::Debug for Id {
 }
 
 impl std::fmt::Display for Id {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<usize> for ColorId {
+    fn from(n: usize) -> ColorId {
+        ColorId(n as usize)
+    }
+}
+
+impl From<ColorId> for usize {
+    fn from(id: ColorId) -> usize {
+        id.0 as usize
+    }
+}
+
+impl std::fmt::Debug for ColorId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::fmt::Display for ColorId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
@@ -90,3 +119,4 @@ fn init_logger() {
 pub mod test;
 mod expression_ops;
 mod colors;
+

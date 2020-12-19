@@ -298,7 +298,12 @@ where
                     .apply_one(egraph, mat.eclass, subst)
                     .into_iter()
                     .filter_map(|id| {
-                        let (to, did_something) = egraph.union(id, mat.eclass);
+                        let (to, did_something) =
+                            if subst.colors.is_empty() {
+                                egraph.union(id, mat.eclass)
+                            } else {
+                                egraph.colored_union(*subst.colors.first().unwrap(), id, mat.eclass)
+                            };
                         if did_something {
                             Some(to)
                         } else {
