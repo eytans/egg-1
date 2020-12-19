@@ -2,7 +2,7 @@ use std::fmt;
 use std::str::FromStr;
 
 use crate::{Id, Symbol};
-use crate::colors::ColorId;
+use crate::ColorId;
 
 /// A variable for use in [`Pattern`]s or [`Subst`]s.
 ///

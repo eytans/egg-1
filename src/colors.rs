@@ -1,11 +1,15 @@
-use crate::{UnionFind, Id, EGraph, Language, Analysis};
+pub use crate::{Id, EGraph, Language, Analysis, ColorId};
+use crate::UnionFind;
 use std::collections::{HashSet, HashMap};
+use smallvec::SmallVec;
+use std::iter;
+use std::iter::FromIterator;
 
-pub type ColorId = usize;
+pub type ColorParents = smallvec::SmallVec<[ColorId; 3]>;
 
 global_counter!(COLOR_IDS, usize, usize::default());
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Color {
     union_find: UnionFind,
     color_id: ColorId,
@@ -13,16 +17,21 @@ pub struct Color {
     pub(crate) dirty_unions: Vec<Id>,
     /// Maintain which classes in black are represented in colored class
     pub(crate) union_map: HashMap<Id, HashSet<Id>>,
-
+    children: Vec<ColorId>,
 }
 
 impl Color {
-    pub(crate) fn new(union_find: UnionFind) -> Color {
-        Color {union_find, color_id: COLOR_IDS.inc_cloning(), dirty_unions: Default::default(), union_map: Default::default()}
+    // TODO: use a unique ID and translate, have a colors object to manage multiple colors correctly.
+    pub(crate) fn new(union_find: UnionFind, new_id: ColorId) -> Color {
+        Color { union_find, color_id: new_id, dirty_unions: Default::default(), union_map: Default::default(), children: vec![] }
     }
 
-    pub fn id(&self) -> ColorId {
+    pub fn get_id(&self) -> ColorId {
         self.color_id
+    }
+
+    pub fn children(&self) -> &[ColorId] {
+        &self.children
     }
 
     pub fn find(&self, id: Id) -> Id {
@@ -149,5 +158,19 @@ impl Color {
 
     pub fn black_ids(&self, id: Id) -> Option<&HashSet<Id>> {
         self.union_map.get(&self.union_find.find(id))
+    }
+
+    pub fn merge_uf(&mut self, other: &mut Self, new_id: ColorId) -> Self {
+        let mut res = self.clone();
+        res.dirty_unions.extend_from_slice(&other.dirty_unions);
+        for (black_id, ids) in &other.union_map {
+            for id in ids {
+                res.colored_union(*black_id, *id);
+            }
+        }
+        res.color_id = new_id;
+        self.children.push(res.color_id);
+        other.children.push(res.color_id);
+        res
     }
 }
