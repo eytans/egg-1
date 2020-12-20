@@ -9,6 +9,7 @@ test: test-egg
 test-egg:
 	cargo build
 	cargo test --release
+	cargo test --release --features "upward-merging"
 
 	cargo clippy --tests
 	cargo clippy --tests --features "serde-1"
