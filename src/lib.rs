@@ -108,6 +108,7 @@ pub use {
     run::*,
     subst::{Subst, Var},
     util::*,
+    colors::{Color, ColorParents}
 };
 
 #[cfg(test)]
