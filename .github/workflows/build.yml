@@ -22,4 +22,4 @@ jobs:
     - name: Install graphviz
       run: sudo apt-get install graphviz
     - name: Build and Test
-      run: make test-egg
+      run: make test
