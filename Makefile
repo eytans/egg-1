@@ -7,7 +7,6 @@ test: test-egg
 
 .PHONY: test-egg
 test-egg:
-	cargo build
 	cargo test --release
 
 	cargo clippy --tests
