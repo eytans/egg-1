@@ -518,7 +518,7 @@ where
     }
 }
 
-fn check_rules<L, N>(rules: &[&Rewrite<L, N>]) {
+fn check_rules<L: Language, N: Analysis<L>>(rules: &[&Rewrite<L, N>]) {
     let mut name_counts = IndexMap::new();
     for rw in rules {
         *name_counts.entry(rw.name()).or_default() += 1

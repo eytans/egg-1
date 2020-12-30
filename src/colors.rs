@@ -1,9 +1,6 @@
 pub use crate::{Id, EGraph, Language, Analysis, ColorId};
 use crate::UnionFind;
 use std::collections::{HashSet, HashMap};
-use smallvec::SmallVec;
-use std::iter;
-use std::iter::FromIterator;
 
 pub type ColorParents = smallvec::SmallVec<[ColorId; 3]>;
 

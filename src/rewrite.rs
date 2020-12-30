@@ -1,7 +1,7 @@
 use std::fmt;
 use std::rc::Rc;
 
-use crate::{Analysis, EGraph, Id, Language, Pattern, SearchMatches, Subst, Var};
+use crate::{Analysis, EGraph, Id, Language, Pattern, SearchMatches, Subst, Var, ColorId};
 
 /// A rewrite that searches for the lefthand side and applies the righthand side.
 ///
@@ -21,17 +21,19 @@ use crate::{Analysis, EGraph, Id, Language, Pattern, SearchMatches, Subst, Var};
 /// [`Pattern`]: struct.Pattern.html
 #[derive(Clone)]
 #[non_exhaustive]
-pub struct Rewrite<L, N> {
+pub struct Rewrite<L: Language, N: Analysis<L>> {
     name: String,
     long_name: String,
     searcher: Rc<dyn Searcher<L, N>>,
     applier: Rc<dyn Applier<L, N>>,
+    /// color manager is used when two or more colors are present in a match.
+    color_manager: Arc<dyn FnMut(EGraph<L, N>) -> Option<ColorId>>,
 }
 
 impl<L, N> fmt::Debug for Rewrite<L, N>
 where
     L: Language + 'static,
-    N: 'static,
+    N: Analysis<L> + 'static,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         struct DisplayAsDebug<T>(T);
@@ -63,7 +65,7 @@ where
     }
 }
 
-impl<L, N> Rewrite<L, N> {
+impl<L: Language, N: Analysis<L>> Rewrite<L, N> {
     /// Returns the name of the rewrite.
     pub fn name(&self) -> &str {
         &self.name
@@ -136,6 +138,7 @@ impl<L: Language, N: Analysis<L>> Rewrite<L, N> {
             long_name,
             searcher,
             applier,
+            color_manager: Arc::new(|_| None),
         })
     }
 
@@ -349,8 +352,11 @@ where
                         let (to, did_something) =
                             if subst.colors.is_empty() {
                                 egraph.union(id, mat.eclass)
-                            } else {
+                                // } else if subst.colors.len() == 1 {
+                            }else{
                                 egraph.colored_union(*subst.colors.first().unwrap(), id, mat.eclass)
+                            // } else {
+                            //
                             };
                         if did_something {
                             Some(to)

@@ -287,7 +287,6 @@ fn apply_pat<L: Language, A: Analysis<L>>(
 mod tests {
 
     use crate::{SymbolLang as S, *};
-    use std::str::FromStr;
 
     type EGraph = crate::EGraph<S, ()>;
 

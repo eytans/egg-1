@@ -76,6 +76,10 @@ impl Subst {
             .iter()
             .find_map(|(v, id)| if *v == var { Some(id) } else { None })
     }
+
+    pub fn colors(&self) -> Vec<ColorId> {
+        self.colors.to_vec()
+    }
 }
 
 impl std::ops::Index<Var> for Subst {

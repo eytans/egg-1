@@ -686,9 +686,9 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
                 for (n, e) in &parents {
                     if let Some(old) = self.memo.insert(n.clone(), *e) {
-                        if to_union.contains(&(old, *e)) {
-                            println!("{:#?} {:#?}", old, e);
-                        }
+                        // if to_union.contains(&(old, *e)) {
+                        //     println!("{:#?} {:#?}", old, e);
+                        // }
                         to_union.push((old, *e));
                     }
                 }
