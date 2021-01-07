@@ -291,7 +291,7 @@ macro_rules! rewrite {
         let searcher = $crate::__rewrite!(@parse $lhs);
         let core_applier = $crate::__rewrite!(@parse $rhs);
         let applier = $crate::__rewrite!(@applier core_applier; $($cond,)*);
-        $crate::Rewrite::new($name, long_name, searcher, applier).unwrap()
+        $crate::Rewrite::old_new($name, long_name, searcher, applier).unwrap()
     }};
     (
         $name:expr;

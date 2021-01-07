@@ -82,7 +82,7 @@ impl<L: Language, N: Analysis<L>> Rewrite<L, N> {
     ///
     /// [`Rewrite`]: struct.Rewrite.html
     /// [`rewrite!`]: macro.rewrite.html
-    pub fn new(
+    pub fn old_new(
         name: impl Into<String>,
         long_name: impl Into<String>,
         searcher: impl Searcher<L, N> + 'static,
@@ -90,6 +90,37 @@ impl<L: Language, N: Analysis<L>> Rewrite<L, N> {
     ) -> Result<Self, String> {
         let name = name.into();
         let long_name = long_name.into();
+        let searcher = Rc::new(searcher);
+        let applier = Rc::new(applier);
+
+        let bound_vars = searcher.vars();
+        for v in applier.vars() {
+            if !bound_vars.contains(&v) {
+                return Err(format!("Rewrite {} refers to unbound var {}", name, v));
+            }
+        }
+
+        Ok(Self {
+            name,
+            long_name,
+            searcher,
+            applier,
+        })
+    }
+
+    /// Create a new [`Rewrite`]. You typically want to use the
+    /// [`rewrite!`] macro instead.
+    ///
+    /// [`Rewrite`]: struct.Rewrite.html
+    /// [`rewrite!`]: macro.rewrite.html
+    pub fn new(
+        name: impl Into<String>,
+        // long_name: impl Into<String>,
+        searcher: impl Searcher<L, N> + 'static,
+        applier: impl Applier<L, N> + 'static,
+    ) -> Result<Self, String> {
+        let name = name.into();
+        let long_name = name.clone();
         let searcher = Rc::new(searcher);
         let applier = Rc::new(applier);
 
