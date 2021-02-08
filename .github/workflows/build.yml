@@ -1,24 +1,45 @@
-name: Build and Test
+name: CI
 
-on: [push, pull_request]
+# Controls when the action will run.
+on:
+  # Triggers the workflow on push or pull request events but only for the master branch
+  push:
+    branches: [ features/ci ]
+  pull_request:
+    branches: [ features/ci ]
 
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   build:
 
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v1
-    - name: Cache cargo bin
-      uses: actions/cache@v1
-      with:
-        path: ~/.cargo/bin
-        key: ${{ runner.os }}-cargo-bin
-    - name: Install cargo web
-      run: which cargo-web || cargo install cargo-web
-    - name: Install cargo deadlinks
-      run: which cargo-deadlinks || cargo install cargo-deadlinks
-    - name: Install graphviz
-      run: sudo apt-get update && sudo apt-get install graphviz
-    - name: Build and Test
-      run: make
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Setup rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - name: Setup Clippy
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install graphviz
+        run: sudo apt-get update && sudo apt-get install graphviz
+      - name: Install cargo deadlinks
+        run: which cargo-deadlinks || cargo install cargo-deadlinks
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          toolchain: stable
+      - name: Test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          toolchain: stable
