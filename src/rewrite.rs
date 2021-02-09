@@ -2,6 +2,7 @@ use std::fmt;
 use std::rc::Rc;
 
 use crate::{Analysis, EGraph, Id, Language, Pattern, SearchMatches, Subst, Var, ColorId};
+use std::sync::Arc;
 
 /// A rewrite that searches for the lefthand side and applies the righthand side.
 ///
@@ -107,6 +108,7 @@ impl<L: Language, N: Analysis<L>> Rewrite<L, N> {
             long_name,
             searcher,
             applier,
+            color_manager: Arc::new(|_| None),
         })
     }
 
