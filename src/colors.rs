@@ -1,6 +1,7 @@
 pub use crate::{Id, EGraph, Language, Analysis, ColorId};
 use crate::UnionFind;
 use std::collections::{HashSet, HashMap};
+use itertools::Itertools;
 
 pub type ColorParents = smallvec::SmallVec<[ColorId; 3]>;
 
@@ -15,12 +16,13 @@ pub struct Color {
     /// Maintain which classes in black are represented in colored class
     pub(crate) union_map: HashMap<Id, HashSet<Id>>,
     children: Vec<ColorId>,
+    base_set: Vec<ColorId>,
 }
 
 impl Color {
     // TODO: use a unique ID and translate, have a colors object to manage multiple colors correctly.
     pub(crate) fn new(union_find: UnionFind, new_id: ColorId) -> Color {
-        Color { union_find, color_id: new_id, dirty_unions: Default::default(), union_map: Default::default(), children: vec![] }
+        Color { union_find, color_id: new_id, dirty_unions: Default::default(), union_map: Default::default(), children: vec![], base_set: vec![new_id] }
     }
 
     pub fn get_id(&self) -> ColorId {
@@ -157,7 +159,7 @@ impl Color {
         self.union_map.get(&self.union_find.find(id))
     }
 
-    pub fn merge_ufs(&mut self, others: Vec<&mut Self>, new_id: ColorId) -> Self {
+    pub fn merge_ufs(&mut self, others: Vec<&mut Self>, new_id: ColorId, is_base: bool) -> Self {
         let mut res = self.clone();
         for other in others {
             res.dirty_unions.extend_from_slice(&other.dirty_unions);
@@ -167,17 +169,27 @@ impl Color {
                 }
             }
             other.children.push(new_id);
+            res.base_set.extend(&other.base_set);
         }
         res.color_id = new_id;
         self.children.push(res.color_id);
+        if is_base {
+            res.base_set.push(new_id);
+        }
+        res.base_set = res.base_set.iter().sorted().dedup().copied().collect_vec();
         res
     }
 
     pub fn merge_uf(&mut self, other: &mut Self, new_id: ColorId) -> Self {
-        self.merge_ufs(vec![other], new_id)
+        self.merge_ufs(vec![other], new_id, false)
     }
 
     pub fn new_child(&mut self, new_id: ColorId) -> Self {
-        self.merge_ufs(vec![], new_id)
+        let mut res = self.merge_ufs(vec![], new_id, true);
+        res
+    }
+
+    pub fn assumptions(&self) -> &Vec<ColorId> {
+        &self.base_set
     }
 }

@@ -144,6 +144,7 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     /// For each inner vector of union finds, if there is a union common to all of them then it will
     /// be applied on the main union find (case split mechanism). Not true for UnionFinds of size 1.
     colors: Vec<Color>,
+    color_hierarchy: HashMap<Vec<ColorId>, ColorId>,
     // TODO: colored union tracking
     // Maintain for each EClass if it was merged in colored
     // colored_union_ids: HashMap<Id, Vec<ColorId>>,
@@ -181,6 +182,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             repairs_since_rebuild: 0,
             // TODO: colored union tracking
             // colored_union_ids: Default::default(),
+            color_hierarchy: Default::default(),
         }
     }
 
@@ -637,15 +639,36 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
     pub fn create_color(&mut self) -> ColorId {
         self.colors.push(Color::new(self.unionfind.clone(), ColorId::from(self.colors.len())));
-        ColorId::from(self.colors.len() - 1)
+        let res = ColorId::from(self.colors.len() - 1);
+        self.color_hierarchy.insert(self.colors.last().unwrap().assumptions().clone(), res);
+        res
     }
 
-    pub fn create_combined_color(&mut self, color1: ColorId, color2: ColorId) -> ColorId {
+    /// Create a new color which is based on given colors. This should be used only if the new color
+    /// has no assumptions of it's own (i.e. it is only a combination of existing assumptions).
+    pub fn create_combined_color(&mut self, colors: Vec<ColorId>) -> ColorId {
+        // First check if assumptions exist
+        let assumptions = colors.iter()
+            .flat_map(|c_id| self.colors[c_id.0].assumptions())
+            .sorted().dedup()
+            .copied().collect_vec();
+        if self.color_hierarchy.contains_key(&assumptions) {
+            println!("Skipping on color assumptions:");
+            for a in &assumptions {
+                println!("{}", a);
+            }
+            return *self.color_hierarchy.get(&assumptions).unwrap();
+        }
+
         let new_id = ColorId::from(self.colors.len());
-        let mut c2 = std::mem::take(&mut self.colors[color2.0]);
-        let new_color = self.colors[color1.0].merge_uf(&mut c2, new_id);
+        assert!(colors.len() > 1);
+        let mut needed_colors = {
+            colors.iter().dropping(1).map(|c_id| std::mem::take(&mut self.colors[c_id.0]))
+        }.collect_vec();
+        let new_color = self.colors[colors[0].0].merge_ufs(needed_colors.iter_mut().collect_vec(), new_id, false);
+        colors.iter().dropping(1).enumerate().for_each(|(i, c_id)| self.colors[c_id.0] = std::mem::take(needed_colors.get_mut(i).unwrap()));
+        self.color_hierarchy.insert(new_color.assumptions().clone(), new_id);
         self.colors.push(new_color);
-        self.colors[color2.0] = c2;
         new_id
     }
 
@@ -977,7 +1000,7 @@ mod tests {
 
         let c1 = egraph.create_color();
         let c2 = egraph.create_color();
-        let c3 = egraph.create_combined_color(c1, c2);
+        let c3 = egraph.create_combined_color(vec![c1, c2]);
 
         egraph.colored_union(c1, ex1, ex2);
         egraph.colored_union(c1, ex3, ex4);
@@ -1004,7 +1027,7 @@ mod tests {
 
         let color1 = egraph.create_color();
         let color2 = egraph.create_color();
-        let color3 = egraph.create_combined_color(color1, color2);
+        let color3 = egraph.create_combined_color(vec![color1, color2]);
 
         egraph.colored_union(color1, w, x);
         egraph.colored_union(color2, w, y);
