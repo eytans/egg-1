@@ -354,11 +354,11 @@ where
                         let (to, did_something) =
                             if subst.colors.is_empty() {
                                 egraph.union(id, mat.eclass)
-                                // } else if subst.colors.len() == 1 {
-                            }else{
+                            } else if subst.colors.len() == 1 {
+                                // TODO: What do we do if we have multiple colors? create a new one?
                                 egraph.colored_union(*subst.colors.first().unwrap(), id, mat.eclass)
-                            // } else {
-                            //
+                            } else {
+                                (id, false)
                             };
                         if did_something {
                             Some(to)

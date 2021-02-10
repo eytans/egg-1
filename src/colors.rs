@@ -157,17 +157,27 @@ impl Color {
         self.union_map.get(&self.union_find.find(id))
     }
 
-    pub fn merge_uf(&mut self, other: &mut Self, new_id: ColorId) -> Self {
+    pub fn merge_ufs(&mut self, others: Vec<&mut Self>, new_id: ColorId) -> Self {
         let mut res = self.clone();
-        res.dirty_unions.extend_from_slice(&other.dirty_unions);
-        for (black_id, ids) in &other.union_map {
-            for id in ids {
-                res.colored_union(*black_id, *id);
+        for other in others {
+            res.dirty_unions.extend_from_slice(&other.dirty_unions);
+            for (black_id, ids) in &other.union_map {
+                for id in ids {
+                    res.colored_union(*black_id, *id);
+                }
             }
+            other.children.push(new_id);
         }
         res.color_id = new_id;
         self.children.push(res.color_id);
-        other.children.push(res.color_id);
         res
+    }
+
+    pub fn merge_uf(&mut self, other: &mut Self, new_id: ColorId) -> Self {
+        self.merge_ufs(vec![other], new_id)
+    }
+
+    pub fn new_child(&mut self, new_id: ColorId) -> Self {
+        self.merge_ufs(vec![], new_id)
     }
 }

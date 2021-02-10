@@ -640,6 +640,22 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         ColorId::from(self.colors.len() - 1)
     }
 
+    pub fn create_combined_color(&mut self, color1: ColorId, color2: ColorId) -> ColorId {
+        let new_id = ColorId::from(self.colors.len());
+        let mut c2 = std::mem::take(&mut self.colors[color2.0]);
+        let new_color = self.colors[color1.0].merge_uf(&mut c2, new_id);
+        self.colors.push(new_color);
+        self.colors[color2.0] = c2;
+        new_id
+    }
+
+    pub fn create_sub_color(&mut self, color: ColorId) -> ColorId {
+        let new_color_id = self.create_color();
+        let new_color = self.colors[color.0].new_child(new_color_id);
+        self.colors.push(new_color);
+        new_color_id
+    }
+
     fn process_colored_unions(&mut self, black_merged: Vec<(Id, Id)>) {
         let mut colors = std::mem::take(&mut self.colors);
         for c in &mut colors {
@@ -793,15 +809,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 N::modify(self, e)
             }
         }
-    }
-
-    pub fn create_combined_color(&mut self, color1: ColorId, color2: ColorId) -> ColorId {
-        let new_id = ColorId::from(self.colors.len());
-        let mut c2 = std::mem::take(&mut self.colors[color2.0]);
-        let new_color = self.colors[color1.0].merge_uf(&mut c2, new_id);
-        self.colors.push(new_color);
-        self.colors[color2.0] = c2;
-        new_id
     }
 }
 
@@ -1004,5 +1011,22 @@ mod tests {
         assert_ne!(egraph.colored_find(color3, fx), egraph.colored_find(color3, fy));
         egraph.rebuild();
         assert_eq!(egraph.colored_find(color3, fx), egraph.colored_find(color3, fy));
+    }
+
+    #[test]
+    fn color_new_child_unions() {
+        use SymbolLang as S;
+
+        crate::init_logger();
+        let mut egraph = EGraph::<S, ()>::default();
+
+        let x = egraph.add(S::leaf("x"));
+        let y = egraph.add(S::leaf("y"));
+
+        let color = egraph.create_color();
+        let child = egraph.create_sub_color(color);
+
+        egraph.colored_union(color, y, x);
+        assert_eq!(egraph.colored_find(child, x), egraph.colored_find(child, y));
     }
 }
