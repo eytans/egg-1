@@ -638,7 +638,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     }
 
     pub fn create_color(&mut self) -> ColorId {
-        self.colors.push(Color::new(self.unionfind.clone(), ColorId::from(self.colors.len())));
+        self.colors.push(Color::new(&self.unionfind, ColorId::from(self.colors.len())));
         let res = ColorId::from(self.colors.len() - 1);
         self.color_hierarchy.insert(self.colors.last().unwrap().assumptions().clone(), res);
         res

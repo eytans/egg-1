@@ -21,8 +21,8 @@ pub struct Color {
 
 impl Color {
     // TODO: use a unique ID and translate, have a colors object to manage multiple colors correctly.
-    pub(crate) fn new(union_find: UnionFind, new_id: ColorId) -> Color {
-        Color { union_find, color_id: new_id, dirty_unions: Default::default(), union_map: Default::default(), children: vec![], base_set: vec![new_id] }
+    pub(crate) fn new(union_find: &UnionFind, new_id: ColorId) -> Color {
+        Color { union_find: union_find.clone(), color_id: new_id, dirty_unions: Default::default(), union_map: Default::default(), children: vec![], base_set: vec![new_id] }
     }
 
     pub fn get_id(&self) -> ColorId {
@@ -47,10 +47,10 @@ impl Color {
                     })
                 })
                 .or_insert_with(|| from_ids.unwrap_or_default());
-        }
-        self.union_map.get_mut(&to).unwrap().remove(&from);
-        if self.union_map.get(&to).unwrap().len() <= 1 {
-            self.union_map.remove(&to);
+            self.union_map.get_mut(&to).unwrap().remove(&from);
+            if self.union_map.get(&to).unwrap().len() <= 1 {
+                self.union_map.remove(&to);
+            }
         }
     }
 
@@ -191,5 +191,23 @@ impl Color {
 
     pub fn assumptions(&self) -> &Vec<ColorId> {
         &self.base_set
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::colors::Color;
+    use crate::{UnionFind, ColorId};
+
+    #[test]
+    fn test_black_union_alone() {
+        let mut uf = UnionFind::default();
+        let id1 = uf.make_set();
+        let id2 = uf.make_set();
+        let mut color = Color::new(&uf, ColorId::from(0));
+        color.black_union(id1, id2);
+        color.black_union(id1, id2);
+        color.black_union(id1, id1);
+        assert_eq!(color.find(id1), color.find(id2));
     }
 }

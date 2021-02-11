@@ -358,6 +358,9 @@ where
                                 // TODO: What do we do if we have multiple colors? create a new one?
                                 egraph.colored_union(*subst.colors.first().unwrap(), id, mat.eclass)
                             } else {
+                                // TODO: Once we support multi-color make sure there is a compilation
+                                // TODO: flag or runtime option for the old case-split architecture
+                                // TODO: color VS uncolored experiment.
                                 (id, false)
                             };
                         if did_something {
