@@ -136,26 +136,31 @@ impl Machine {
                         });
                     };
 
+                    if self.colors.len() > max_colors {
+                        return;
+                    }
+
                     run_matches(self, &egraph[self.reg(*i)]);
 
                     // TODO: Add special pattern for when to merge colors so we deal with
                     for idx in 0..self.colors.len() {
                         let c = &egraph.colors()[self.colors[idx].0];
-                        for id in c.black_ids(self.reg(*i)).unwrap_or(&Default::default()) {
-                            run_matches(self, &egraph[*id]);
+                        if let Some(set) = c.black_ids(self.reg(*i)) {
+                            for id in set {
+                                run_matches(self, &egraph[*id]);
+                            }
                         }
                     }
 
-                    if self.colors.len() >= max_colors {
-                        return;
-                    }
                     for c in egraph.colors().iter() {
                         if self.colors.contains(&c.get_id()) {
                             continue;
                         }
                         self.colors.push(c.get_id());
-                        for id in c.black_ids(self.reg(*i)).unwrap_or(&Default::default()) {
-                            run_matches(self, &egraph[*id]);
+                        if let Some(set) = c.black_ids(self.reg(*i)) {
+                            for id in set {
+                                run_matches(self, &egraph[*id]);
+                            }
                         }
                         self.colors.pop();
                     }
@@ -332,7 +337,7 @@ impl<L: Language> Program<L> {
             egraph,
             &self.instructions,
             &self.subst,
-            2,
+            1,
             &mut |machine, subst| {
                 let subst_vec = subst
                     .vec
