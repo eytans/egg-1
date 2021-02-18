@@ -136,6 +136,7 @@ impl Machine {
                         });
                     };
 
+                    // TODO: remove this
                     if self.colors.len() > max_colors {
                         return;
                     }
@@ -152,6 +153,9 @@ impl Machine {
                         }
                     }
 
+                    if self.colors.len() == max_colors {
+                        return;
+                    }
                     for c in egraph.colors().iter() {
                         if self.colors.contains(&c.get_id()) {
                             continue;
