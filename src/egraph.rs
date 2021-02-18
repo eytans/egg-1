@@ -7,7 +7,7 @@ use std::{
 use indexmap::IndexMap;
 use log::*;
 
-use crate::{Analysis, AstSize, Dot, EClass, Extractor, Id, Language, Pattern, RecExpr, Searcher, UnionFind};
+use crate::{Analysis, AstSize, Dot, EClass, Extractor, Id, Language, Pattern, RecExpr, Searcher, UnionFind, Runner};
 
 pub use crate::colors::{Color, ColorParents, ColorId};
 use itertools::Itertools;
@@ -854,6 +854,8 @@ impl<'a, L: Language, N: Analysis<L>> Debug for EGraphDump<'a, L, N> {
 mod tests {
     use crate::*;
     use std::str::FromStr;
+    use log::*;
+    use crate::rewrite::*;
 
     #[test]
     fn simple_add() {
@@ -1051,5 +1053,50 @@ mod tests {
 
         egraph.colored_union(color, y, x);
         assert_eq!(egraph.colored_find(child, x), egraph.colored_find(child, y));
+    }
+
+    #[test]
+    fn colored_drop_take() {
+        use crate::SymbolLang as S;
+
+        crate::init_logger();
+        let mut egraph = EGraph::<S, ()>::default();
+
+        let nil = egraph.add_expr(&"nil".parse().unwrap());
+        let consx = egraph.add_expr(&"(cons x nil)".parse().unwrap());
+        let consxy = egraph.add_expr(&"(cons y (cons x nil))".parse().unwrap());
+        let ex0 = egraph.add_expr(&"(append (take i nil) (drop i nil))".parse().unwrap());
+        let ex1 = egraph.add_expr(&"(append (take i (cons x nil)) (drop i (cons x nil)))".parse().unwrap());
+        let ex2 = egraph.add_expr(&"(append (take i (cons y (cons x nil))) (drop i (cons y (cons x nil))))".parse().unwrap());
+        info!("Starting first rebuild");
+        egraph.rebuild();
+        info!("Done first rebuild");
+        let mut rules = vec![
+            rewrite!("rule2"; "(append nil ?x)" => "nil"),
+            rewrite!("rule5"; "(drop ?x3 nil)" => "nil"),
+            rewrite!("rule6"; "(drop zero ?x)" => "?x"),
+            rewrite!("rule7"; "(drop (succ ?x4) (cons ?y5 ?z))" => "(drop ?x4 ?z)"),
+            rewrite!("rule8"; "(take ?x3 nil)" => "nil"),
+            rewrite!("rule9"; "(take zero ?x)" => "nil"),];
+        rules.extend(rewrite!("rule0"; "(leq ?__x0 ?__y1)" <=> "(or (= ?__x0 ?__y1) (less ?__x0 ?__y1))"));
+        rules.extend(rewrite!("rule3"; "(append (cons ?x2 ?y) ?z)" <=> "(cons ?x2 (append ?y ?z))"));
+        rules.extend(rewrite!("rule10"; "(take (succ ?x7) (cons ?y8 ?z))" <=> "(cons ?y8 (take ?x7 ?z))"));
+
+        egraph = Runner::default().with_iter_limit(8).with_node_limit(400000).with_egraph(egraph.clone()).run(&rules).egraph;
+        info!("Done eq reduction");
+        egraph.rebuild();
+        assert_eq!(egraph.find(nil), egraph.find(ex0));
+        assert_ne!(egraph.find(consx), egraph.find(ex1));
+        let color_z = egraph.create_color();
+        let color_s_p = egraph.create_color();
+        let i = egraph.add_expr(&"i".parse().unwrap());
+        let zero = egraph.add_expr(&"zero".parse().unwrap());
+        let succ_p_n = egraph.add_expr(&"(succ param_n_1)".parse().unwrap());
+        egraph.colored_union(color_z, i, zero);
+        egraph.colored_union(color_s_p, i, succ_p_n);
+        egraph = Runner::default().with_iter_limit(8).with_node_limit(400000).with_egraph(egraph.clone()).run(&rules).egraph;
+        egraph.rebuild();
+        assert_eq!(egraph.colored_find(color_z, consx), egraph.colored_find(color_z,ex1));
+        assert_eq!(egraph.colored_find(color_s_p, consx), egraph.colored_find(color_s_p,ex1));
     }
 }
