@@ -1,7 +1,9 @@
 pub use crate::{Id, EGraph, Language, Analysis, ColorId};
 use crate::UnionFind;
+use crate::util::JoinDisp;
 use std::collections::{HashSet, HashMap};
 use itertools::Itertools;
+use std::fmt::Formatter;
 
 pub type ColorParents = smallvec::SmallVec<[ColorId; 3]>;
 
@@ -191,6 +193,12 @@ impl Color {
 
     pub fn assumptions(&self) -> &Vec<ColorId> {
         &self.base_set
+    }
+}
+
+impl std::fmt::Display for Color {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Color(id={}, groups={})", self.color_id, self.union_map.iter().map(|(id, set)| format!("{} - {}", id, set.iter().sep_string(" "))).join(", "))
     }
 }
 

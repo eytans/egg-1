@@ -3,6 +3,8 @@ use std::str::FromStr;
 
 use crate::{Id, Symbol};
 use crate::ColorId;
+use itertools::Itertools;
+use std::fmt::Formatter;
 
 /// A variable for use in [`Pattern`]s or [`Subst`]s.
 ///
@@ -93,6 +95,12 @@ impl std::ops::Index<Var> for Subst {
     }
 }
 
+impl fmt::Display for Subst {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:#?}", self)
+    }
+}
+
 impl fmt::Debug for Subst {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let len = self.vec.len();
@@ -103,6 +111,9 @@ impl fmt::Debug for Subst {
             if i < len - 1 {
                 write!(f, ", ")?;
             }
+        }
+        if !self.colors.is_empty() {
+            write!(f, " colors: {}", self.colors.iter().join(" "));
         }
         write!(f, "}}")
     }

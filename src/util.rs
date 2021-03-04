@@ -4,6 +4,8 @@ use std::sync::Mutex;
 
 use indexmap::IndexSet;
 use once_cell::sync::Lazy;
+use std::fmt::Formatter;
+use itertools::Itertools;
 
 static STRINGS: Lazy<Mutex<IndexSet<&'static str>>> = Lazy::new(Default::default);
 
@@ -90,5 +92,21 @@ impl fmt::Display for Symbol {
 impl fmt::Debug for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self.as_str())
+    }
+}
+
+pub(crate) trait JoinDisp {
+    fn disp_string(self) -> String;
+    fn sep_string(self, sep: &str) -> String;
+}
+
+impl<I> JoinDisp for I where I: Iterator,
+                              I::Item: fmt::Display {
+    fn disp_string(self) -> String {
+        self.sep_string(", ")
+    }
+
+    fn sep_string(self, sep: &str) -> String {
+        self.map(|x| format!("{}", x)).join(sep)
     }
 }

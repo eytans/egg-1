@@ -178,10 +178,11 @@ where
             for (i, node) in class.iter().enumerate() {
                 writeln!(
                     f,
-                    "    {}.{}[label = \"{}\"]",
+                    "    {}.{}[label = \"{} : {}\"]",
                     class.id,
                     i,
-                    node.display_op()
+                    node.display_op(),
+                    class.id
                 )?;
             }
             writeln!(f, "  }}")?;
