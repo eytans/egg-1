@@ -3,6 +3,8 @@ use std::convert::TryFrom;
 use std::fmt;
 
 use crate::{machine, Analysis, Applier, EGraph, Id, Language, RecExpr, Searcher, Subst, Var};
+use std::fmt::Formatter;
+use itertools::Itertools;
 
 /// A pattern that can function as either a [`Searcher`] or [`Applier`].
 ///
@@ -243,6 +245,12 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
 
     fn vars(&self) -> Vec<Var> {
         Pattern::vars(self)
+    }
+}
+
+impl fmt::Display for SearchMatches {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "SearchMatches(class: {}, {})", self.eclass, self.substs.iter().map(|x| format!("{}", x)).join(", "))
     }
 }
 
