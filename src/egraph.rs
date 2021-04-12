@@ -11,6 +11,10 @@ use crate::{Analysis, AstSize, Dot, EClass, Extractor, Id, Language, Pattern, Re
 
 pub use crate::colors::{Color, ColorParents, ColorId};
 use itertools::Itertools;
+use std::collections::hash_map::RandomState;
+use std::mem::Discriminant;
+use indexmap::set::IndexSet;
+use std::iter::FilterMap;
 
 /** A data structure to keep track of equalities between expressions.
 
@@ -129,17 +133,228 @@ same eclass.
 [extract]: struct.Extractor.html
 [sound]: https://itinerarium.github.io/phoneme-synthesis/?w=/'igraf/
 **/
-pub trait EqualityGraph<L: Language, N: Analysis<L>>: Default + Debug {
-    fn classes<I: Iterator<Item=&EClass<L, N::Data>>>(&self) -> I;
-    fn classes_mut<I: Iterator<Item=&mut EClass<L, N::Data>>>(&mut self) -> I;
+pub trait EqualityGraph<'a, L: Language + 'static, N: Analysis<L> + 'static  + Default>: Default + Debug {
+    type ClassesIterator: Iterator<Item=&'a EClass<L, N::Data>>;
+
+    type ClassesMutIterator: Iterator<Item=&'a mut EClass<L, N::Data>>;
+
+    /// Returns an iterator over the eclasses in the egraph.
+    fn classes(&self) -> Self::ClassesIterator;
+
+    /// Returns a mutating iterator over the eclasses in the egraph.
+    fn classes_mut(&mut self) -> Self::ClassesMutIterator;
+
+    /// Returns `true` if the egraph is empty
+    /// # Example
+    /// ```
+    /// use egg::{*, SymbolLang as S};
+    /// let mut egraph = EGraph::<S, ()>::default();
+    /// assert!(egraph.is_empty());
+    /// egraph.add(S::leaf("foo"));
+    /// assert!(!egraph.is_empty());
+    /// ```
     fn is_empty(&self) -> bool;
+
+    /// Returns a reference to the analysis
+    fn analysis<'b>(& self) -> &'b N;
+
+    /// Return a reference to a map for better search implementation
+    fn classes_by_op(&'a self) -> &'a IndexMap<std::mem::Discriminant<L>, indexmap::IndexSet<Id>>;
+
+    /// Returns the number of enodes in the `EGraph`.
+    ///
+    /// Actually returns the size of the hashcons index.
+    /// # Example
+    /// ```
+    /// use egg::{*, SymbolLang as S};
+    /// let mut egraph = EGraph::<S, ()>::default();
+    /// let x = egraph.add(S::leaf("x"));
+    /// let y = egraph.add(S::leaf("y"));
+    /// // only one eclass
+    /// egraph.union(x, y);
+    /// egraph.rebuild();
+    ///
+    /// assert_eq!(egraph.total_size(), 2);
+    /// assert_eq!(egraph.number_of_classes(), 1);
+    /// ```
+    fn total_size(&self) -> usize;
+
+    /// Iterates over the classes, returning the total number of nodes.
+    fn total_number_of_nodes(&self) -> usize {
+        self.classes().map(|c| c.len()).sum()
+    }
+
+    /// Returns the number of eclasses in the egraph.
+    fn number_of_classes(&self) -> usize {
+        self.classes().count()
+    }
+
+    /// Canonicalizes an eclass id.
+    ///
+    /// This corresponds to the `find` operation on the egraph's
+    /// underlying unionfind data structure.
+    ///
+    /// # Example
+    /// ```
+    /// use egg::{*, SymbolLang as S};
+    /// let mut egraph = EGraph::<S, ()>::default();
+    /// let x = egraph.add(S::leaf("x"));
+    /// let y = egraph.add(S::leaf("y"));
+    /// assert_ne!(egraph.find(x), egraph.find(y));
+    ///
+    /// egraph.union(x, y);
+    /// assert_eq!(egraph.find(x), egraph.find(y));
+    /// ```
+    fn find(&self, id: Id) -> Id;
+
+    fn colored_find(&self, color: ColorId, id: Id) -> Id;
+
+    fn colors(&self) -> &[Color];
+
+    /// Creates a [`Dot`] to visualize this egraph. See [`Dot`].
+    ///
+    /// [`Dot`]: struct.Dot.html
+    fn dot(&self) -> Dot<L, N>;
+
+    /// Adds a [`RecExpr`] to the [`EGraph`].
+    ///
+    /// # Example
+    /// ```
+    /// use egg::{*, SymbolLang as S};
+    /// let mut egraph = EGraph::<S, ()>::default();
+    /// let x = egraph.add(S::leaf("x"));
+    /// let y = egraph.add(S::leaf("y"));
+    /// let plus = egraph.add(S::new("+", vec![x, y]));
+    /// let plus_recexpr = "(+ x y)".parse().unwrap();
+    /// assert_eq!(plus, egraph.add_expr(&plus_recexpr));
+    /// ```
+    ///
+    /// [`EGraph`]: struct.EGraph.html
+    /// [`RecExpr`]: struct.RecExpr.html
+    /// [`add_expr`]: struct.EGraph.html#method.add_expr
+    fn add_expr(&mut self, expr: &RecExpr<L>) -> Id;
+
+    /// Lookup the eclass of the given enode.
+    ///
+    /// You can pass in either an owned enode or a `&mut` enode,
+    /// in which case the enode's children will be canonicalized.
+    ///
+    /// # Example
+    /// ```
+    /// # use egg::*;
+    /// let mut egraph: EGraph<SymbolLang, ()> = Default::default();
+    /// let a = egraph.add(SymbolLang::leaf("a"));
+    /// let b = egraph.add(SymbolLang::leaf("b"));
+    /// let c = egraph.add(SymbolLang::leaf("c"));
+    ///
+    /// // lookup will find this node if its in the egraph
+    /// let mut node_f_ac = SymbolLang::new("f", vec![a, c]);
+    /// assert_eq!(egraph.lookup(node_f_ac.clone()), None);
+    /// let id = egraph.add(node_f_ac.clone());
+    /// assert_eq!(egraph.lookup(node_f_ac.clone()), Some(id));
+    ///
+    /// // if the query node isn't canonical, and its passed in by &mut instead of owned,
+    /// // its children will be canonicalized
+    /// egraph.union(b, c);
+    /// egraph.rebuild();
+    /// assert_eq!(egraph.lookup(&mut node_f_ac), Some(id));
+    /// assert_eq!(node_f_ac, SymbolLang::new("f", vec![a, b]));
+    /// ```
+    fn lookup<B>(&self, enode: B) -> Option<Id> where B: BorrowMut<L>;
+
+    /// Adds an enode to the [`EGraph`].
+    ///
+    /// When adding an enode, to the egraph, [`add`] it performs
+    /// _hashconsing_ (sometimes called interning in other contexts).
+    ///
+    /// Hashconsing ensures that only one copy of that enode is in the egraph.
+    /// If a copy is in the egraph, then [`add`] simply returns the id of the
+    /// eclass in which the enode was found.
+    /// Otherwise
+    ///
+    /// [`EGraph`]: struct.EGraph.html
+    /// [`EClass`]: struct.EClass.html
+    /// [`add`]: struct.EGraph.html#method.add
+    fn add(&mut self, enode: L) -> Id;
+
+    /// Checks whether two [`RecExpr`]s are equivalent.
+    /// Returns a list of id where both expression are represented.
+    /// In most cases, there will none or exactly one id.
+    ///
+    /// [`RecExpr`]: struct.RecExpr.html
+    fn equivs(&self, expr1: &RecExpr<L>, expr2: &RecExpr<L>) -> Vec<Id> {
+        let matches1 = Pattern::from(expr1.as_ref()).search(self);
+        trace!("Matches1: {:?}", matches1);
+
+        let matches2 = Pattern::from(expr2.as_ref()).search(self);
+        trace!("Matches2: {:?}", matches2);
+
+        let mut equiv_eclasses = Vec::new();
+
+        for m1 in &matches1 {
+            for m2 in &matches2 {
+                if self.find(m1.eclass) == self.find(m2.eclass) {
+                    equiv_eclasses.push(m1.eclass)
+                }
+            }
+        }
+
+        equiv_eclasses
+    }
+
+    /// Panic if the given eclass doesn't contain the given patterns
+    ///
+    /// Useful for testing.
+    fn check_goals(&self, id: Id, goals: &[Pattern<L>]);
+
+    /// Unions two eclasses given their ids.
+    ///
+    /// The given ids need not be canonical.
+    /// The returned `bool` indicates whether a union was done,
+    /// so it's `false` if they were already equivalent.
+    /// Both results are canonical.
+    fn union(&mut self, id1: Id, id2: Id) -> (Id, bool);
+
+    /// Restores the egraph invariants of congruence and enode uniqueness.
+    ///
+    /// As mentioned [above](struct.EGraph.html#invariants-and-rebuilding),
+    /// `egg` takes a lazy approach to maintaining the egraph invariants.
+    /// The `rebuild` method allows the user to manually restore those
+    /// invariants at a time of their choosing. It's a reasonably
+    /// fast, linear-ish traversal through the egraph.
+    ///
+    /// # Example
+    /// ```
+    /// use egg::{*, SymbolLang as S};
+    /// let mut egraph = EGraph::<S, ()>::default();
+    /// let x = egraph.add(S::leaf("x"));
+    /// let y = egraph.add(S::leaf("y"));
+    /// let ax = egraph.add_expr(&"(+ a x)".parse().unwrap());
+    /// let ay = egraph.add_expr(&"(+ a y)".parse().unwrap());
+    ///
+    /// // The effects of this union aren't yet visible; ax and ay
+    /// // should be equivalent by congruence since x = y.
+    /// egraph.union(x, y);
+    /// // Classes: [x y] [ax] [ay] [a]
+    /// # #[cfg(not(feature = "upward-merging"))]
+    /// assert_eq!(egraph.number_of_classes(), 4);
+    /// # #[cfg(not(feature = "upward-merging"))]
+    /// assert_ne!(egraph.find(ax), egraph.find(ay));
+    ///
+    /// // Rebuilding restores the invariants, finding the "missing" equivalence
+    /// egraph.rebuild();
+    /// // Classes: [x y] [ax ay] [a]
+    /// assert_eq!(egraph.number_of_classes(), 3);
+    /// assert_eq!(egraph.find(ax), egraph.find(ay));
+    /// ```
+    fn rebuild(&mut self) -> usize;
 }
 
 #[derive(Clone)]
 pub struct EGraph<L: Language, N: Analysis<L>> {
     /// The `Analysis` given when creating this `EGraph`.
     pub analysis: N,
-    memo: HashMap<L, Id>,
+    memo: HashMap<  L, Id>,
     unionfind: UnionFind,
     classes: SparseVec<EClass<L, N::Data>>,
     dirty_unions: Vec<Id>,
@@ -192,99 +407,17 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         }
     }
 
-    /// Returns an iterator over the eclasses in the egraph.
-    pub fn classes(&self) -> impl Iterator<Item=&EClass<L, N::Data>> {
-        self.classes
-            .iter()
-            .filter_map(Option::as_ref)
-            .map(AsRef::as_ref)
+    fn add_expr_rec(&mut self, expr: &[L]) -> Id {
+        log::trace!("Adding expr {:?}", expr);
+        let e = expr.last().unwrap().clone().map_children(|i| {
+            let child = &expr[..usize::from(i) + 1];
+            self.add_expr_rec(child)
+        });
+        let id = self.add(e);
+        log::trace!("Added!! expr {:?}", expr);
+        id
     }
 
-    /// Returns an mutating iterator over the eclasses in the egraph.
-    pub fn classes_mut(&mut self) -> impl Iterator<Item=&mut EClass<L, N::Data>> {
-        self.classes
-            .iter_mut()
-            .filter_map(Option::as_mut)
-            .map(AsMut::as_mut)
-    }
-
-    /// Returns `true` if the egraph is empty
-    /// # Example
-    /// ```
-    /// use egg::{*, SymbolLang as S};
-    /// let mut egraph = EGraph::<S, ()>::default();
-    /// assert!(egraph.is_empty());
-    /// egraph.add(S::leaf("foo"));
-    /// assert!(!egraph.is_empty());
-    /// ```
-    pub fn is_empty(&self) -> bool {
-        self.memo.is_empty()
-    }
-
-    /// Returns the number of enodes in the `EGraph`.
-    ///
-    /// Actually returns the size of the hashcons index.
-    /// # Example
-    /// ```
-    /// use egg::{*, SymbolLang as S};
-    /// let mut egraph = EGraph::<S, ()>::default();
-    /// let x = egraph.add(S::leaf("x"));
-    /// let y = egraph.add(S::leaf("y"));
-    /// // only one eclass
-    /// egraph.union(x, y);
-    /// egraph.rebuild();
-    ///
-    /// assert_eq!(egraph.total_size(), 2);
-    /// assert_eq!(egraph.number_of_classes(), 1);
-    /// ```
-    pub fn total_size(&self) -> usize {
-        self.memo.len()
-    }
-
-    /// Iterates over the classes, returning the total number of nodes.
-    pub fn total_number_of_nodes(&self) -> usize {
-        self.classes().map(|c| c.len()).sum()
-    }
-
-    /// Returns the number of eclasses in the egraph.
-    pub fn number_of_classes(&self) -> usize {
-        self.classes().count()
-    }
-
-    /// Canonicalizes an eclass id.
-    ///
-    /// This corresponds to the `find` operation on the egraph's
-    /// underlying unionfind data structure.
-    ///
-    /// # Example
-    /// ```
-    /// use egg::{*, SymbolLang as S};
-    /// let mut egraph = EGraph::<S, ()>::default();
-    /// let x = egraph.add(S::leaf("x"));
-    /// let y = egraph.add(S::leaf("y"));
-    /// assert_ne!(egraph.find(x), egraph.find(y));
-    ///
-    /// egraph.union(x, y);
-    /// assert_eq!(egraph.find(x), egraph.find(y));
-    /// ```
-    pub fn find(&self, id: Id) -> Id {
-        self.unionfind.find(id)
-    }
-
-    pub fn colored_find(&self, color: ColorId, id: Id) -> Id {
-        self.colors[usize::from(color)].find(id)
-    }
-
-    pub fn colors(&self) -> &[Color] {
-        &self.colors
-    }
-
-    /// Creates a [`Dot`] to visualize this egraph. See [`Dot`].
-    ///
-    /// [`Dot`]: struct.Dot.html
-    pub fn dot(&self) -> Dot<L, N> {
-        Dot { egraph: self }
-    }
 }
 
 impl<L: Language, N: Analysis<L>> std::ops::Index<Id> for EGraph<L, N> {
@@ -306,7 +439,114 @@ impl<L: Language, N: Analysis<L>> std::ops::IndexMut<Id> for EGraph<L, N> {
     }
 }
 
-impl<L: Language, N: Analysis<L>> EGraph<L, N> {
+impl<'a, L: 'a + Language, N: 'a + Analysis<L> + Default> EqualityGraph<'a, L, N> for EGraph<L, N> {
+    type ClassesIterator = Box<dyn Iterator<Item=&'a EClass<L, N::Data>>>;
+    type ClassesMutIterator = Box<dyn Iterator<Item=&'a mut EClass<L, N::Data>>>;
+
+    /// Returns an iterator over the eclasses in the egraph.
+    fn classes(&self) -> Self::ClassesIterator {
+        let x =
+        self.classes
+            .iter()
+            .filter_map(Option::as_ref)
+            .map(AsRef::as_ref);
+        Box::new(x)
+    }
+
+    /// Returns an mutating iterator over the eclasses in the egraph.
+    fn classes_mut(&mut self) -> Self::ClassesMutIterator {
+        Box::new(self.classes
+            .iter_mut()
+            .filter_map(Option::as_mut)
+            .map(AsMut::as_mut))
+    }
+
+    /// Returns `true` if the egraph is empty
+    /// # Example
+    /// ```
+    /// use egg::{*, SymbolLang as S};
+    /// let mut egraph = EGraph::<S, ()>::default();
+    /// assert!(egraph.is_empty());
+    /// egraph.add(S::leaf("foo"));
+    /// assert!(!egraph.is_empty());
+    /// ```
+    fn is_empty(&self) -> bool {
+        self.memo.is_empty()
+    }
+
+    fn analysis<'b>(&self) -> &'b N {
+        self.analysis()
+    }
+
+    fn classes_by_op(&'a self) -> &'a IndexMap<Discriminant<L>, IndexSet<Id, RandomState>, RandomState> {
+        self.classes_by_op()
+    }
+
+    /// Returns the number of enodes in the `EGraph`.
+    ///
+    /// Actually returns the size of the hashcons index.
+    /// # Example
+    /// ```
+    /// use egg::{*, SymbolLang as S};
+    /// let mut egraph = EGraph::<S, ()>::default();
+    /// let x = egraph.add(S::leaf("x"));
+    /// let y = egraph.add(S::leaf("y"));
+    /// // only one eclass
+    /// egraph.union(x, y);
+    /// egraph.rebuild();
+    ///
+    /// assert_eq!(egraph.total_size(), 2);
+    /// assert_eq!(egraph.number_of_classes(), 1);
+    /// ```
+    fn total_size(&self) -> usize {
+        self.memo.len()
+    }
+
+    /// Iterates over the classes, returning the total number of nodes.
+    fn total_number_of_nodes(&self) -> usize {
+        self.classes().map(|c| c.len()).sum()
+    }
+
+    /// Returns the number of eclasses in the egraph.
+    fn number_of_classes(&self) -> usize {
+        self.classes().count()
+    }
+
+    /// Canonicalizes an eclass id.
+    ///
+    /// This corresponds to the `find` operation on the egraph's
+    /// underlying unionfind data structure.
+    ///
+    /// # Example
+    /// ```
+    /// use egg::{*, SymbolLang as S};
+    /// let mut egraph = EGraph::<S, ()>::default();
+    /// let x = egraph.add(S::leaf("x"));
+    /// let y = egraph.add(S::leaf("y"));
+    /// assert_ne!(egraph.find(x), egraph.find(y));
+    ///
+    /// egraph.union(x, y);
+    /// assert_eq!(egraph.find(x), egraph.find(y));
+    /// ```
+    fn find(&self, id: Id) -> Id {
+        self.unionfind.find(id)
+    }
+
+    fn colored_find(&self, color: ColorId, id: Id) -> Id {
+        self.colors[usize::from(color)].find(id)
+    }
+
+    fn colors(&self) -> &[Color] {
+        &self.colors
+    }
+
+    /// Creates a [`Dot`] to visualize this egraph. See [`Dot`].
+    ///
+    /// [`Dot`]: struct.Dot.html
+    fn dot(&self) -> Dot<L, N> {
+        Dot { egraph: self }
+    }
+
     /// Adds a [`RecExpr`] to the [`EGraph`].
     ///
     /// # Example
@@ -323,19 +563,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// [`EGraph`]: struct.EGraph.html
     /// [`RecExpr`]: struct.RecExpr.html
     /// [`add_expr`]: struct.EGraph.html#method.add_expr
-    pub fn add_expr(&mut self, expr: &RecExpr<L>) -> Id {
+    fn add_expr(&mut self, expr: &RecExpr<L>) -> Id {
         self.add_expr_rec(expr.as_ref())
-    }
-
-    fn add_expr_rec(&mut self, expr: &[L]) -> Id {
-        log::trace!("Adding expr {:?}", expr);
-        let e = expr.last().unwrap().clone().map_children(|i| {
-            let child = &expr[..usize::from(i) + 1];
-            self.add_expr_rec(child)
-        });
-        let id = self.add(e);
-        log::trace!("Added!! expr {:?}", expr);
-        id
     }
 
     /// Lookup the eclass of the given enode.
@@ -364,7 +593,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// assert_eq!(egraph.lookup(&mut node_f_ac), Some(id));
     /// assert_eq!(node_f_ac, SymbolLang::new("f", vec![a, b]));
     /// ```
-    pub fn lookup<B>(&self, mut enode: B) -> Option<Id>
+    fn lookup<B>(&self, mut enode: B) -> Option<Id>
         where
             B: BorrowMut<L>,
     {
@@ -387,7 +616,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// [`EGraph`]: struct.EGraph.html
     /// [`EClass`]: struct.EClass.html
     /// [`add`]: struct.EGraph.html#method.add
-    pub fn add(&mut self, mut enode: L) -> Id {
+    fn add(&mut self, mut enode: L) -> Id {
         self.lookup(&mut enode).unwrap_or_else(|| {
             let id = self.unionfind.make_set();
             for c in &mut self.colors {
@@ -421,7 +650,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// In most cases, there will none or exactly one id.
     ///
     /// [`RecExpr`]: struct.RecExpr.html
-    pub fn equivs(&self, expr1: &RecExpr<L>, expr2: &RecExpr<L>) -> Vec<Id> {
+    fn equivs(&self, expr1: &RecExpr<L>, expr2: &RecExpr<L>) -> Vec<Id> {
         let matches1 = Pattern::from(expr1.as_ref()).search(self);
         trace!("Matches1: {:?}", matches1);
 
@@ -444,7 +673,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// Panic if the given eclass doesn't contain the given patterns
     ///
     /// Useful for testing.
-    pub fn check_goals(&self, id: Id, goals: &[Pattern<L>]) {
+    fn check_goals(&self, id: Id, goals: &[Pattern<L>]) {
         let (cost, best) = Extractor::new(self, AstSize).find_best(id);
         println!("End ({}): {}", cost, best.pretty(80));
 
@@ -463,6 +692,92 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         }
     }
 
+    /// Unions two eclasses given their ids.
+    ///
+    /// The given ids need not be canonical.
+    /// The returned `bool` indicates whether a union was done,
+    /// so it's `false` if they were already equivalent.
+    /// Both results are canonical.
+    fn union(&mut self, id1: Id, id2: Id) -> (Id, bool) {
+        let union = self.union_impl(id1, id2);
+        if union.1 && cfg!(feature = "upward-merging") {
+            let merged = self.process_unions();
+            if !self.colors.is_empty() {
+                self.process_colored_unions(merged);
+            }
+        }
+        union
+    }
+
+    /// Restores the egraph invariants of congruence and enode uniqueness.
+    ///
+    /// As mentioned [above](struct.EGraph.html#invariants-and-rebuilding),
+    /// `egg` takes a lazy approach to maintaining the egraph invariants.
+    /// The `rebuild` method allows the user to manually restore those
+    /// invariants at a time of their choosing. It's a reasonably
+    /// fast, linear-ish traversal through the egraph.
+    ///
+    /// # Example
+    /// ```
+    /// use egg::{*, SymbolLang as S};
+    /// let mut egraph = EGraph::<S, ()>::default();
+    /// let x = egraph.add(S::leaf("x"));
+    /// let y = egraph.add(S::leaf("y"));
+    /// let ax = egraph.add_expr(&"(+ a x)".parse().unwrap());
+    /// let ay = egraph.add_expr(&"(+ a y)".parse().unwrap());
+    ///
+    /// // The effects of this union aren't yet visible; ax and ay
+    /// // should be equivalent by congruence since x = y.
+    /// egraph.union(x, y);
+    /// // Classes: [x y] [ax] [ay] [a]
+    /// # #[cfg(not(feature = "upward-merging"))]
+    /// assert_eq!(egraph.number_of_classes(), 4);
+    /// # #[cfg(not(feature = "upward-merging"))]
+    /// assert_ne!(egraph.find(ax), egraph.find(ay));
+    ///
+    /// // Rebuilding restores the invariants, finding the "missing" equivalence
+    /// egraph.rebuild();
+    /// // Classes: [x y] [ax ay] [a]
+    /// assert_eq!(egraph.number_of_classes(), 3);
+    /// assert_eq!(egraph.find(ax), egraph.find(ay));
+    /// ```
+    fn rebuild(&mut self) -> usize {
+        let old_hc_size = self.memo.len();
+        let old_n_eclasses = self.number_of_classes();
+
+        let start = instant::Instant::now();
+
+        let merged = self.process_unions();
+        let n_unions = std::mem::take(&mut self.repairs_since_rebuild);
+        let trimmed_nodes = self.rebuild_classes();
+
+        self.process_colored_unions(merged);
+
+        let elapsed = start.elapsed();
+        info!(
+            concat!(
+            "REBUILT! in {}.{:03}s\n",
+            "  Old: hc size {}, eclasses: {}\n",
+            "  New: hc size {}, eclasses: {}\n",
+            "  unions: {}, trimmed nodes: {}"
+            ),
+            elapsed.as_secs(),
+            elapsed.subsec_millis(),
+            old_hc_size,
+            old_n_eclasses,
+            self.memo.len(),
+            self.number_of_classes(),
+            n_unions,
+            trimmed_nodes,
+        );
+
+        debug_assert!(self.check_memo());
+        n_unions
+    }
+}
+
+// All the rebuilding stuff
+impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     #[inline]
     fn union_impl(&mut self, id1: Id, id2: Id) -> (Id, bool) {
         fn concat<T>(to: &mut Vec<T>, mut from: Vec<T>) {
@@ -504,23 +819,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         (to, changed)
     }
 
-    /// Unions two eclasses given their ids.
-    ///
-    /// The given ids need not be canonical.
-    /// The returned `bool` indicates whether a union was done,
-    /// so it's `false` if they were already equivalent.
-    /// Both results are canonical.
-    pub fn union(&mut self, id1: Id, id2: Id) -> (Id, bool) {
-        let union = self.union_impl(id1, id2);
-        if union.1 && cfg!(feature = "upward-merging") {
-            let merged = self.process_unions();
-            if !self.colors.is_empty() {
-                self.process_colored_unions(merged);
-            }
-        }
-        union
-    }
-
     pub fn colored_union(&mut self, color: ColorId, id1: Id, id2: Id) -> (Id, bool) {
         let c = self.colors.get_mut(usize::from(color)).unwrap();
         let union = c.colored_union(id1, id2);
@@ -547,10 +845,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     pub fn dump<'a>(&'a self) -> impl Debug + 'a {
         EGraphDump(self)
     }
-}
 
-// All the rebuilding stuff
-impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     #[inline(never)]
     fn rebuild_classes(&mut self) -> usize {
         let mut classes_by_op = std::mem::take(&mut self.classes_by_op);
@@ -758,72 +1053,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         res
     }
 
-    /// Restores the egraph invariants of congruence and enode uniqueness.
-    ///
-    /// As mentioned [above](struct.EGraph.html#invariants-and-rebuilding),
-    /// `egg` takes a lazy approach to maintaining the egraph invariants.
-    /// The `rebuild` method allows the user to manually restore those
-    /// invariants at a time of their choosing. It's a reasonably
-    /// fast, linear-ish traversal through the egraph.
-    ///
-    /// # Example
-    /// ```
-    /// use egg::{*, SymbolLang as S};
-    /// let mut egraph = EGraph::<S, ()>::default();
-    /// let x = egraph.add(S::leaf("x"));
-    /// let y = egraph.add(S::leaf("y"));
-    /// let ax = egraph.add_expr(&"(+ a x)".parse().unwrap());
-    /// let ay = egraph.add_expr(&"(+ a y)".parse().unwrap());
-    ///
-    /// // The effects of this union aren't yet visible; ax and ay
-    /// // should be equivalent by congruence since x = y.
-    /// egraph.union(x, y);
-    /// // Classes: [x y] [ax] [ay] [a]
-    /// # #[cfg(not(feature = "upward-merging"))]
-    /// assert_eq!(egraph.number_of_classes(), 4);
-    /// # #[cfg(not(feature = "upward-merging"))]
-    /// assert_ne!(egraph.find(ax), egraph.find(ay));
-    ///
-    /// // Rebuilding restores the invariants, finding the "missing" equivalence
-    /// egraph.rebuild();
-    /// // Classes: [x y] [ax ay] [a]
-    /// assert_eq!(egraph.number_of_classes(), 3);
-    /// assert_eq!(egraph.find(ax), egraph.find(ay));
-    /// ```
-    pub fn rebuild(&mut self) -> usize {
-        let old_hc_size = self.memo.len();
-        let old_n_eclasses = self.number_of_classes();
-
-        let start = instant::Instant::now();
-
-        let merged = self.process_unions();
-        let n_unions = std::mem::take(&mut self.repairs_since_rebuild);
-        let trimmed_nodes = self.rebuild_classes();
-
-        self.process_colored_unions(merged);
-
-        let elapsed = start.elapsed();
-        info!(
-            concat!(
-            "REBUILT! in {}.{:03}s\n",
-            "  Old: hc size {}, eclasses: {}\n",
-            "  New: hc size {}, eclasses: {}\n",
-            "  unions: {}, trimmed nodes: {}"
-            ),
-            elapsed.as_secs(),
-            elapsed.subsec_millis(),
-            old_hc_size,
-            old_n_eclasses,
-            self.memo.len(),
-            self.number_of_classes(),
-            n_unions,
-            trimmed_nodes,
-        );
-
-        debug_assert!(self.check_memo());
-        n_unions
-    }
-
     #[inline(never)]
     fn propagate_metadata(&mut self, parents: &[(L, Id)]) {
         for (n, e) in parents {
@@ -864,6 +1093,7 @@ mod tests {
     use crate::rewrite::*;
     use itertools::Itertools;
     use crate::util::*;
+    use crate::egraph::EqualityGraph;
 
     #[test]
     fn simple_add() {
