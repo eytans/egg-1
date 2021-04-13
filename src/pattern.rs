@@ -5,7 +5,6 @@ use std::fmt;
 use crate::{machine, Analysis, Applier, EGraph, Id, Language, RecExpr, Searcher, Subst, Var};
 use std::fmt::Formatter;
 use itertools::Itertools;
-use crate::egraph::EqualityGraph;
 
 /// A pattern that can function as either a [`Searcher`] or [`Applier`].
 ///
@@ -214,8 +213,8 @@ pub struct SearchMatches {
     pub substs: Vec<Subst>,
 }
 
-impl<L: 'a + Language, A: 'a + Analysis<L>> Searcher<L, A> for Pattern<L> {
-    fn search<G: EqualityGraph<'a, L, A>>(&self, egraph: &G) -> Vec<SearchMatches> {
+impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
+    fn search(&self, egraph: &EGraph<L, A>) -> Vec<SearchMatches> {
         match self.ast.as_ref().last().unwrap() {
             ENodeOrVar::ENode(e) => {
                 #[allow(clippy::mem_discriminant_non_enum)]

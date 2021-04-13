@@ -469,7 +469,7 @@ assert_eq!(runner.egraph.find(runner.roots[0]), runner.egraph.find(just_foo));
 [`prop.rs`]: https://github.com/mwillsey/egg/blob/master/tests/prop.rs
 */
 
-pub trait Analysis<L: Language>: Sized + Default {
+pub trait Analysis<L: Language>: Sized {
     /// The per-[`EClass`](struct.EClass.html) data for this analysis.
     type Data: Debug;
 
