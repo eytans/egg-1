@@ -1321,7 +1321,7 @@ mod tests {
         rules.extend(rewrite!("rule3"; "(append (cons ?x2 ?y) ?z)" <=> "(cons ?x2 (append ?y ?z))"));
         rules.extend(bad_rws.clone());
 
-        egraph = Runner::default().with_iter_limit(5).with_node_limit(400000).with_egraph(egraph.clone()).run(&rules).egraph;
+        egraph = Runner::default().with_iter_limit(8).with_node_limit(400000).with_egraph(egraph.clone()).run(&rules).egraph;
         info!("Done eq reduction");
         egraph.rebuild();
         assert_eq!(egraph.find(nil), egraph.find(ex0));
@@ -1338,7 +1338,7 @@ mod tests {
             let out = r.search(&egraph);
             println!("{}", out.iter().sep_string("\n"));
         }
-        egraph = Runner::default().with_iter_limit(4).with_node_limit(400000).with_egraph(egraph.clone()).run(&rules).egraph;
+        egraph = Runner::default().with_iter_limit(8).with_node_limit(400000).with_egraph(egraph.clone()).run(&rules).egraph;
         for r in &bad_rws {
             println!("{}", r.name());
             let out = r.search(&egraph);

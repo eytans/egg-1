@@ -355,7 +355,6 @@ where
                             if subst.colors.is_empty() {
                                 egraph.union(id, mat.eclass)
                             } else if subst.colors.len() == 1 {
-                                // TODO: What do we do if we have multiple colors? create a new one?
                                 egraph.colored_union(*subst.colors.first().unwrap(), id, mat.eclass)
                             } else {
                                 // TODO: Once we support multi-color make sure there is a compilation

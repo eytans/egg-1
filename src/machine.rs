@@ -5,13 +5,13 @@ use crate::ColorId;
 
 struct Machine {
     reg: Vec<Id>,
-    // TODO: use colorid
     colors: SmallVec<[ColorId; 2]>,
+    visited: Vec<ColorId>,
 }
 
 impl Default for Machine {
     fn default() -> Self {
-        Self { reg: vec![], colors: Default::default() }
+        Self { reg: vec![], colors: Default::default(), visited: vec![] }
     }
 }
 
@@ -157,10 +157,11 @@ impl Machine {
                         return;
                     }
                     for c in egraph.colors().iter() {
-                        if self.colors.contains(&c.get_id()) {
+                        if self.visited.contains(&c.get_id()) {
                             continue;
                         }
                         self.colors.push(c.get_id());
+                        self.visited.push(c.get_id());
                         if let Some(set) = c.black_ids(self.reg(*i)) {
                             for id in set {
                                 run_matches(self, &egraph[*id]);
