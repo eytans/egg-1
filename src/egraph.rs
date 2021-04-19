@@ -129,12 +129,6 @@ same eclass.
 [extract]: struct.Extractor.html
 [sound]: https://itinerarium.github.io/phoneme-synthesis/?w=/'igraf/
 **/
-pub trait EqualityGraph<L: Language, N: Analysis<L>>: Default + Debug {
-    fn classes<I: Iterator<Item=&EClass<L, N::Data>>>(&self) -> I;
-    fn classes_mut<I: Iterator<Item=&mut EClass<L, N::Data>>>(&mut self) -> I;
-    fn is_empty(&self) -> bool;
-}
-
 #[derive(Clone)]
 pub struct EGraph<L: Language, N: Analysis<L>> {
     /// The `Analysis` given when creating this `EGraph`.
@@ -1101,7 +1095,7 @@ mod tests {
         assert_ne!(egraph.find(consx), egraph.find(ex1));
         let color_z = egraph.create_color();
         // let color_s_p = egraph.create_color();
-         let i = egraph.add_expr(&"i".parse().unwrap());
+        let i = egraph.add_expr(&"i".parse().unwrap());
         let zero = egraph.add_expr(&"zero".parse().unwrap());
         // let succ_p_n = egraph.add_expr(&"(succ param_n_1)".parse().unwrap());
         egraph.colored_union(color_z, i, zero);
