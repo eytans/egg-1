@@ -760,6 +760,6 @@ mod tests {
 
         egraph.dot().to_dot("target/foo.dot").unwrap();
 
-        assert_eq!(2 + 2, 4);
+        assert!(true);
     }
 }
