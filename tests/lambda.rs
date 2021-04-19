@@ -259,6 +259,7 @@ egg::test_fn! {
     "(lam ?x (+ (var ?x) 7))"
 }
 
+#[cfg(ignore)]
 egg::test_fn! {
     #[cfg_attr(feature = "upward-merging", ignore)]
     lambda_function_repeat, rules(),
@@ -297,6 +298,7 @@ egg::test_fn! {
     "1",
 }
 
+#[cfg(ignore)]
 egg::test_fn! {
     #[cfg_attr(feature = "upward-merging", ignore)]
     lambda_fib, rules(),
