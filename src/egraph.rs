@@ -145,11 +145,14 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     dirty_unions: Vec<Id>,
     repairs_since_rebuild: usize,
     pub(crate) classes_by_op: IndexMap<std::mem::Discriminant<L>, indexmap::IndexSet<Id>>,
+
+    #[cfg(feature = "colored")]
     /// To be used as a mechanism of case splitting.
     /// Need to rebuild these, but can probably use original memo for that purpose.
     /// For each inner vector of union finds, if there is a union common to all of them then it will
     /// be applied on the main union find (case split mechanism). Not true for UnionFinds of size 1.
     colors: Vec<Color>,
+    #[cfg(feature = "colored")]
     color_hierarchy: HashMap<Vec<ColorId>, ColorId>,
     // TODO: colored union tracking
     // Maintain for each EClass if it was merged in colored

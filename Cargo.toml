@@ -31,10 +31,12 @@ env_logger = {version = "0.7", default-features = false}
 ordered-float = "1"
 
 [features]
+default = ["colored"]
 upward-merging = []
 stdweb = [ "instant/stdweb" ]
 serde-1 = [ "serde", "indexmap/serde-1" ]
 reports = [ "serde-1", "serde_json" ]
+colored = []
 
 [workspace]
 members = [
