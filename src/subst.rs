@@ -48,6 +48,7 @@ impl fmt::Debug for Var {
 #[derive(Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Subst {
     pub(crate) vec: smallvec::SmallVec<[(Var, Id); 3]>,
+    #[cfg(feature = "colored")]
     pub(crate) colors: smallvec::SmallVec<[ColorId; 2]>,
 }
 
@@ -79,6 +80,7 @@ impl Subst {
             .find_map(|(v, id)| if *v == var { Some(id) } else { None })
     }
 
+    #[cfg(feature = "colored")]
     pub fn colors(&self) -> Vec<ColorId> {
         self.colors.to_vec()
     }
@@ -112,7 +114,7 @@ impl fmt::Debug for Subst {
                 write!(f, ", ")?;
             }
         }
-        if !self.colors.is_empty() {
+        if cfg!(feature = "colored") && self.colors.is_empty() {
             write!(f, " colors: {}", self.colors.iter().join(" "));
         }
         write!(f, "}}")
