@@ -5,6 +5,7 @@ use crate::ColorId;
 
 struct Machine {
     reg: Vec<Id>,
+    #[cfg(feature = "colored")]
     colors: SmallVec<[ColorId; 2]>,
     visited: Vec<ColorId>,
 }

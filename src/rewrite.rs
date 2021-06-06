@@ -31,6 +31,7 @@ pub struct Rewrite<L: Language, N: Analysis<L>> {
     searcher: Rc<dyn Searcher<L, N>>,
     applier: Rc<dyn Applier<L, N>>,
     /// color manager is used when two or more colors are present in a match.
+    #[cfg(feature = "colored")]
     color_manager: Arc<dyn FnMut(EGraph<L, N>) -> Option<ColorId>>,
 }
 
@@ -368,7 +369,7 @@ pub trait Applier<L, N>: std::fmt::Display
                     .into_iter()
                     .filter_map(|id| {
                         let (to, did_something) =
-                            if subst.colors.is_empty() {
+                            if !cfg!(feature = "colored") || subst.colors.is_empty() {
                                 egraph.union(id, mat.eclass)
                             } else if subst.colors.len() == 1 {
                                 egraph.colored_union(*subst.colors.first().unwrap(), id, mat.eclass)

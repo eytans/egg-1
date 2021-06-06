@@ -153,6 +153,8 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     // colored_union_ids: HashMap<Id, Vec<ColorId>>,
 }
 
+
+
 type SparseVec<T> = Vec<Option<Box<T>>>;
 
 impl<L: Language, N: Analysis<L> + Default> Default for EGraph<L, N> {
@@ -268,14 +270,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         self.unionfind.find(id)
     }
 
-    pub fn colored_find(&self, color: ColorId, id: Id) -> Id {
-        self.colors[usize::from(color)].find(id)
-    }
-
-    pub fn colors(&self) -> &[Color] {
-        &self.colors
-    }
-
     /// Creates a [`Dot`] to visualize this egraph. See [`Dot`].
     ///
     /// [`Dot`]: struct.Dot.html
@@ -387,8 +381,10 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     pub fn add(&mut self, mut enode: L) -> Id {
         self.lookup(&mut enode).unwrap_or_else(|| {
             let id = self.unionfind.make_set();
-            for c in &mut self.colors {
-                c.add(id);
+            if cfg!(feature = "colored") {
+                for c in &mut self.colors {
+                    c.add(id);
+                }
             }
             log::trace!("  ...adding to {}", id);
             let class = Box::new(EClass {
@@ -471,8 +467,10 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
         let (to, from) = self.unionfind.union(id1, id2);
         let changed = to != from;
-        for color in self.colors.iter_mut() {
-            color.black_union(id1, id2);
+        if cfg!(feature = "colored") {
+            for color in self.colors.iter_mut() {
+                color.black_union(id1, id2);
+            }
         }
         debug_assert_eq!(to, self.find(id1));
         debug_assert_eq!(to, self.find(id2));
@@ -511,23 +509,11 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         let union = self.union_impl(id1, id2);
         if union.1 && cfg!(feature = "upward-merging") {
             let merged = self.process_unions();
-            if !self.colors.is_empty() {
-                self.process_colored_unions(merged);
+            if cfg!(feature = "colored") {
+                if !self.colors.is_empty() {
+                    self.process_colored_unions(merged);
+                }
             }
-        }
-        union
-    }
-
-    pub fn colored_union(&mut self, color: ColorId, id1: Id, id2: Id) -> (Id, bool) {
-        let c = self.colors.get_mut(usize::from(color)).unwrap();
-        let union = c.colored_union(id1, id2);
-        if union.1 {
-            for child in c.children().iter().copied().collect_vec() {
-                self.colored_union(child, id1, id2);
-            }
-            // TODO: colored union tracking
-            // self.colored_union_ids.entry(self.find(id1)).or_insert(vec![]).push(color);
-            // self.colored_union_ids.entry(self.find(id2)).or_insert(vec![]).push(color);
         }
         union
     }
@@ -640,56 +626,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         true
     }
 
-    pub fn create_color(&mut self) -> ColorId {
-        self.colors.push(Color::new(&self.unionfind, ColorId::from(self.colors.len())));
-        let res = ColorId::from(self.colors.len() - 1);
-        self.color_hierarchy.insert(self.colors.last().unwrap().assumptions().clone(), res);
-        res
-    }
-
-    /// Create a new color which is based on given colors. This should be used only if the new color
-    /// has no assumptions of it's own (i.e. it is only a combination of existing assumptions).
-    pub fn create_combined_color(&mut self, colors: Vec<ColorId>) -> ColorId {
-        // First check if assumptions exist
-        let assumptions = colors.iter()
-            .flat_map(|c_id| self.colors[c_id.0].assumptions())
-            .sorted().dedup()
-            .copied().collect_vec();
-        if self.color_hierarchy.contains_key(&assumptions) {
-            println!("Skipping on color assumptions:");
-            for a in &assumptions {
-                println!("{}", a);
-            }
-            return *self.color_hierarchy.get(&assumptions).unwrap();
-        }
-
-        let new_id = ColorId::from(self.colors.len());
-        assert!(colors.len() > 1);
-        let mut needed_colors = {
-            colors.iter().dropping(1).map(|c_id| std::mem::take(&mut self.colors[c_id.0]))
-        }.collect_vec();
-        let new_color = self.colors[colors[0].0].merge_ufs(needed_colors.iter_mut().collect_vec(), new_id, false);
-        colors.iter().dropping(1).enumerate().for_each(|(i, c_id)| self.colors[c_id.0] = std::mem::take(needed_colors.get_mut(i).unwrap()));
-        self.color_hierarchy.insert(new_color.assumptions().clone(), new_id);
-        self.colors.push(new_color);
-        new_id
-    }
-
-    pub fn create_sub_color(&mut self, color: ColorId) -> ColorId {
-        let new_color_id = self.create_color();
-        let new_color = self.colors[color.0].new_child(new_color_id);
-        self.colors.push(new_color);
-        new_color_id
-    }
-
-    fn process_colored_unions(&mut self, black_merged: Vec<(Id, Id)>) {
-        let mut colors = std::mem::take(&mut self.colors);
-        for c in &mut colors {
-            c.cong_closure(self, &black_merged);
-        }
-        self.colors = colors;
-    }
-
     #[inline(never)]
     fn process_unions(&mut self) -> Vec<(Id, Id)> {
         let mut res = vec![];
@@ -797,7 +733,9 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         let n_unions = std::mem::take(&mut self.repairs_since_rebuild);
         let trimmed_nodes = self.rebuild_classes();
 
-        self.process_colored_unions(merged);
+        if cfg!(feature = "colored") {
+            self.process_colored_unions(merged);
+        }
 
         let elapsed = start.elapsed();
         info!(
@@ -835,6 +773,82 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 N::modify(self, e)
             }
         }
+    }
+}
+
+// ***  Colored Implementation  ***
+#[cfg(feature = "colored")]
+impl<L: Language, N: Analysis<L>> EGraph<L, N> {
+    pub fn create_sub_color(&mut self, color: ColorId) -> ColorId {
+        let new_color_id = self.create_color();
+        let new_color = self.colors[color.0].new_child(new_color_id);
+        self.colors.push(new_color);
+        new_color_id
+    }
+
+    fn process_colored_unions(&mut self, black_merged: Vec<(Id, Id)>) {
+        let mut colors = std::mem::take(&mut self.colors);
+        for c in &mut colors {
+            c.cong_closure(self, &black_merged);
+        }
+        self.colors = colors;
+    }
+
+    pub fn create_color(&mut self) -> ColorId {
+        self.colors.push(Color::new(&self.unionfind, ColorId::from(self.colors.len())));
+        let res = ColorId::from(self.colors.len() - 1);
+        self.color_hierarchy.insert(self.colors.last().unwrap().assumptions().clone(), res);
+        res
+    }
+
+    /// Create a new color which is based on given colors. This should be used only if the new color
+    /// has no assumptions of it's own (i.e. it is only a combination of existing assumptions).
+    pub fn create_combined_color(&mut self, colors: Vec<ColorId>) -> ColorId {
+        // First check if assumptions exist
+        let assumptions = colors.iter()
+            .flat_map(|c_id| self.colors[c_id.0].assumptions())
+            .sorted().dedup()
+            .copied().collect_vec();
+        if self.color_hierarchy.contains_key(&assumptions) {
+            println!("Skipping on color assumptions:");
+            for a in &assumptions {
+                println!("{}", a);
+            }
+            return *self.color_hierarchy.get(&assumptions).unwrap();
+        }
+
+        let new_id = ColorId::from(self.colors.len());
+        assert!(colors.len() > 1);
+        let mut needed_colors = {
+            colors.iter().dropping(1).map(|c_id| std::mem::take(&mut self.colors[c_id.0]))
+        }.collect_vec();
+        let new_color = self.colors[colors[0].0].merge_ufs(needed_colors.iter_mut().collect_vec(), new_id, false);
+        colors.iter().dropping(1).enumerate().for_each(|(i, c_id)| self.colors[c_id.0] = std::mem::take(needed_colors.get_mut(i).unwrap()));
+        self.color_hierarchy.insert(new_color.assumptions().clone(), new_id);
+        self.colors.push(new_color);
+        new_id
+    }
+
+    pub fn colored_union(&mut self, color: ColorId, id1: Id, id2: Id) -> (Id, bool) {
+        let c = self.colors.get_mut(usize::from(color)).unwrap();
+        let union = c.colored_union(id1, id2);
+        if union.1 {
+            for child in c.children().iter().copied().collect_vec() {
+                self.colored_union(child, id1, id2);
+            }
+            // TODO: colored union tracking
+            // self.colored_union_ids.entry(self.find(id1)).or_insert(vec![]).push(color);
+            // self.colored_union_ids.entry(self.find(id2)).or_insert(vec![]).push(color);
+        }
+        union
+    }
+
+    pub fn colored_find(&self, color: ColorId, id: Id) -> Id {
+        self.colors[usize::from(color)].find(id)
+    }
+
+    pub fn colors(&self) -> &[Color] {
+        &self.colors
     }
 }
 

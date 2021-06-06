@@ -235,7 +235,11 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
     }
 
     fn search_eclass(&self, egraph: &EGraph<L, A>, eclass: Id) -> Option<SearchMatches> {
-        let substs = self.program.colored_run(egraph, eclass);
+        let substs = if cfg!(feature = "colored") {
+            self.program.colored_run(egraph, eclass)
+        }  else {
+            self.program.run(egraph, eclass)
+        };
         if substs.is_empty() {
             None
         } else {
