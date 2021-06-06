@@ -3,6 +3,9 @@ use std::rc::Rc;
 
 use crate::{Analysis, EGraph, Id, Language, Pattern, SearchMatches, Subst, Var, ColorId};
 use std::sync::Arc;
+use std::fmt::{Display, Formatter, Debug};
+use std::marker::PhantomData;
+use itertools::Itertools;
 
 /// A rewrite that searches for the lefthand side and applies the righthand side.
 ///
@@ -32,9 +35,9 @@ pub struct Rewrite<L: Language, N: Analysis<L>> {
 }
 
 impl<L, N> fmt::Debug for Rewrite<L, N>
-where
-    L: Language + 'static,
-    N: Analysis<L> + 'static,
+    where
+        L: Language + 'static,
+        N: Analysis<L> + 'static,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         struct DisplayAsDebug<T>(T);
@@ -184,6 +187,12 @@ impl<L: Language, N: Analysis<L>> Rewrite<L, N> {
     }
 }
 
+impl<L: Language, N: Analysis<L>> std::fmt::Display for Rewrite<L, N> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Rewrite({}, {}, {})", self.name, self.searcher, self.applier)
+    }
+}
+
 /// The lefthand side of a [`Rewrite`].
 ///
 /// A [`Searcher`] is something that can search the egraph and find
@@ -193,10 +202,10 @@ impl<L: Language, N: Analysis<L>> Rewrite<L, N> {
 /// [`Rewrite`]: struct.Rewrite.html
 /// [`Searcher`]: trait.Searcher.html
 /// [`Pattern`]: struct.Pattern.html
-pub trait Searcher<L, N>
-where
-    L: Language,
-    N: Analysis<L>,
+pub trait Searcher<L, N>: std::fmt::Display
+    where
+        L: Language,
+        N: Analysis<L>,
 {
     /// Search one eclass, returning None if no matches can be found.
     /// This should not return a SearchMatches with no substs.
@@ -236,6 +245,7 @@ where
 /// # Example
 /// ```
 /// use egg::{rewrite as rw, *};
+/// use std::fmt::{Display, Formatter};
 ///
 /// define_language! {
 ///     enum Math {
@@ -285,6 +295,12 @@ where
 ///     c: Var,
 /// }
 ///
+/// impl std::fmt::Display for Funky {
+///     fn fmt(&self,f: &mut Formatter<'_>) -> std::fmt::Result {
+///         write!(f, "Funky")
+///     }
+/// }
+///
 /// impl Applier<Math, MinSize> for Funky {
 ///     fn apply_one(&self, egraph: &mut EGraph, matched_id: Id, subst: &Subst) -> Vec<Id> {
 ///         let a: Id = subst[self.a];
@@ -326,10 +342,10 @@ where
 /// [`Applier`]: trait.Applier.html
 /// [`Condition`]: trait.Condition.html
 /// [`Analysis`]: trait.Analysis.html
-pub trait Applier<L, N>
-where
-    L: Language,
-    N: Analysis<L>,
+pub trait Applier<L, N>: std::fmt::Display
+    where
+        L: Language,
+        N: Analysis<L>,
 {
     /// Apply many substititions.
     ///
@@ -416,7 +432,7 @@ where
 /// [`check`]: trait.Condition.html#method.check
 /// [`ConditionalApplier`]: struct.ConditionalApplier.html
 #[derive(Clone, Debug)]
-pub struct ConditionalApplier<C, A> {
+pub struct ConditionalApplier<C, A, L, N> {
     /// The [`Condition`] to [`check`] before calling [`apply_one`] on
     /// `applier`.
     ///
@@ -428,14 +444,26 @@ pub struct ConditionalApplier<C, A> {
     ///
     /// [`Applier`]: trait.Applier.html
     pub applier: A,
+    pub phantom_l: PhantomData<L>,
+    pub phantom_n: PhantomData<N>,
 }
 
-impl<C, A, N, L> Applier<L, N> for ConditionalApplier<C, A>
-where
+impl<L, N, C, A> std::fmt::Display for ConditionalApplier<C, A, L, N> where
     L: Language,
-    C: Condition<L, N>,
-    A: Applier<L, N>,
     N: Analysis<L>,
+    C: Condition<L, N>,
+    A: Applier<L, N>, {
+        fn fmt( & self, f: & mut Formatter < '_ > ) -> std::fmt::Result {
+          write ! (f, "if {:?} then apply {}", self.condition.describe(), self.applier)
+    }
+}
+
+impl<C, A, N, L> Applier<L, N> for ConditionalApplier<C, A, L, N>
+    where
+        L: Language,
+        C: Condition<L, N>,
+        A: Applier<L, N>,
+        N: Analysis<L>,
 {
     fn apply_one(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> Vec<Id> {
         if self.condition.check(egraph, eclass, subst) {
@@ -464,9 +492,9 @@ where
 /// [`ConditionalApplier`]: struct.ConditionalApplier.html
 /// [`Condition`]: trait.Condition.html
 pub trait Condition<L, N>
-where
-    L: Language,
-    N: Analysis<L>,
+    where
+        L: Language,
+        N: Analysis<L>,
 {
     /// Check a condition.
     ///
@@ -486,16 +514,23 @@ where
     fn vars(&self) -> Vec<Var> {
         vec![]
     }
+
+    /// Returns a string representing the condition that is checked
+    fn describe(&self) -> String;
 }
 
 impl<L, F, N> Condition<L, N> for F
-where
-    L: Language,
-    N: Analysis<L>,
-    F: Fn(&mut EGraph<L, N>, Id, &Subst) -> bool,
+    where
+        L: Language,
+        N: Analysis<L>,
+        F: Fn(&mut EGraph<L, N>, Id, &Subst) -> bool,
 {
     fn check(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
         self(egraph, eclass, subst)
+    }
+
+    fn describe(&self) -> String {
+        format!("Function Condition over {}", self.vars().iter().map(|v| v.to_string()).join(" "))
     }
 }
 
@@ -518,11 +553,11 @@ impl<L: Language> ConditionEqual<Pattern<L>, Pattern<L>> {
 }
 
 impl<L, N, A1, A2> Condition<L, N> for ConditionEqual<A1, A2>
-where
-    L: Language,
-    N: Analysis<L>,
-    A1: Applier<L, N>,
-    A2: Applier<L, N>,
+    where
+        L: Language,
+        N: Analysis<L>,
+        A1: Applier<L, N>,
+        A2: Applier<L, N>,
 {
     fn check(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
         let a1 = self.0.apply_one(egraph, eclass, subst);
@@ -537,13 +572,17 @@ where
         vars.extend(self.1.vars());
         vars
     }
+
+    fn describe(&self) -> String {
+        format!("Check that {}", self.vars().iter().map(|v| v.to_string()).join(" = "))
+    }
 }
 
 #[cfg(test)]
 mod tests {
-
     use crate::{SymbolLang as S, *};
     use std::str::FromStr;
+    use std::fmt::Formatter;
 
     type EGraph = crate::EGraph<S, ()>;
 
@@ -597,6 +636,12 @@ mod tests {
 
         #[derive(Debug)]
         struct Appender;
+        impl std::fmt::Display for Appender {
+            fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{:?}", self)
+            }
+        }
+
         impl Applier<SymbolLang, ()> for Appender {
             fn apply_one(&self, egraph: &mut EGraph, _eclass: Id, subst: &Subst) -> Vec<Id> {
                 let a: Var = "?a".parse().unwrap();

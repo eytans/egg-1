@@ -318,7 +318,9 @@ macro_rules! __rewrite {
     (@applier $applier:expr; $cond:expr, $($conds:expr,)*) => {
         $crate::ConditionalApplier {
             condition: $cond,
-            applier: $crate::__rewrite!(@applier $applier; $($conds,)*)
+            applier: $crate::__rewrite!(@applier $applier; $($conds,)*),
+            phantom_l: Default::default(),
+            phantom_n: Default::default(),
         }
     };
 }
