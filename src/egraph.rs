@@ -1,4 +1,4 @@
-use std::collections::{HashMap};
+use std::collections::{HashMap, HashSet};
 use std::{
     borrow::BorrowMut,
     fmt::{self, Debug},
@@ -773,6 +773,17 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 N::modify(self, e)
             }
         }
+    }
+
+    /// If every `Var` in self agrees with other and the colors match then return true
+    pub fn subst_agrees(&self, s1: &crate::Subst, s2: &crate::Subst) -> bool {
+        s1.vec.iter().all(|(v, i1)| s2.get(*v)
+            .map(|i2| {
+                assert!(s1.colors.len() <= 1 && s2.colors.len() <= 1);
+                let s1_ids = s1.colors.first().map(|c_id| self.colors()[c_id.0].black_ids(*i1).map(|x| x.clone())).flatten().unwrap_or(std::iter::once(*i1).collect());
+                let s2_ids = s2.colors.first().map(|c_id| self.colors()[c_id.0].black_ids(*i2).map(|x| x.clone())).flatten().unwrap_or(std::iter::once(*i2).collect());
+                !s1_ids.is_disjoint(&s2_ids)
+            }).unwrap_or(false))
     }
 }
 
