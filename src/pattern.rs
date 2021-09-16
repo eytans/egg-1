@@ -96,6 +96,27 @@ impl<L: Language> Pattern<L> {
     pub fn pretty(&self, width: usize) -> String {
         self.ast.pretty(width)
     }
+
+    /// Recursively lookup pattern in EGraph
+    pub fn rec_lookup<N: Analysis<L>>(&self, egraph: &EGraph<L, N>, subst: &Subst) -> Option<Id> {
+        let mut child_ids: Vec<Option<Id>> = vec![];
+        for child in self.ast.as_ref() {
+            child_ids.push(match child {
+                // Child in enode is a pointer to the pattern
+                ENodeOrVar::ENode(n) => {
+                    if n.children().iter().any(|id| child_ids[id.0 as usize].is_none()) {
+                        None
+                    } else {
+                        egraph.lookup(n.clone().map_children(|id| child_ids[id.0 as usize].unwrap()))
+                    }
+                },
+                ENodeOrVar::Var(v) => {
+                    Some(subst[*v])
+                }
+            });
+        }
+        child_ids.pop().flatten()
+    }
 }
 
 /// The language of [`Pattern`]s.
