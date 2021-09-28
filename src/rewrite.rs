@@ -579,11 +579,111 @@ impl<L, N, A1, A2> Condition<L, N> for ConditionEqual<A1, A2>
     }
 }
 
+pub trait ImmutableCondition<L, N> where
+    L: Language,
+    N: Analysis<L>,
+{
+    fn check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> bool;
+
+    /// Returns a list of variables that this Condition assumes are bound.
+    ///
+    /// `egg` will check that the corresponding `Searcher` binds those
+    /// variables.
+    /// By default this return an empty `Vec`, which basically turns off the
+    /// checking.
+    fn vars(&self) -> Vec<Var> {
+        vec![]
+    }
+
+    /// Returns a string representing the condition that is checked
+    fn describe(&self) -> String;
+
+    fn filter(&self, egraph: &EGraph<L, N>, sms: Vec<SearchMatches>) -> Vec<SearchMatches> {
+        sms.into_iter().filter_map(|mut sm| {
+            let eclass = sm.eclass;
+            let mut substs = std::mem::take(&mut sm.substs);
+            sm.substs = substs.into_iter()
+                .filter(|s| {
+                    self.check_imm(egraph, eclass, s)
+                }).collect_vec();
+            if sm.substs.is_empty() {
+                None
+            } else {
+                Some(sm)
+            }
+        }).collect_vec()
+    }
+}
+
+impl<L, F, N> ImmutableCondition<L, N> for F
+    where
+        L: Language,
+        N: Analysis<L>,
+        F: Fn(&EGraph<L, N>, Id, &Subst) -> bool,
+{
+    fn check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
+        self(egraph, eclass, subst)
+    }
+
+    fn describe(&self) -> String {
+        format!("Function Condition over {}", self.vars().iter().map(|v| v.to_string()).join(" "))
+    }
+}
+
+#[derive(Clone)]
+pub struct RcImmutableCondition<L: Language, N: Analysis<L>> {
+    ptr: Rc<dyn ImmutableCondition<L, N>>
+}
+
+impl<L: Language, N: Analysis<L>> RcImmutableCondition<L, N> {
+    pub fn new(c: impl ImmutableCondition<L, N> + 'static)
+        -> RcImmutableCondition<L, N> {
+        RcImmutableCondition{ptr: Rc::new(c)}
+    }
+}
+
+impl<L, N> ImmutableCondition<L, N> for RcImmutableCondition<L, N> where
+    L: Language,
+    N: Analysis<L>,
+{
+    fn check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
+        self.ptr.check_imm(egraph, eclass, subst)
+    }
+
+    fn vars(&self) -> Vec<Var> {
+        self.ptr.vars()
+    }
+
+    fn describe(&self) -> String {
+        self.ptr.describe()
+    }
+}
+
+impl<L, N> Condition<L, N> for dyn ImmutableCondition<L, N>
+    where
+        L: Language,
+        N: Analysis<L>,
+{
+    fn check(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
+        self.check_imm(egraph, eclass, subst)
+    }
+
+    fn vars(&self) -> Vec<Var> {
+        self.vars()
+    }
+
+    fn describe(&self) -> String {
+        self.describe()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{SymbolLang as S, *};
     use std::str::FromStr;
     use std::fmt::Formatter;
+    use std::rc::Rc;
+    use crate::rewrite::{ImmutableCondition, RcImmutableCondition};
 
     type EGraph = crate::EGraph<S, ()>;
 
@@ -661,5 +761,14 @@ mod tests {
         egraph.rebuild();
         fold_add.run(&mut egraph);
         assert_eq!(egraph.equivs(&start, &goal), vec![egraph.find(root)]);
+    }
+
+    #[test]
+    fn rc_imm_condition_not_infinite_rec() {
+        crate::init_logger();
+        let cond: RcImmutableCondition<SymbolLang, ()> = RcImmutableCondition::new(|graph: &EGraph, id: Id, s: &Subst| {
+            true
+        });
+        assert!(cond.vars().is_empty())
     }
 }
