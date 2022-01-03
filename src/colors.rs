@@ -15,7 +15,7 @@ pub struct Color {
     color_id: ColorId,
     /// Used for rebuilding uf
     pub(crate) dirty_unions: Vec<Id>,
-    /// Maintain which classes in black are represented in colored class
+    /// Maintain which classes in black are represented in colored class (excluding rep)
     pub(crate) union_map: HashMap<Id, HashSet<Id>>,
     children: Vec<ColorId>,
     base_set: Vec<ColorId>,
@@ -42,6 +42,8 @@ impl Color {
     fn update_union_map(&mut self, to: Id, from: Id) {
         if to != from {
             let from_ids = self.union_map.remove(&from);
+            debug_assert!(from_ids.as_ref().filter(|ids| ids.contains(&from)).is_none());
+            debug_assert!(self.union_map.get(&to).filter(|&ids| ids.contains(&to)).is_none());
             self.union_map.entry(to)
                 .and_modify(|to_ids| {
                     from_ids.iter().for_each(|from_ids| {

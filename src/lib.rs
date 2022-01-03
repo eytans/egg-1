@@ -95,6 +95,7 @@ impl std::fmt::Display for ColorId {
     }
 }
 
+use log::LevelFilter;
 pub(crate) use unionfind::UnionFind;
 
 pub use {
@@ -112,7 +113,7 @@ pub use {
 
 #[cfg(test)]
 fn init_logger() {
-    let _ = env_logger::builder().is_test(true).try_init();
+    let _ = env_logger::builder().is_test(true).filter_level(LevelFilter::Info).try_init();
 }
 
 #[doc(hidden)]

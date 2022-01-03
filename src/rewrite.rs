@@ -369,15 +369,10 @@ pub trait Applier<L, N>: std::fmt::Display
                     .into_iter()
                     .filter_map(|id| {
                         let (to, did_something) =
-                            if !cfg!(feature = "colored") || subst.colors.is_empty() {
+                            if !cfg!(feature = "colored") || subst.color.is_none() {
                                 egraph.union(id, mat.eclass)
-                            } else if subst.colors.len() == 1 {
-                                egraph.colored_union(*subst.colors.first().unwrap(), id, mat.eclass)
                             } else {
-                                // TODO: Once we support multi-color make sure there is a compilation
-                                // TODO: flag or runtime option for the old case-split architecture
-                                // TODO: color VS uncolored experiment.
-                                (id, false)
+                                egraph.colored_union(*subst.color.as_ref().unwrap(), id, mat.eclass)
                             };
                         if did_something {
                             Some(to)

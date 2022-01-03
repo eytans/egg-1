@@ -779,9 +779,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     pub fn subst_agrees(&self, s1: &crate::Subst, s2: &crate::Subst) -> bool {
         s1.vec.iter().all(|(v, i1)| s2.get(*v)
             .map(|i2| {
-                assert!(s1.colors.len() <= 1 && s2.colors.len() <= 1);
-                let s1_ids = s1.colors.first().map(|c_id| self.colors()[c_id.0].black_ids(*i1).map(|x| x.clone())).flatten().unwrap_or(std::iter::once(*i1).collect());
-                let s2_ids = s2.colors.first().map(|c_id| self.colors()[c_id.0].black_ids(*i2).map(|x| x.clone())).flatten().unwrap_or(std::iter::once(*i2).collect());
+                let s1_ids = s1.color.map(|c_id| self.colors()[c_id.0].black_ids(*i1).map(|x| x.clone())).flatten().unwrap_or(std::iter::once(*i1).collect());
+                let s2_ids = s2.color.map(|c_id| self.colors()[c_id.0].black_ids(*i2).map(|x| x.clone())).flatten().unwrap_or(std::iter::once(*i2).collect());
                 !s1_ids.is_disjoint(&s2_ids)
             }).unwrap_or(false))
     }
@@ -1103,7 +1102,7 @@ mod tests {
         let bad_rws = rewrite!("rule10"; "(take (succ ?x7) (cons ?y8 ?z))" <=> "(cons ?y8 (take ?x7 ?z))");
         info!("Done first rebuild");
         let mut rules = vec![
-            rewrite!("rule2"; "(append nil ?x)" => "nil"),
+            rewrite!("rule2"; "(append nil ?x)" => "?x"),
             rewrite!("rule5"; "(drop ?x3 nil)" => "nil"),
             rewrite!("rule6"; "(drop zero ?x)" => "?x"),
             rewrite!("rule7"; "(drop (succ ?x4) (cons ?y5 ?z))" => "(drop ?x4 ?z)"),
@@ -1125,20 +1124,25 @@ mod tests {
         // let succ_p_n = egraph.add_expr(&"(succ param_n_1)".parse().unwrap());
         egraph.colored_union(color_z, i, zero);
         // egraph.colored_union(color_s_p, i, succ_p_n);
+        egraph.rebuild();
+
         for r in &bad_rws {
-            println!("{}", r.name());
+            debug!("{}", r.name());
             let out = r.search(&egraph);
-            println!("{}", out.iter().sep_string("\n"));
+            debug!("{}", out.iter().sep_string("\n"));
         }
+
         egraph = Runner::default().with_iter_limit(8).with_node_limit(400000).with_egraph(egraph.clone()).run(&rules).egraph;
+
         for r in &bad_rws {
-            println!("{}", r.name());
+            debug!("{}", r.name());
             let out = r.search(&egraph);
-            println!("{}", out.iter().sep_string("\n"));
+            debug!("{}", out.iter().sep_string("\n"));
         }
+
         egraph.rebuild();
         egraph.dot().to_dot("graph.dot");
-        assert_eq!(egraph.colored_find(color_z, consx), egraph.colored_find(color_z,ex1));
+        assert_eq!(egraph.colored_find(color_z, nil), egraph.colored_find(color_z,ex1));
         // assert_eq!(egraph.colored_find(color_s_p, consx), egraph.colored_find(color_s_p,ex1));
     }
 

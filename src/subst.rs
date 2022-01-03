@@ -49,7 +49,7 @@ impl fmt::Debug for Var {
 pub struct Subst {
     pub(crate) vec: smallvec::SmallVec<[(Var, Id); 3]>,
     #[cfg(feature = "colored")]
-    pub(crate) colors: smallvec::SmallVec<[ColorId; 2]>,
+    pub(crate) color: Option<ColorId>,
 }
 
 impl Subst {
@@ -57,7 +57,7 @@ impl Subst {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             vec: smallvec::SmallVec::with_capacity(capacity),
-            colors: smallvec::SmallVec::with_capacity(capacity),
+            color: None,
         }
     }
 
@@ -81,8 +81,8 @@ impl Subst {
     }
 
     #[cfg(feature = "colored")]
-    pub fn colors(&self) -> Vec<ColorId> {
-        self.colors.to_vec()
+    pub fn color(&self) -> Option<ColorId> {
+        self.color
     }
 }
 
@@ -114,8 +114,8 @@ impl fmt::Debug for Subst {
                 write!(f, ", ")?;
             }
         }
-        if cfg!(feature = "colored") && self.colors.is_empty() {
-            write!(f, " colors: {}", self.colors.iter().join(" "));
+        if cfg!(feature = "colored") && self.color.is_none() {
+            write!(f, " color: {}", self.color.unwrap().to_string());
         }
         write!(f, "}}")
     }

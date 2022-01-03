@@ -392,6 +392,6 @@ mod tests {
 
         let matches = commute_plus.search(&egraph);
         assert!(!matches.is_empty());
-        assert!(matches.iter().all(|x| x.substs.iter().all(|s| !s.colors.is_empty())));
+        assert!(matches.iter().all(|x| x.substs.iter().all(|s| !s.color.is_none())));
     }
 }
