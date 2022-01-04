@@ -1,8 +1,10 @@
 use crate::{Analysis, EClass, EGraph, ENodeOrVar, Id, Language, PatternAst, Subst, Var};
 use std::cmp::Ordering;
+use log::warn;
 use smallvec::SmallVec;
 use crate::ColorId;
 use crate::colors::Color;
+use itertools::Itertools;
 
 struct Machine {
     reg: Vec<Id>,
@@ -182,7 +184,7 @@ impl Machine {
     fn run_colored_branches<L: Language, N: Analysis<L>, F>(&mut self, egraph: &EGraph<L, N>, i: &Reg, mut run_matches: &mut F, c: &Color)
     where F: FnMut(&mut Machine, &EClass<L, <N as Analysis<L>>::Data>){
         let ids = c.black_ids(self.reg(*i));
-        debug_assert!(ids.iter().find(|hs| hs.contains(&self.reg(*i))).is_none());
+        debug_assert!(ids.iter().find(|hs| hs.contains(&egraph.colored_find(c.get_id(), self.reg(*i)))).is_none());
         ids.iter().for_each(|&b_ids| { b_ids.iter().for_each(|id| {
             self.reg[i.0  as usize] = *id;
             run_matches(self, &egraph[*id]);

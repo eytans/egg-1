@@ -4,6 +4,7 @@ use crate::util::JoinDisp;
 use std::collections::{HashSet, HashMap};
 use itertools::Itertools;
 use std::fmt::Formatter;
+use log::error;
 
 pub type ColorParents = smallvec::SmallVec<[ColorId; 3]>;
 
@@ -16,7 +17,7 @@ pub struct Color {
     /// Used for rebuilding uf
     pub(crate) dirty_unions: Vec<Id>,
     /// Maintain which classes in black are represented in colored class (excluding rep)
-    pub(crate) union_map: HashMap<Id, HashSet<Id>>,
+    union_map: HashMap<Id, HashSet<Id>>,
     children: Vec<ColorId>,
     base_set: Vec<ColorId>,
 }
@@ -52,8 +53,16 @@ impl Color {
                 })
                 .or_insert_with(|| from_ids.unwrap_or_default());
             self.union_map.get_mut(&to).unwrap().remove(&from);
-            if self.union_map.get(&to).unwrap().len() <= 1 {
+
+            if self.union_map.get(&to).unwrap().contains(&to) {
+                error!("union map shouldnt contain key {:?}", self.union_map);
+            }
+
+            if self.union_map.get(&to).unwrap().len() == 0 {
                 self.union_map.remove(&to);
+            }
+            for (k, v) in self.union_map.iter() {
+                debug_assert!(!v.contains(k));
             }
         }
     }
@@ -90,6 +99,9 @@ impl Color {
             let from_ids = self.union_map.remove(&from).unwrap_or_default();
             self.union_map.entry(to).or_default().extend(from_ids);
             self.union_map.get_mut(&to).unwrap().insert(from);
+        }
+        for (k, v) in self.union_map.iter() {
+            debug_assert!(!v.contains(k));
         }
         (to, changed)
     }
@@ -181,6 +193,9 @@ impl Color {
             res.base_set.push(new_id);
         }
         res.base_set = res.base_set.iter().sorted().dedup().copied().collect_vec();
+        for (k, v) in res.union_map.iter() {
+            debug_assert!(!v.contains(k));
+        }
         res
     }
 

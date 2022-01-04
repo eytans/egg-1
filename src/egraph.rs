@@ -7,7 +7,7 @@ use std::{
 use indexmap::IndexMap;
 use log::*;
 
-use crate::{Analysis, AstSize, Dot, EClass, Extractor, Id, Language, Pattern, RecExpr, Searcher, UnionFind, Runner};
+use crate::{Analysis, AstSize, Dot, EClass, Extractor, Id, Language, Pattern, RecExpr, Searcher, UnionFind, Runner, Subst};
 
 pub use crate::colors::{Color, ColorParents, ColorId};
 use itertools::Itertools;
@@ -779,10 +779,15 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     pub fn subst_agrees(&self, s1: &crate::Subst, s2: &crate::Subst) -> bool {
         s1.vec.iter().all(|(v, i1)| s2.get(*v)
             .map(|i2| {
-                let s1_ids = s1.color.map(|c_id| self.colors()[c_id.0].black_ids(*i1).map(|x| x.clone())).flatten().unwrap_or(std::iter::once(*i1).collect());
-                let s2_ids = s2.color.map(|c_id| self.colors()[c_id.0].black_ids(*i2).map(|x| x.clone())).flatten().unwrap_or(std::iter::once(*i2).collect());
-                !s1_ids.is_disjoint(&s2_ids)
+                let s1_ids = self.gather_all_ids(s1, i1);
+                let s2_ids = self.gather_all_ids(s2, i2);
+                i1 == i2 || !s1_ids.unwrap_or(&HashSet::default()).is_disjoint(&s2_ids.unwrap_or(&HashSet::default()))
             }).unwrap_or(false))
+    }
+
+    fn gather_all_ids(&self, subs: &Subst, id: &Id) -> Option<&HashSet<Id>> {
+        let s1_ids = subs.color.map(|c_id| self.colors()[c_id.0].black_ids(*id)).flatten();
+        s1_ids
     }
 }
 
@@ -879,6 +884,7 @@ impl<'a, L: Language, N: Analysis<L>> Debug for EGraphDump<'a, L, N> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
     use crate::*;
     use std::str::FromStr;
     use log::*;
@@ -1007,12 +1013,12 @@ mod tests {
         egraph.colored_union(c, ex1, ex4);
         egraph.colored_union(c, ex5, ex6);
         let (to, _) = egraph.colored_union(c, ex1, ex5);
-        assert_eq!(egraph.colors[c.0].union_map[&to].len(), 5);
+        assert_eq!(egraph.colors[c.0].black_ids(to).map(|x| x.len()), Some(5));
 
         egraph.union(ex5, ex6);
         egraph.union(ex1, ex5);
-        println!("{:#?}", egraph.colors[c.0].union_map[&to]);
-        assert_eq!(egraph.colors[c.0].union_map[&to].len(), 3);
+        println!("{:#?}", egraph.colors[c.0].black_ids(to));
+        assert_eq!(egraph.colors[c.0].black_ids(to).map(|x| x.len()), Some(3));
     }
 
     #[test]
@@ -1040,7 +1046,7 @@ mod tests {
         let (to, _) = egraph.colored_union(c2, ex1, ex5);
         assert_eq!(egraph.colored_find(c3, ex5), egraph.colored_find(c3, ex6));
         assert_eq!(egraph.colored_find(c3, ex3), egraph.colored_find(c3, ex4));
-        assert_eq!(egraph.colors[c3.0].union_map[&to].len(), 5);
+        assert_eq!(egraph.colors[c3.0].black_ids(to).map(|x| x.len()), Some(5));
     }
 
     #[test]
@@ -1175,13 +1181,9 @@ mod tests {
         egraph = Runner::default().with_iter_limit(2).with_node_limit(400000).with_egraph(egraph.clone()).run(&rules).egraph;
         egraph.rebuild();
         egraph.dot().to_dot("graph.dot");
-        for (id, set) in &egraph.colors[color_succ.0].union_map {
-            println!("{} - {}", id, set.iter().map(|x| x.to_string()).join(" "))
-        }
-        println!("");
-        for (id, set) in &egraph.colors[color_z.0].union_map {
-            println!("{} - {}", id, set.iter().map(|x| x.to_string()).join(" "))
-        }
+
+        // TODO: add debug print for colors
+
         assert_eq!(egraph.colored_find(color_z, init), egraph.colored_find(color_z,res));
         assert_eq!(egraph.colored_find(color_succ, init), egraph.colored_find(color_succ,res));
     }
