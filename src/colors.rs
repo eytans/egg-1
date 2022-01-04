@@ -1,5 +1,5 @@
 pub use crate::{Id, EGraph, Language, Analysis, ColorId};
-use crate::UnionFind;
+use crate::{Singleton, UnionFind};
 use crate::util::JoinDisp;
 use std::collections::{HashSet, HashMap};
 use itertools::Itertools;
@@ -16,7 +16,7 @@ pub struct Color {
     color_id: ColorId,
     /// Used for rebuilding uf
     pub(crate) dirty_unions: Vec<Id>,
-    /// Maintain which classes in black are represented in colored class (excluding rep)
+    /// Maintain which classes in black are represented in colored class (including rep)
     union_map: HashMap<Id, HashSet<Id>>,
     children: Vec<ColorId>,
     base_set: Vec<ColorId>,
@@ -42,27 +42,13 @@ impl Color {
 
     fn update_union_map(&mut self, to: Id, from: Id) {
         if to != from {
-            let from_ids = self.union_map.remove(&from);
-            debug_assert!(from_ids.as_ref().filter(|ids| ids.contains(&from)).is_none());
-            debug_assert!(self.union_map.get(&to).filter(|&ids| ids.contains(&to)).is_none());
-            self.union_map.entry(to)
-                .and_modify(|to_ids| {
-                    from_ids.iter().for_each(|from_ids| {
-                        to_ids.retain(|id| !from_ids.contains(id))
-                    })
-                })
-                .or_insert_with(|| from_ids.unwrap_or_default());
+            let from_ids = self.union_map.remove(&from).unwrap_or_else(|| HashSet::singleton(from));
+            let to_ids = self.union_map.entry(to).or_insert_with(|| HashSet::singleton(to));
+            to_ids.retain(|id| !from_ids.contains(id));
             self.union_map.get_mut(&to).unwrap().remove(&from);
-
-            if self.union_map.get(&to).unwrap().contains(&to) {
-                error!("union map shouldnt contain key {:?}", self.union_map);
-            }
-
-            if self.union_map.get(&to).unwrap().len() == 0 {
+            if self.union_map.get(&to).unwrap().len() == 1 {
+                debug_assert!(self.union_map.get(&to).unwrap().contains(&to));
                 self.union_map.remove(&to);
-            }
-            for (k, v) in self.union_map.iter() {
-                debug_assert!(!v.contains(k));
             }
         }
     }
@@ -96,12 +82,8 @@ impl Color {
         let (to, from, changed) = self.union_impl(id1, id2);
         if changed {
             self.dirty_unions.push(to);
-            let from_ids = self.union_map.remove(&from).unwrap_or_default();
-            self.union_map.entry(to).or_default().extend(from_ids);
-            self.union_map.get_mut(&to).unwrap().insert(from);
-        }
-        for (k, v) in self.union_map.iter() {
-            debug_assert!(!v.contains(k));
+            let from_ids = self.union_map.remove(&from).unwrap_or_else(|| HashSet::singleton(from));
+            self.union_map.entry(to).or_insert_with(|| HashSet::singleton(to) ).extend(from_ids);
         }
         (to, changed)
     }

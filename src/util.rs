@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use indexmap::IndexSet;
 use once_cell::sync::Lazy;
 use std::fmt::Formatter;
+use std::iter::FromIterator;
 use itertools::Itertools;
 
 static STRINGS: Lazy<Mutex<IndexSet<&'static str>>> = Lazy::new(Default::default);
@@ -108,5 +109,16 @@ impl<I> JoinDisp for I where I: Iterator,
 
     fn sep_string(self, sep: &str) -> String {
         self.map(|x| format!("{}", x)).join(sep)
+    }
+}
+
+pub trait Singleton<T> {
+    fn singleton(t: T) -> Self;
+}
+
+impl<T, FI> Singleton<T> for FI
+where FI: FromIterator<T> {
+    fn singleton(t: T) -> Self {
+        FI::from_iter(std::iter::once(t))
     }
 }

@@ -145,11 +145,11 @@ impl Machine {
                     let old_reg = self.reg(*i);
                     if self.color.is_some() {
                         let c = &egraph.colors()[self.color.unwrap().0];
-                        self.run_colored_branches(&egraph, i, &mut run_matches, c);
+                        self.run_colored_branches(&egraph, i, &mut run_matches, c, old_reg);
                     } else {
                         for c in egraph.colors() {
                             self.color = Some(c.get_id());
-                            self.run_colored_branches(&egraph, i, &mut run_matches, c);
+                            self.run_colored_branches(&egraph, i, &mut run_matches, c, old_reg);
                         }
                         self.color = None;
                     }
@@ -158,10 +158,8 @@ impl Machine {
                 }
                 Instruction::Compare { i, j } => {
                     if egraph.find(self.reg(*i)) != egraph.find(self.reg(*j)) {
-                        if self.color.is_some() {
-                            if self.color.iter().all(|c|
-                                egraph.colored_find(*c, self.reg(*i)) != egraph.colored_find(*c, self.reg(*j))
-                            ) {
+                        if let Some(c) = self.color {
+                            if egraph.colored_find(c, self.reg(*i)) != egraph.colored_find(c, self.reg(*j)) {
                                 return;
                             }
                         } else {
@@ -172,6 +170,7 @@ impl Machine {
                                 }
                             }
                             self.color = None;
+                            return;
                         }
                     }
                 }
@@ -181,14 +180,14 @@ impl Machine {
         yield_fn(self, subst)
     }
 
-    fn run_colored_branches<L: Language, N: Analysis<L>, F>(&mut self, egraph: &EGraph<L, N>, i: &Reg, mut run_matches: &mut F, c: &Color)
-    where F: FnMut(&mut Machine, &EClass<L, <N as Analysis<L>>::Data>){
-        let ids = c.black_ids(self.reg(*i));
-        debug_assert!(ids.iter().find(|hs| hs.contains(&egraph.colored_find(c.get_id(), self.reg(*i)))).is_none());
-        ids.iter().for_each(|&b_ids| { b_ids.iter().for_each(|id| {
-            self.reg[i.0  as usize] = *id;
+    fn run_colored_branches<L, N, F>(&mut self, egraph: &EGraph<L, N>, i: &Reg, mut run_matches: &mut F, c: &Color, old_reg: Id)
+    where L: Language, N: Analysis<L>, F: FnMut(&mut Machine, &EClass<L, <N as Analysis<L>>::Data>){
+        let ids = c.black_ids(old_reg);
+        ids.iter().for_each(|&b_ids| { b_ids.iter().filter(|i| *i != &old_reg).for_each(|id| {
+            self.reg[i.0 as usize] = *id;
             run_matches(self, &egraph[*id]);
         })});
+        self.reg[i.0 as usize] = old_reg;
     }
 }
 
