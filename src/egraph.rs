@@ -385,6 +385,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             for combination in children_options.into_iter().multi_cartesian_product() {
                 let mut it = combination.iter();
                 mut_enode.update_children(|id| **it.next().unwrap());
+                // TODO: assert we can assume children are class reps and then we can have a more
+                // efficient lookup
                 if let Some(id) = self.lookup(&mut mut_enode) {
                     return Some(id);
                 }
@@ -439,9 +441,15 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
     pub fn colored_add(&mut self, color: &ColorId, mut enode: L) -> Id {
         self.colored_lookup(color, &mut enode).unwrap_or_else(|| {
+            enode.update_children(|id| self.find(id));
+
             // look for the node with the colored equivalence relation
-            let c = &self.colors[color.0];
             let id = self.unionfind.make_set();
+            if cfg!(feature = "colored") {
+                for c in &mut self.colors {
+                    c.add(id);
+                }
+            }
 
             log::trace!("  ...colored ({}) adding to {}", color, id);
             let class = Box::new(EClass {
@@ -450,6 +458,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 data: N::make(self, &enode),
                 parents: Default::default(),
             });
+
 
             // add this enode to the parent lists of its children
             enode.for_each(|child| {
