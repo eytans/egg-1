@@ -3,14 +3,16 @@ use std::{
     borrow::BorrowMut,
     fmt::{self, Debug},
 };
+use std::fmt::Alignment::Left;
 
 use indexmap::IndexMap;
 use log::*;
 
-use crate::{Analysis, AstSize, Dot, EClass, Extractor, Id, Language, Pattern, RecExpr, Searcher, UnionFind, Runner, Subst};
+use crate::{Analysis, AstSize, Dot, EClass, Extractor, Id, Language, Pattern, RecExpr, Searcher, UnionFind, Runner, Subst, Singleton};
 
 pub use crate::colors::{Color, ColorParents, ColorId};
-use itertools::Itertools;
+use itertools::{Either, iproduct, Itertools};
+use itertools::Either::Right;
 
 /** A data structure to keep track of equalities between expressions.
 
@@ -128,7 +130,7 @@ same eclass.
 [dot]: struct.Dot.html
 [extract]: struct.Extractor.html
 [sound]: https://itinerarium.github.io/phoneme-synthesis/?w=/'igraf/
-**/
+ **/
 #[derive(Clone)]
 pub struct EGraph<L: Language, N: Analysis<L>> {
     /// The `Analysis` given when creating this `EGraph`.
@@ -152,7 +154,6 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     // Maintain for each EClass if it was merged in colored
     // colored_union_ids: HashMap<Id, Vec<ColorId>>,
 }
-
 
 
 type SparseVec<T> = Vec<Option<Box<T>>>;
@@ -360,9 +361,36 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             B: BorrowMut<L>,
     {
         let enode = enode.borrow_mut();
+        self.inner_lookup(enode)
+    }
+
+    fn inner_lookup(&self, enode: &mut L) -> Option<Id> {
         enode.update_children(|id| self.find(id));
         let id = self.memo.get(enode);
         id.map(|&id| self.find(id))
+    }
+
+    pub fn colored_lookup<B>(&self, color: &ColorId, mut enode: B) -> Option<Id>
+        where
+            B: BorrowMut<L>,
+    {
+        let enode = enode.borrow();
+        let mut mut_enode = enode.clone();
+        self.inner_lookup(&mut mut_enode).or_else(|| {
+            let c = &self.colors[color.0];
+            let children_options = enode.children().iter()
+                .map(|id| c.black_ids(*id)
+                    .map(|hs| Either::Left(hs.into_iter()))
+                    .unwrap_or_else(|| Either::Right(std::iter::once(id))));
+            for combination in children_options.into_iter().multi_cartesian_product() {
+                let mut it = combination.iter();
+                mut_enode.update_children(|id| **it.next().unwrap());
+                if let Some(id) = self.lookup(&mut mut_enode) {
+                    return Some(id);
+                }
+            }
+            None
+        })
     }
 
     /// Adds an enode to the [`EGraph`].
@@ -387,6 +415,35 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 }
             }
             log::trace!("  ...adding to {}", id);
+            let class = Box::new(EClass {
+                id,
+                nodes: vec![enode.clone()],
+                data: N::make(self, &enode),
+                parents: Default::default(),
+            });
+
+            // add this enode to the parent lists of its children
+            enode.for_each(|child| {
+                let tup = (enode.clone(), id);
+                self[child].parents.push(tup);
+            });
+
+            assert_eq!(self.classes.len(), usize::from(id));
+            self.classes.push(Some(class));
+            assert!(self.memo.insert(enode, id).is_none());
+
+            N::modify(self, id);
+            id
+        })
+    }
+
+    pub fn colored_add(&mut self, color: &ColorId, mut enode: L) -> Id {
+        self.colored_lookup(color, &mut enode).unwrap_or_else(|| {
+            // look for the node with the colored equivalence relation
+            let c = &self.colors[color.0];
+            let id = self.unionfind.make_set();
+
+            log::trace!("  ...colored ({}) adding to {}", color, id);
             let class = Box::new(EClass {
                 id,
                 nodes: vec![enode.clone()],
@@ -1113,7 +1170,7 @@ mod tests {
             rewrite!("rule6"; "(drop zero ?x)" => "?x"),
             rewrite!("rule7"; "(drop (succ ?x4) (cons ?y5 ?z))" => "(drop ?x4 ?z)"),
             rewrite!("rule8"; "(take ?x3 nil)" => "nil"),
-            rewrite!("rule9"; "(take zero ?x)" => "nil"),];
+            rewrite!("rule9"; "(take zero ?x)" => "nil"), ];
         // rules.extend(rewrite!("rule0"; "(leq ?__x0 ?__y1)" <=> "(or (= ?__x0 ?__y1) (less ?__x0 ?__y1))"));
         rules.extend(rewrite!("rule3"; "(append (cons ?x2 ?y) ?z)" <=> "(cons ?x2 (append ?y ?z))"));
         rules.extend(bad_rws.clone());
@@ -1148,7 +1205,7 @@ mod tests {
 
         egraph.rebuild();
         egraph.dot().to_dot("graph.dot");
-        assert_eq!(egraph.colored_find(color_z, nil), egraph.colored_find(color_z,ex1));
+        assert_eq!(egraph.colored_find(color_z, nil), egraph.colored_find(color_z, ex1));
         // assert_eq!(egraph.colored_find(color_s_p, consx), egraph.colored_find(color_s_p,ex1));
     }
 
@@ -1164,7 +1221,7 @@ mod tests {
         let mut rules = vec![
             rewrite!("rule2"; "(plus Z ?x)" => "?x"),
             rewrite!("rule5"; "(plus (succ ?x) ?y)" => "(succ (plus ?x ?y))"),
-            ];
+        ];
         let color_z = egraph.create_color();
         // let color_s_p = egraph.create_color();
         let x = egraph.add_expr(&"x".parse().unwrap());
@@ -1184,7 +1241,7 @@ mod tests {
 
         // TODO: add debug print for colors
 
-        assert_eq!(egraph.colored_find(color_z, init), egraph.colored_find(color_z,res));
-        assert_eq!(egraph.colored_find(color_succ, init), egraph.colored_find(color_succ,res));
+        assert_eq!(egraph.colored_find(color_z, init), egraph.colored_find(color_z, res));
+        assert_eq!(egraph.colored_find(color_succ, init), egraph.colored_find(color_succ, res));
     }
 }

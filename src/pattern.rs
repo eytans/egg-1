@@ -278,7 +278,6 @@ impl fmt::Display for SearchMatches {
         write!(f, "SearchMatches(class: {}, {})", self.eclass, self.substs.iter().map(|x| format!("{}", x)).join(", "))
     }
 }
-
 impl<L, A> Applier<L, A> for Pattern<L>
 where
     L: Language,
@@ -308,7 +307,11 @@ fn apply_pat<L: Language, A: Analysis<L>>(
                 .clone()
                 .map_children(|child| apply_pat(&pat[..usize::from(child) + 1], egraph, subst));
             trace!("adding: {:?}", n);
-            egraph.add(n)
+            if let Some(c) = subst.color {
+                egraph.colored_add(&c, n)
+            } else {
+                egraph.add(n)
+            }
         }
     };
 

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::fmt::{Display, Formatter, Debug};
 use std::marker::PhantomData;
 use itertools::Itertools;
+use log::warn;
 
 /// A rewrite that searches for the lefthand side and applies the righthand side.
 ///
@@ -369,9 +370,10 @@ pub trait Applier<L, N>: std::fmt::Display
                     .into_iter()
                     .filter_map(|id| {
                         let (to, did_something) =
-                            if !cfg!(feature = "colored") || subst.color.is_none() {
+                            if (!cfg!(feature = "colored")) || subst.color.is_none() {
                                 egraph.union(id, mat.eclass)
                             } else {
+                                warn!("Rewrite ({}) found colored match: {} -> {}", self.to_string(), id, mat.eclass);
                                 egraph.colored_union(*subst.color.as_ref().unwrap(), id, mat.eclass)
                             };
                         if did_something {
