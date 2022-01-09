@@ -4,7 +4,7 @@ use crate::util::JoinDisp;
 use std::collections::{HashSet, HashMap};
 use itertools::Itertools;
 use std::fmt::Formatter;
-use log::error;
+use log::{error, trace, warn};
 
 pub type ColorParents = smallvec::SmallVec<[ColorId; 3]>;
 
@@ -73,8 +73,8 @@ impl Color {
     /// `id1` Should be the id of "to" (after running find in black)
     /// `id2` Should be the id of "from" (after running find in black)
     pub fn black_union(&mut self, id1: Id, id2: Id) -> (Id, bool) {
-        let (to, _, changed) = self.union_impl(id1, id2);
-        self.update_union_map(to, id2);
+        let (to, from, changed) = self.union_impl(id1, id2);
+        self.update_union_map(to, from);
         (to, changed)
     }
 
@@ -192,6 +192,19 @@ impl Color {
 
     pub fn assumptions(&self) -> &Vec<ColorId> {
         &self.base_set
+    }
+
+    pub fn assert_black_ids<L, N>(&self, egraph: &EGraph<L, N>)
+        where L: Language, N: Analysis<L> {
+        // Check that black ids are actually black representatives
+        if cfg!(debug_assertions) {
+            for (_, set) in &self.union_map {
+                for id in set {
+                    trace!("checking {:?} is black rep", id);
+                    debug_assert!(egraph.find(*id) == *id);
+                }
+            }
+        }
     }
 }
 

@@ -1184,7 +1184,7 @@ mod tests {
         rules.extend(rewrite!("rule3"; "(append (cons ?x2 ?y) ?z)" <=> "(cons ?x2 (append ?y ?z))"));
         rules.extend(bad_rws.clone());
 
-        egraph = Runner::default().with_iter_limit(8).with_node_limit(400000).with_egraph(egraph.clone()).run(&rules).egraph;
+        egraph = Runner::default().with_iter_limit(8).with_node_limit(400000).with_egraph(egraph).run(&rules).egraph;
         info!("Done eq reduction");
         egraph.rebuild();
         assert_eq!(egraph.find(nil), egraph.find(ex0));
@@ -1197,22 +1197,16 @@ mod tests {
         egraph.colored_union(color_z, i, zero);
         // egraph.colored_union(color_s_p, i, succ_p_n);
         egraph.rebuild();
+        egraph = Runner::default().with_iter_limit(8).with_node_limit(400000).with_egraph(egraph).run(&rules).egraph;
 
-        for r in &bad_rws {
-            debug!("{}", r.name());
-            let out = r.search(&egraph);
-            debug!("{}", out.iter().sep_string("\n"));
-        }
 
-        egraph = Runner::default().with_iter_limit(8).with_node_limit(400000).with_egraph(egraph.clone()).run(&rules).egraph;
-
-        for r in &bad_rws {
-            debug!("{}", r.name());
-            let out = r.search(&egraph);
-            debug!("{}", out.iter().sep_string("\n"));
-        }
 
         egraph.rebuild();
+
+        for x in egraph.colors.iter() {
+            warn!("{}", x);
+            x.assert_black_ids(&egraph);
+        }
         egraph.dot().to_dot("graph.dot");
         assert_eq!(egraph.colored_find(color_z, nil), egraph.colored_find(color_z, ex1));
         // assert_eq!(egraph.colored_find(color_s_p, consx), egraph.colored_find(color_s_p,ex1));
