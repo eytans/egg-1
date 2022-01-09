@@ -4,7 +4,7 @@ use crate::util::JoinDisp;
 use std::collections::{HashSet, HashMap};
 use itertools::Itertools;
 use std::fmt::Formatter;
-use log::{error, trace, warn};
+use log::{error, info, trace, warn};
 
 pub type ColorParents = smallvec::SmallVec<[ColorId; 3]>;
 
@@ -40,16 +40,29 @@ impl Color {
         self.union_find.find(id)
     }
 
-    fn update_union_map(&mut self, to: Id, from: Id) {
+    /// Keep black ids up with current version of colored and black uf.
+    /// `id1` Should be the id of "to" (after running find in black)
+    /// `id2` Should be the id of "from" (after running find in black)
+    /// `to` Should be the id of "to" (after running find in color)
+    /// `from` Should be the id of "from" (after running find in color)
+    fn update_union_map(&mut self, id1: Id, id2: Id, to: Id, from: Id) {
+        // If to != from then the underlying assumption is that id1 != id2
         if to != from {
             let from_ids = self.union_map.remove(&from).unwrap_or_else(|| HashSet::singleton(from));
             let to_ids = self.union_map.entry(to).or_insert_with(|| HashSet::singleton(to));
             to_ids.retain(|id| !from_ids.contains(id));
             self.union_map.get_mut(&to).unwrap().remove(&from);
-            if self.union_map.get(&to).unwrap().len() == 1 {
-                debug_assert!(self.union_map.get(&to).unwrap().contains(&to));
-                self.union_map.remove(&to);
-            }
+        } else if id1 != id2 {
+            // We have to remove someone (because something was merged in black.
+            // But sometimes `from` and `to` are merged in the color.
+            // In this case, id2 might be equal to `to`, and in that case we should remove `id1`
+            // which we now know is different from `to` (meaning we are keeping the representative?).
+            let to_remove = if id2 == to { id1 } else { id2 };
+            self.union_map.entry(to).and_modify(|s| { s.remove(&to_remove); });
+        }
+        if self.union_map.get(&to).map_or(false, |s| s.len() == 1) {
+            debug_assert!(self.union_map.get(&to).unwrap().contains(&to), "We should always have the representative in the map");
+            self.union_map.remove(&to);
         }
     }
 
@@ -74,7 +87,7 @@ impl Color {
     /// `id2` Should be the id of "from" (after running find in black)
     pub fn black_union(&mut self, id1: Id, id2: Id) -> (Id, bool) {
         let (to, from, changed) = self.union_impl(id1, id2);
-        self.update_union_map(to, from);
+        self.update_union_map(id1, id2, to, from);
         (to, changed)
     }
 
@@ -83,7 +96,7 @@ impl Color {
         if changed {
             self.dirty_unions.push(to);
             let from_ids = self.union_map.remove(&from).unwrap_or_else(|| HashSet::singleton(from));
-            self.union_map.entry(to).or_insert_with(|| HashSet::singleton(to) ).extend(from_ids);
+            self.union_map.entry(to).or_insert_with(|| HashSet::singleton(to)).extend(from_ids);
         }
         (to, changed)
     }

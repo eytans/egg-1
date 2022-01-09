@@ -534,8 +534,9 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         let (to, from) = self.unionfind.union(id1, id2);
         let changed = to != from;
         if cfg!(feature = "colored") {
+            // warn!("union: {} {}", to, from);
             for color in self.colors.iter_mut() {
-                color.black_union(id1, id2);
+                color.black_union(to, from);
             }
         }
         debug_assert_eq!(to, self.find(id1));
@@ -1079,12 +1080,12 @@ mod tests {
         egraph.colored_union(c, ex1, ex4);
         egraph.colored_union(c, ex5, ex6);
         let (to, _) = egraph.colored_union(c, ex1, ex5);
-        assert_eq!(egraph.colors[c.0].black_ids(to).map(|x| x.len()), Some(5));
+        assert_eq!(egraph.colors[c.0].black_ids(to).map(|x| x.len()), Some(6));
 
         egraph.union(ex5, ex6);
         egraph.union(ex1, ex5);
         println!("{:#?}", egraph.colors[c.0].black_ids(to));
-        assert_eq!(egraph.colors[c.0].black_ids(to).map(|x| x.len()), Some(3));
+        assert_eq!(egraph.colors[c.0].black_ids(to).map(|x| x.len()), Some(4));
     }
 
     #[test]
@@ -1106,13 +1107,16 @@ mod tests {
         let c3 = egraph.create_combined_color(vec![c1, c2]);
 
         egraph.colored_union(c1, ex1, ex2);
+        assert_eq!(egraph.colored_find(c3, ex1), egraph.colored_find(c3, ex2));
         egraph.colored_union(c1, ex3, ex4);
         egraph.colored_union(c2, ex1, ex3);
+        assert_eq!(egraph.colored_find(c3, ex1), egraph.colored_find(c3, ex3));
         egraph.colored_union(c2, ex5, ex6);
-        let (to, _) = egraph.colored_union(c2, ex1, ex5);
         assert_eq!(egraph.colored_find(c3, ex5), egraph.colored_find(c3, ex6));
         assert_eq!(egraph.colored_find(c3, ex3), egraph.colored_find(c3, ex4));
-        assert_eq!(egraph.colors[c3.0].black_ids(to).map(|x| x.len()), Some(5));
+        let (to, _) = egraph.colored_union(c2, ex1, ex5);
+        egraph.rebuild();
+        assert_eq!(egraph.colors[c3.0].black_ids(to).map(|x| x.len()), Some(6));
     }
 
     #[test]
