@@ -264,7 +264,7 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
         if substs.is_empty() {
             None
         } else {
-            Some(SearchMatches { eclass, substs })
+            Some(SearchMatches { eclass, substs: substs.into_iter().unique().collect_vec() })
         }
     }
 

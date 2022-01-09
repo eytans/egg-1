@@ -373,7 +373,7 @@ pub trait Applier<L, N>: std::fmt::Display
                             if (!cfg!(feature = "colored")) || subst.color.is_none() {
                                 egraph.union(id, mat.eclass)
                             } else {
-                                warn!("Rewrite ({}) found colored match: {} -> {}", self.to_string(), id, mat.eclass);
+                                warn!("Rewrite ({}) found colored match: {} -> {} ({:?})", self.to_string(), id, mat.eclass, subst);
                                 egraph.colored_union(*subst.color.as_ref().unwrap(), id, mat.eclass)
                             };
                         if did_something {
