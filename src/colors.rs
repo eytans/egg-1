@@ -1,3 +1,4 @@
+use std::cmp::{max, min};
 pub use crate::{Id, EGraph, Language, Analysis, ColorId};
 use crate::{Singleton, UnionFind};
 use crate::util::JoinDisp;
@@ -45,24 +46,26 @@ impl Color {
     /// `id2` Should be the id of "from" (after running find in black)
     /// `to` Should be the id of "to" (after running find in color)
     /// `from` Should be the id of "from" (after running find in color)
+    /// `switched` if id1 is from and id2 is to
     fn update_union_map(&mut self, id1: Id, id2: Id, to: Id, from: Id) {
         // If to != from then the underlying assumption is that id1 != id2
+        let rep = min(to, from);
         if to != from {
-            let from_ids = self.union_map.remove(&from).unwrap_or_else(|| HashSet::singleton(from));
-            let to_ids = self.union_map.entry(to).or_insert_with(|| HashSet::singleton(to));
+            let non_rep = max(to, from);
+            let from_ids = self.union_map.remove(&non_rep).unwrap_or_else(|| HashSet::singleton(non_rep));
+            let to_ids = self.union_map.entry(rep).or_insert_with(|| HashSet::singleton(rep));
             to_ids.retain(|id| !from_ids.contains(id));
-            self.union_map.get_mut(&to).unwrap().remove(&from);
+            self.union_map.entry(rep).and_modify(|s| { s.remove(&max(id1, id2)); });
         } else if id1 != id2 {
             // We have to remove someone (because something was merged in black.
             // But sometimes `from` and `to` are merged in the color.
-            // In this case, id2 might be equal to `to`, and in that case we should remove `id1`
-            // which we now know is different from `to` (meaning we are keeping the representative?).
-            let to_remove = if id2 == to { id1 } else { id2 };
-            self.union_map.entry(to).and_modify(|s| { s.remove(&to_remove); });
+            // In this case, id2 might be equal to `to`, and in that case we should change
+            // the equality class representative to be id1 (to reflect black).
+            self.union_map.entry(rep).and_modify(|s| { s.remove(&max(id1, id2)); });
         }
-        if self.union_map.get(&to).map_or(false, |s| s.len() == 1) {
-            debug_assert!(self.union_map.get(&to).unwrap().contains(&to), "We should always have the representative in the map");
-            self.union_map.remove(&to);
+        if self.union_map.get(&rep).map_or(false, |s| s.len() == 1) {
+            debug_assert!(self.union_map.get(&rep).unwrap().contains(&rep), "We should always have the representative in the map");
+            self.union_map.remove(&rep);
         }
     }
 
@@ -86,8 +89,10 @@ impl Color {
     /// `id1` Should be the id of "to" (after running find in black)
     /// `id2` Should be the id of "from" (after running find in black)
     pub fn black_union(&mut self, id1: Id, id2: Id) -> (Id, bool) {
-        let (to, from, changed) = self.union_impl(id1, id2);
-        self.update_union_map(id1, id2, to, from);
+        let orig_to = self.find(id1);
+        let orig_from = self.find(id2);
+        let (mut to, mut from, changed) = self.union_impl(id1, id2);
+        self.update_union_map(id1, id2, orig_to, orig_from);
         (to, changed)
     }
 
@@ -102,14 +107,15 @@ impl Color {
     }
 
     pub fn cong_closure<L: Language, N: Analysis<L>>(&mut self, egraph: &EGraph<L, N>, black_merged: &[(Id, Id)]) {
-        for (id1, id2) in black_merged.iter() {
-            let (to, changed) = self.black_union(*id1, *id2);
-            debug_assert_eq!(to, self.union_find.find(*id1));
-            debug_assert_eq!(to, self.union_find.find(*id2));
-            if changed {
-                self.dirty_unions.push(to);
-            }
-        }
+        self.assert_black_ids(egraph);
+        // for (id1, id2) in black_merged.iter() {
+        //     let (to, changed) = self.black_union(*id1, *id2);
+        //     debug_assert_eq!(to, self.union_find.find(*id1));
+        //     debug_assert_eq!(to, self.union_find.find(*id2));
+        //     if changed {
+        //         self.dirty_unions.push(to);
+        //     }
+        // }
 
         let mut to_union = vec![];
 
@@ -164,6 +170,7 @@ impl Color {
 
         assert!(self.dirty_unions.is_empty());
         assert!(to_union.is_empty());
+        self.assert_black_ids(egraph);
     }
 
     pub fn black_ids(&self, id: Id) -> Option<&HashSet<Id>> {
@@ -188,8 +195,10 @@ impl Color {
             res.base_set.push(new_id);
         }
         res.base_set = res.base_set.iter().sorted().dedup().copied().collect_vec();
-        for (k, v) in res.union_map.iter() {
-            debug_assert!(!v.contains(k));
+        if cfg!(debug_assertions) {
+            for (k, v) in res.union_map.iter() {
+                debug_assert!(!v.contains(k));
+            }
         }
         res
     }
@@ -214,7 +223,7 @@ impl Color {
             for (_, set) in &self.union_map {
                 for id in set {
                     trace!("checking {:?} is black rep", id);
-                    debug_assert!(egraph.find(*id) == *id);
+                    debug_assert!(egraph.find(*id) == *id, "black id {:?} is not black rep {:?}", id, egraph.find(*id));
                 }
             }
         }

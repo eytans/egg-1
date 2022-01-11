@@ -1022,8 +1022,14 @@ mod tests {
         let fy = egraph.add_expr(&RecExpr::from_str("(f y)").unwrap());
 
         let color = egraph.create_color();
+        let c = &egraph.colors()[color.0];
+        c.assert_black_ids(&egraph);
         egraph.colored_union(color, w, x);
+        let c = &egraph.colors()[color.0];
+        c.assert_black_ids(&egraph);
         egraph.union(w, y);
+        let c = &egraph.colors()[color.0];
+        c.assert_black_ids(&egraph);
         egraph.rebuild();
 
         assert_eq!(egraph.colored_find(color, fx), egraph.colored_find(color, fy));
