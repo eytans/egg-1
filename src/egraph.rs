@@ -1175,10 +1175,10 @@ mod tests {
 
         let nil = egraph.add_expr(&"nil".parse().unwrap());
         let consx = egraph.add_expr(&"(cons x nil)".parse().unwrap());
-        // let consxy = egraph.add_expr(&"(cons y (cons x nil))".parse().unwrap());
+        let consxy = egraph.add_expr(&"(cons y (cons x nil))".parse().unwrap());
         let ex0 = egraph.add_expr(&"(append (take i nil) (drop i nil))".parse().unwrap());
         let ex1 = egraph.add_expr(&"(append (take i (cons x nil)) (drop i (cons x nil)))".parse().unwrap());
-        // let ex2 = egraph.add_expr(&"(append (take i (cons y (cons x nil))) (drop i (cons y (cons x nil))))".parse().unwrap());
+        let ex2 = egraph.add_expr(&"(append (take i (cons y (cons x nil))) (drop i (cons y (cons x nil))))".parse().unwrap());
         info!("Starting first rebuild");
         egraph.rebuild();
         let bad_rws = rewrite!("rule10"; "(take (succ ?x7) (cons ?y8 ?z))" <=> "(cons ?y8 (take ?x7 ?z))");
@@ -1200,26 +1200,39 @@ mod tests {
         assert_eq!(egraph.find(nil), egraph.find(ex0));
         assert_ne!(egraph.find(consx), egraph.find(ex1));
         let color_z = egraph.create_color();
-        // let color_s_p = egraph.create_color();
+        let color_s_p = egraph.create_color();
+        let color_s_z = egraph.create_color();
         let i = egraph.add_expr(&"i".parse().unwrap());
         let zero = egraph.add_expr(&"zero".parse().unwrap());
-        // let succ_p_n = egraph.add_expr(&"(succ param_n_1)".parse().unwrap());
+        let succ_p_n = egraph.add_expr(&"(succ param_n_1)".parse().unwrap());
+        let succ_z = egraph.add_expr(&"(succ zero)".parse().unwrap());
         egraph.colored_union(color_z, i, zero);
-        // egraph.colored_union(color_s_p, i, succ_p_n);
+        egraph.colored_union(color_s_p, i, succ_p_n);
+        egraph.colored_union(color_s_z, i, succ_z);
         egraph.rebuild();
         egraph = Runner::default().with_iter_limit(8).with_node_limit(400000).with_egraph(egraph).run(&rules).egraph;
-
-
-
         egraph.rebuild();
 
         for x in egraph.colors.iter() {
             warn!("{}", x);
             x.assert_black_ids(&egraph);
         }
+
         egraph.dot().to_dot("graph.dot");
-        assert_eq!(egraph.colored_find(color_z, nil), egraph.colored_find(color_z, ex1));
-        // assert_eq!(egraph.colored_find(color_s_p, consx), egraph.colored_find(color_s_p,ex1));
+
+        let take_i_nil = egraph.add_expr(&"(take i nil)".parse().unwrap());
+        warn!("take i nil - {} - {}", take_i_nil, egraph.colored_find(color_z, take_i_nil));
+        let take_i_consx = egraph.add_expr(&"(take i (cons x nil))".parse().unwrap());
+        warn!("take i (cons x nil) - {} - {}", take_i_consx, egraph.colored_find(color_z, take_i_consx));
+        let drop_i_nil = egraph.add_expr(&"(drop i nil)".parse().unwrap());
+        warn!("drop i nil - {} - {}", drop_i_nil, egraph.colored_find(color_z, drop_i_nil));
+        let drop_i_consx = egraph.add_expr(&"(drop i (cons x nil))".parse().unwrap());
+        warn!("drop i (cons x nil) - {} - {}", drop_i_consx, egraph.colored_find(color_z, drop_i_consx));
+
+        assert_eq!(egraph.colored_find(color_z, consx), egraph.colored_find(color_z, ex1));
+        assert_eq!(egraph.colored_find(color_z, consxy), egraph.colored_find(color_z, ex2));
+        assert_eq!(egraph.colored_find(color_s_p, consx), egraph.colored_find(color_s_p,ex1));
+        assert_eq!(egraph.colored_find(color_s_z, consxy), egraph.colored_find(color_s_z,ex2));
     }
 
     #[test]
@@ -1251,8 +1264,6 @@ mod tests {
         egraph = Runner::default().with_iter_limit(2).with_node_limit(400000).with_egraph(egraph.clone()).run(&rules).egraph;
         egraph.rebuild();
         egraph.dot().to_dot("graph.dot");
-
-        // TODO: add debug print for colors
 
         assert_eq!(egraph.colored_find(color_z, init), egraph.colored_find(color_z, res));
         assert_eq!(egraph.colored_find(color_succ, init), egraph.colored_find(color_succ, res));
