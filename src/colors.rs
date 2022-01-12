@@ -195,11 +195,6 @@ impl Color {
             res.base_set.push(new_id);
         }
         res.base_set = res.base_set.iter().sorted().dedup().copied().collect_vec();
-        if cfg!(debug_assertions) {
-            for (k, v) in res.union_map.iter() {
-                debug_assert!(!v.contains(k));
-            }
-        }
         res
     }
 

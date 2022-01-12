@@ -115,7 +115,7 @@ impl fmt::Debug for Subst {
             }
         }
         if cfg!(feature = "colored") && self.color.is_none() {
-            write!(f, " color: {}", self.color.unwrap().to_string());
+            write!(f, " color: {}", self.color.map_or("None".to_string(), |x| x.to_string()));
         }
         write!(f, "}}")
     }
