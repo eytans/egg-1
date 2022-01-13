@@ -38,21 +38,12 @@ fn for_each_matching_node<L, D>(eclass: &EClass<L, D>, node: &L, mut f: impl FnM
     where
         L: Language,
 {
-    #[allow(clippy::mem_discriminant_non_enum)]
     if eclass.nodes.len() < 50 {
         eclass.nodes.iter().filter(|n| node.matches(n)).for_each(f)
     } else {
         debug_assert!(node.children().iter().all(|&id| id == Id::from(0)));
         debug_assert!(eclass.nodes.windows(2).all(|w| w[0] < w[1]));
         let mut start = eclass.nodes.binary_search(node).unwrap_or_else(|i| i);
-        let template = node;
-        while start > 0 {
-            if template.matches(&eclass.nodes[start - 1]) {
-                start -= 1;
-            } else {
-                break;
-            }
-        }
         let matching = eclass.nodes[..start].iter().rev()
             .take_while(|&n| node.matches(n))
             .chain(eclass.nodes[start..].iter().take_while(|&n| node.matches(n)));
