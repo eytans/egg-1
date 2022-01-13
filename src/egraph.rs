@@ -932,6 +932,11 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     pub fn colors(&self) -> &[Color] {
         &self.colors
     }
+
+    pub fn get_color(&self, color: ColorId) -> Option<&Color> {
+        // TODO: when colors are deletable, check if color exists
+        Some(&self.colors[usize::from(color)])
+    }
 }
 
 struct EGraphDump<'a, L: Language, N: Analysis<L>>(&'a EGraph<L, N>);

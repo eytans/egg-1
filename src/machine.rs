@@ -44,20 +44,18 @@ fn for_each_matching_node<L, D>(eclass: &EClass<L, D>, node: &L, mut f: impl FnM
     } else {
         debug_assert!(node.children().iter().all(|&id| id == Id::from(0)));
         debug_assert!(eclass.nodes.windows(2).all(|w| w[0] < w[1]));
-        // TODO: fix bug here, add API for smarter sort\search and left steps
         let mut start = eclass.nodes.binary_search(node).unwrap_or_else(|i| i);
-        let discrim = std::mem::discriminant(node);
+        let template = node;
         while start > 0 {
-            if std::mem::discriminant(&eclass.nodes[start - 1]) == discrim {
+            if template.matches(&eclass.nodes[start - 1]) {
                 start -= 1;
             } else {
                 break;
             }
         }
-        let matching = eclass.nodes[start..]
-            .iter()
-            .take_while(|&n| std::mem::discriminant(n) == discrim)
-            .filter(|n| node.matches(n));
+        let matching = eclass.nodes[..start].iter().rev()
+            .take_while(|&n| node.matches(n))
+            .chain(eclass.nodes[start..].iter().take_while(|&n| node.matches(n)));
         debug_assert_eq!(
             matching.clone().count(),
             eclass.nodes.iter().filter(|n| node.matches(n)).count(),

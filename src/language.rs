@@ -1,6 +1,8 @@
+use std::any::Any;
 use std::convert::TryFrom;
 use std::fmt::{self, Debug, Display};
 use std::hash::Hash;
+use std::mem::Discriminant;
 
 use crate::{EGraph, Id, Symbol};
 
