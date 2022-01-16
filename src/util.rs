@@ -43,7 +43,7 @@ static STRINGS: Lazy<Mutex<IndexSet<&'static str>>> = Lazy::new(Default::default
 /// [`Symbol`]: struct.Symbol.html
 /// [`Language`]: trait.Language.html
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Symbol(u32);
+pub struct Symbol(pub(crate) u32);
 
 impl Symbol {
     /// Get the string that this symbol represents

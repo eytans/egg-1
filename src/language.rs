@@ -2,11 +2,13 @@ use std::any::Any;
 use std::convert::TryFrom;
 use std::fmt::{self, Debug, Display};
 use std::hash::Hash;
-use std::mem::Discriminant;
+use log::warn;
 
 use crate::{EGraph, Id, Symbol};
 
 use symbolic_expressions::Sexp;
+
+pub type OpId = u32;
 
 /// Trait that defines a Language whose terms will be in the [`EGraph`].
 ///
@@ -28,15 +30,21 @@ use symbolic_expressions::Sexp;
 /// [`Display`]: https://doc.rust-lang.org/std/fmt/trait.Display.html
 #[allow(clippy::len_without_is_empty)]
 pub trait Language: Debug + Clone + Eq + Ord + Hash {
-    /// Returns true if this enode matches another enode.
-    /// This should only consider the operator, not the children `Id`s.
-    fn matches(&self, other: &Self) -> bool;
+    /// Return a number representing the op.
+    #[inline(always)]
+    fn op_id(&self) -> OpId;
 
     /// Return a slice of the children `Id`s.
     fn children(&self) -> &[Id];
 
     /// Return a mutable slice of the children `Id`s.
     fn children_mut(&mut self) -> &mut [Id];
+
+    /// Returns true if this enode matches another enode.
+    /// This should only consider the operator, not the children `Id`s.
+    fn matches(&self, other: &Self) -> bool {
+        self.op_id() == other.op_id() && self.len() == other.len()
+    }
 
     /// Runs a given function on each child `Id`.
     fn for_each<F: FnMut(Id)>(&self, f: F) {
@@ -548,8 +556,9 @@ impl SymbolLang {
 }
 
 impl Language for SymbolLang {
-    fn matches(&self, other: &Self) -> bool {
-        self.op == other.op && self.len() == other.len()
+    #[inline(always)]
+    fn op_id(&self) -> OpId {
+        self.op.0
     }
 
     fn children(&self) -> &[Id] {
@@ -562,6 +571,10 @@ impl Language for SymbolLang {
 
     fn display_op(&self) -> &dyn Display {
         &self.op
+    }
+
+    fn matches(&self, other: &Self) -> bool {
+        self.op == other.op && self.children.len() == other.children.len()
     }
 
     fn from_op_str(op_str: &str, children: Vec<Id>) -> Result<Self, String> {

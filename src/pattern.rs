@@ -2,7 +2,7 @@ use log::*;
 use std::convert::TryFrom;
 use std::fmt;
 
-use crate::{machine, Analysis, Applier, EGraph, Id, Language, RecExpr, Searcher, Subst, Var};
+use crate::{machine, Analysis, Applier, EGraph, Id, Language, RecExpr, Searcher, Subst, Var, OpId};
 use std::fmt::Formatter;
 use itertools::Itertools;
 
@@ -131,7 +131,7 @@ pub enum ENodeOrVar<L> {
 }
 
 impl<L: Language> Language for ENodeOrVar<L> {
-    fn matches(&self, _other: &Self) -> bool {
+    fn op_id(&self) -> OpId {
         panic!("Should never call this")
     }
 
@@ -146,6 +146,17 @@ impl<L: Language> Language for ENodeOrVar<L> {
         match self {
             ENodeOrVar::ENode(e) => e.children_mut(),
             ENodeOrVar::Var(_) => &mut [],
+        }
+    }
+
+    fn matches(&self, _other: &Self) -> bool {
+        panic!("Should never call this")
+    }
+
+    fn display_op(&self) -> &dyn std::fmt::Display {
+        match self {
+            ENodeOrVar::ENode(e) => e.display_op(),
+            ENodeOrVar::Var(v) => v,
         }
     }
 
@@ -164,13 +175,6 @@ impl<L: Language> Language for ENodeOrVar<L> {
             }
         } else {
             L::from_op_str(op_str, children).map(ENodeOrVar::ENode)
-        }
-    }
-
-    fn display_op(&self) -> &dyn std::fmt::Display {
-        match self {
-            ENodeOrVar::ENode(e) => e.display_op(),
-            ENodeOrVar::Var(v) => v,
         }
     }
 }
@@ -238,8 +242,7 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
     fn search(&self, egraph: &EGraph<L, A>) -> Vec<SearchMatches> {
         match self.ast.as_ref().last().unwrap() {
             ENodeOrVar::ENode(e) => {
-                #[allow(clippy::mem_discriminant_non_enum)]
-                let key = std::mem::discriminant(e);
+                let key = e.op_id();
                 match egraph.classes_by_op.get(&key) {
                     None => vec![],
                     Some(ids) => ids

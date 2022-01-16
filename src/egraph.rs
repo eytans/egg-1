@@ -8,7 +8,7 @@ use std::fmt::Alignment::Left;
 use indexmap::IndexMap;
 use log::*;
 
-use crate::{Analysis, AstSize, Dot, EClass, Extractor, Id, Language, Pattern, RecExpr, Searcher, UnionFind, Runner, Subst, Singleton};
+use crate::{Analysis, AstSize, Dot, EClass, Extractor, Id, Language, Pattern, RecExpr, Searcher, UnionFind, Runner, Subst, Singleton, OpId};
 
 pub use crate::colors::{Color, ColorParents, ColorId};
 use itertools::{Either, iproduct, Itertools};
@@ -140,7 +140,7 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     classes: SparseVec<EClass<L, N::Data>>,
     dirty_unions: Vec<Id>,
     repairs_since_rebuild: usize,
-    pub(crate) classes_by_op: IndexMap<std::mem::Discriminant<L>, indexmap::IndexSet<Id>>,
+    pub(crate) classes_by_op: IndexMap<OpId, indexmap::IndexSet<Id>>,
 
     #[cfg(feature = "colored")]
     /// To be used as a mechanism of case splitting.
@@ -623,9 +623,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             // TODO this is the slow version, could take advantage of sortedness
             // maybe
             let mut add = |n: &L| {
-                #[allow(clippy::mem_discriminant_non_enum)]
                     classes_by_op
-                    .entry(std::mem::discriminant(&n))
+                    .entry(n.op_id())
                     .or_default()
                     .insert(class.id)
             };
