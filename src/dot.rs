@@ -175,7 +175,7 @@ where
         for class in self.egraph.classes() {
             writeln!(f, "  subgraph cluster_{} {{", class.id)?;
             writeln!(f, "    style=dotted")?;
-            for (i, node) in class.iter().enumerate() {
+            for (i, (node, colors)) in class.iter().enumerate() {
                 writeln!(
                     f,
                     "    {}.{}[label = \"{} : {}\"]",
@@ -189,7 +189,7 @@ where
         }
 
         for class in self.egraph.classes() {
-            for (i_in_class, node) in class.iter().enumerate() {
+            for (i_in_class, (node, colors)) in class.iter().enumerate() {
                 for (arg_i, child) in node.children().iter().enumerate() {
                     // write the edge to the child, but clip it to the eclass with lhead
                     let (anchor, label) = edge(arg_i, node.len());

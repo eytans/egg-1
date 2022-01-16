@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 use std::iter::ExactSizeIterator;
+use bit_vec::BitVec;
 
 use crate::{Id, Language};
 
@@ -9,8 +10,9 @@ use crate::{Id, Language};
 pub struct EClass<L, D> {
     /// This eclass's id.
     pub id: Id,
-    /// The equivalent enodes in this equivalence class.
-    pub nodes: Vec<L>,
+    /// The equivalent enodes in this equivalence class with their associated colors.
+    /// No color set means it is a black edge (which will never be removed).
+    pub nodes: Vec<(L, BitVec)>,
     /// The analysis data associated with this eclass.
     pub data: D,
     pub(crate) parents: Vec<(L, Id)>,
@@ -28,7 +30,7 @@ impl<L, D> EClass<L, D> {
     }
 
     /// Iterates over the enodes in this eclass.
-    pub fn iter(&self) -> impl ExactSizeIterator<Item = &L> {
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = &(L, BitVec)> {
         self.nodes.iter()
     }
 }
@@ -36,7 +38,7 @@ impl<L, D> EClass<L, D> {
 impl<L: Language, D> EClass<L, D> {
     /// Iterates over the childless enodes in this eclass.
     pub fn leaves(&self) -> impl Iterator<Item = &L> {
-        self.nodes.iter().filter(|&n| n.is_leaf())
+        self.nodes.iter().map(|(n, cs)| n).filter(|n| n.is_leaf())
     }
 
     /// Asserts that the childless enodes in this eclass are unique.

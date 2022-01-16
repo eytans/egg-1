@@ -4,6 +4,7 @@ use std::{
     fmt::{self, Debug},
 };
 use std::fmt::Alignment::Left;
+use bit_vec::BitVec;
 
 use indexmap::IndexMap;
 use log::*;
@@ -155,6 +156,7 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     // colored_union_ids: HashMap<Id, Vec<ColorId>>,
 }
 
+const MAX_COLORS: usize = 1000;
 
 type SparseVec<T> = Vec<Option<Box<T>>>;
 
@@ -419,7 +421,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             log::trace!("  ...adding to {}", id);
             let class = Box::new(EClass {
                 id,
-                nodes: vec![enode.clone()],
+                nodes: vec![(enode.clone(), BitVec::with_capacity(MAX_COLORS))],
                 data: N::make(self, &enode),
                 parents: Default::default(),
             });
@@ -452,9 +454,12 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             }
 
             log::trace!("  ...colored ({}) adding to {}", color, id);
+            let mut colors = BitVec::with_capacity(MAX_COLORS);
+            colors.grow(MAX_COLORS, false);
+            colors.set(color.0, true);
             let class = Box::new(EClass {
                 id,
-                nodes: vec![enode.clone()],
+                nodes: vec![(enode.clone(), colors)],
                 data: N::make(self, &enode),
                 parents: Default::default(),
             });
@@ -614,7 +619,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             class
                 .nodes
                 .iter_mut()
-                .for_each(|n| n.update_children(|id| uf.find(id)));
+                .for_each(|(n, cs)| n.update_children(|id| uf.find(id)));
             class.nodes.sort_unstable();
             class.nodes.dedup();
 
@@ -631,16 +636,27 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
             // we can go through the ops in order to dedup them, becaue we
             // just sorted them
-            let mut nodes = class.nodes.iter();
-            if let Some(mut prev) = nodes.next() {
-                add(prev);
-                for n in nodes {
-                    if !prev.matches(n) {
+            if class.nodes.len() > 0 {
+                let (first, colors) = &class.nodes[0];
+                let mut op_id = first.op_id();
+                add(&first);
+                for (n, colors) in &class.nodes[1..] {
+                    if op_id != n.op_id() {
                         add(n);
-                        prev = n;
+                        op_id = n.op_id();
                     }
                 }
             }
+            // let mut nodes = class.nodes.iter();
+            // if let Some(mut prev) = nodes.next() {
+            //     add(prev);
+            //     for n in nodes {
+            //         if !prev.matches(n) {
+            //             add(n);
+            //             prev = n;
+            //         }
+            //     }
+            // }
         }
 
         #[cfg(debug_assertions)]
@@ -678,7 +694,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             }
         }
 
-        for (n, e) in test_memo {
+        for ((n, cs), e) in test_memo {
             assert_eq!(e, self.find(e));
             assert_eq!(
                 Some(e),

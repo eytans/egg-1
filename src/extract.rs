@@ -257,7 +257,7 @@ where
     fn make_pass(&mut self, eclass: &EClass<L, N::Data>) -> Option<(CF::Cost, L)> {
         let (cost, node) = eclass
             .iter()
-            .map(|n| (self.node_total_cost(n), n))
+            .map(|(n, cs)| (self.node_total_cost(n), n))
             .min_by(|a, b| cmp(&a.0, &b.0))
             .unwrap_or_else(|| panic!("Can't extract, eclass is empty: {:#?}", eclass));
         cost.map(|c| (c, node.clone()))

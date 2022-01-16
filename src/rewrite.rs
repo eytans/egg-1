@@ -729,7 +729,7 @@ mod tests {
         let root = egraph.add_expr(&start);
 
         fn get(egraph: &EGraph, id: Id) -> Symbol {
-            egraph[id].nodes[0].op
+            egraph[id].nodes[0].0.op
         }
 
         #[derive(Debug)]

@@ -39,17 +39,17 @@ fn for_each_matching_node<L, D>(eclass: &EClass<L, D>, node: &L, mut f: impl FnM
         L: Language,
 {
     if eclass.nodes.len() < 50 {
-        eclass.nodes.iter().filter(|n| node.matches(n)).for_each(f)
+        eclass.nodes.iter().map(|(n, _)| n).filter(|n| node.matches(n)).for_each(f)
     } else {
         debug_assert!(node.children().iter().all(|&id| id == Id::from(0)));
-        debug_assert!(eclass.nodes.windows(2).all(|w| w[0] < w[1]));
-        let mut start = eclass.nodes.binary_search(node).unwrap_or_else(|i| i);
+        debug_assert!(eclass.nodes.windows(2).all(|w| w[0].0 < w[1].0));
+        let mut start = eclass.nodes.binary_search_by_key(&node, |(n, cs)| n).unwrap_or_else(|i| i);
         let matching = eclass.nodes[..start].iter().rev()
-            .take_while(|&n| node.matches(n))
-            .chain(eclass.nodes[start..].iter().take_while(|&n| node.matches(n)));
+            .map(|(n, _)| n).take_while(|n| node.matches(n))
+            .chain(eclass.nodes[start..].iter().map(|(n, _)| n).take_while(|n| node.matches(n)));
         debug_assert_eq!(
             matching.clone().count(),
-            eclass.nodes.iter().filter(|n| node.matches(n)).count(),
+            eclass.nodes.iter().filter(|(n, cs)| node.matches(n)).count(),
             "matching node {:?}\nstart={}\n{:?} != {:?}\nnodes: {:?}",
             node,
             start,
@@ -57,7 +57,7 @@ fn for_each_matching_node<L, D>(eclass: &EClass<L, D>, node: &L, mut f: impl FnM
             eclass
                 .nodes
                 .iter()
-                .filter(|n| node.matches(n))
+                .filter(|(n, cs)| node.matches(n))
                 .collect::<indexmap::IndexSet<_>>(),
             eclass.nodes
         );
