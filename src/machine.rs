@@ -1,4 +1,4 @@
-use crate::{Analysis, EClass, EGraph, ENodeOrVar, Id, Language, PatternAst, Subst, Var};
+use crate::{Analysis, EClass, EGraph, ENodeOrVar, Id, Language, PatternAst, SparseNodeColors, Subst, Var};
 use std::cmp::Ordering;
 use log::warn;
 use smallvec::SmallVec;
@@ -34,19 +34,33 @@ enum Instruction<L> {
 }
 
 #[inline(always)]
-fn for_each_matching_node<L, D>(eclass: &EClass<L, D>, node: &L, mut f: impl FnMut(&L))
+fn for_each_matching_node<L, D>(eclass: &EClass<L, D>,
+                                node: &L,
+                                color: Option<ColorId>,
+                                mut f: impl FnMut(&L))
     where
         L: Language,
 {
+    let filterer: Box<dyn Fn(&(L, SparseNodeColors)) -> bool> =
+        if let Some(color) = color {
+            Box::new(move |(n, cs)| {
+                let c = color;
+                node.matches(n) && (cs.is_empty() || cs.contains(&c))
+            })
+        } else {
+            Box::new(|(n, cs)| {
+                node.matches(n) && cs.is_empty()
+            })
+        };
     if eclass.nodes.len() < 50 {
-        eclass.nodes.iter().map(|(n, _)| n).filter(|n| node.matches(n)).for_each(f)
+        eclass.nodes.iter().filter(|x| filterer(x)).map(|(n, cs)| n).for_each(f)
     } else {
         debug_assert!(node.children().iter().all(|&id| id == Id::from(0)));
         debug_assert!(eclass.nodes.windows(2).all(|w| w[0].0 < w[1].0));
         let mut start = eclass.nodes.binary_search_by_key(&node, |(n, cs)| n).unwrap_or_else(|i| i);
         let matching = eclass.nodes[..start].iter().rev()
-            .map(|(n, _)| n).take_while(|n| node.matches(n))
-            .chain(eclass.nodes[start..].iter().map(|(n, _)| n).take_while(|n| node.matches(n)));
+            .take_while(|x| filterer(x)).map(|(n, _)| n)
+            .chain(eclass.nodes[start..].iter().take_while(|x| filterer(x)).map(|(n, _)| n));
         debug_assert_eq!(
             matching.clone().count(),
             eclass.nodes.iter().filter(|(n, cs)| node.matches(n)).count(),
@@ -86,7 +100,8 @@ impl Machine {
             match instruction {
                 Instruction::Bind { i, out, node } => {
                     let remaining_instructions = instructions.as_slice();
-                    for_each_matching_node(&egraph[self.reg(*i)], node, |matched| {
+                    for_each_matching_node(&egraph[self.reg(*i)], node, None,
+                                           |matched| {
                         self.reg.truncate(out.0 as usize);
                         self.reg.extend_from_slice(matched.children());
                         self.run(egraph, remaining_instructions, subst, yield_fn)
@@ -119,8 +134,10 @@ impl Machine {
             match instruction {
                 Instruction::Bind { i, out, node } => {
                     let remaining_instructions = instructions.as_slice();
-                    let mut run_matches = |machine: &mut Machine, eclass: &EClass<L, N::Data>| {
-                        for_each_matching_node(eclass, node, |matched| {
+                    let mut run_matches = |machine: &mut Machine,
+                                           color: Option<ColorId>,
+                                           eclass: &EClass<L, N::Data>| {
+                        for_each_matching_node(eclass, node, color, |matched| {
                             machine.reg.truncate(out.0 as usize);
                             machine.reg.extend_from_slice(matched.children());
                             machine.run_colored(egraph, remaining_instructions, subst, yield_fn)
@@ -130,7 +147,8 @@ impl Machine {
                     // Collect colors that should be run on next instruction. Foreach color
                     // keep which eclasses it needs to run on (all except current reg).
                     // If we are already colored we need all ids.
-                    run_matches(self, &egraph[self.reg(*i)]);
+                    // TODO: first choose node and then go through colors.
+                    run_matches(self, self.color, &egraph[self.reg(*i)]);
                     let old_reg = self.reg(*i);
                     if self.color.is_some() {
                         let c = &egraph.colors()[self.color.unwrap().0];
@@ -170,11 +188,11 @@ impl Machine {
     }
 
     fn run_colored_branches<L, N, F>(&mut self, egraph: &EGraph<L, N>, i: &Reg, mut run_matches: &mut F, c: &Color, old_reg: Id)
-    where L: Language, N: Analysis<L>, F: FnMut(&mut Machine, &EClass<L, <N as Analysis<L>>::Data>){
+    where L: Language, N: Analysis<L>, F: FnMut(&mut Machine, Option<ColorId>, &EClass<L, <N as Analysis<L>>::Data>){
         let ids = c.black_ids(old_reg);
         ids.iter().for_each(|&b_ids| { b_ids.iter().filter(|i| *i != &old_reg).for_each(|id| {
             self.reg[i.0 as usize] = *id;
-            run_matches(self, &egraph[*id]);
+            run_matches(self, None, &egraph[*id]);
         })});
         self.reg[i.0 as usize] = old_reg;
     }

@@ -1,8 +1,9 @@
 use std::fmt::Debug;
 use std::iter::ExactSizeIterator;
-use bit_vec::BitVec;
 
-use crate::{Id, Language};
+use crate::{ColorId, Id, Language};
+
+pub type SparseNodeColors = Vec<ColorId>;
 
 /// An equivalence class of enodes.
 #[non_exhaustive]
@@ -12,10 +13,12 @@ pub struct EClass<L, D> {
     pub id: Id,
     /// The equivalent enodes in this equivalence class with their associated colors.
     /// No color set means it is a black edge (which will never be removed).
-    pub nodes: Vec<(L, BitVec)>,
+    pub nodes: Vec<(L, SparseNodeColors)>,
     /// The analysis data associated with this eclass.
     pub data: D,
     pub(crate) parents: Vec<(L, Id)>,
+    // Some colors not yet added to 'nodes', or clear if none.
+    pub(crate) dirty_colors: Vec<(L, Option<ColorId>)>,
 }
 
 impl<L, D> EClass<L, D> {
@@ -30,7 +33,7 @@ impl<L, D> EClass<L, D> {
     }
 
     /// Iterates over the enodes in this eclass.
-    pub fn iter(&self) -> impl ExactSizeIterator<Item = &(L, BitVec)> {
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = &(L, SparseNodeColors)> {
         self.nodes.iter()
     }
 }
