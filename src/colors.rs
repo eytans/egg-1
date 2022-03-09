@@ -27,7 +27,6 @@ pub struct Color {
 }
 
 impl Color {
-    // TODO: use a unique ID and translate, have a colors object to manage multiple colors correctly.
     pub(crate) fn new(union_find: &UnionFind, new_id: ColorId) -> Color {
         Color { union_find: union_find.clone(), color_id: new_id, dirty_unions: Default::default(), union_map: Default::default(), children: vec![], base_set: vec![new_id] }
     }
@@ -111,21 +110,15 @@ impl Color {
 
     /// Reapply congruence closure for color.
     /// Returns which colors to remove from which edges.
-    /// // TODO: When deleting an edge we need to remove it from: node, parents, dirty
-    //                     //       colors, and memo (parent can include other classes). Removing an edge
-    //                     //       from many classes may be expensive (search wise) so it might be better
-    //                     //       to do it during rebuild classes.
+    // TODO: When deleting an edge we need to remove it from: node, parents, dirty
+    //       colors, and memo (parent can include other classes). Removing an edge
+    //       from many classes may be expensive (search wise) so it might be better
+    //       o do it during rebuild classes.
     pub fn cong_closure<L: Language, N: Analysis<L>>(&mut self, egraph: &mut EGraph<L, N>, black_merged: &[(Id, Id)]) {
         self.assert_black_ids(egraph);
-        for (id1, id2) in black_merged.iter() {
-            debug_assert!(self.find(*id1) == self.find(*id2));
-            // let (to, changed) = self.black_union(*id1, *id2);
-            // debug_assert_eq!(to, self.union_find.find(*id1));
-            // debug_assert_eq!(to, self.union_find.find(*id2));
-            // if changed {
-            //     self.dirty_unions.push(to);
-            // }
-        }
+        debug_assert!(black_merged.iter()
+            .all(|(id1, id2)| self.find(*id1) == self.find(*id2)));
+
 
         let mut to_union = vec![];
         // We need to build memo ahead of time because even a single merge might miss needed unions.
@@ -156,6 +149,8 @@ impl Color {
             self.colored_union(id1, id2);
         }
 
+        // TODO: Apply class dirty colors
+
         while !self.dirty_unions.is_empty() {
             // take the worklist, we'll get the stuff that's added the next time around
             // deduplicate the dirty list to avoid extra work
@@ -172,15 +167,14 @@ impl Color {
             // rep to all contained
             let all_groups = self.union_find.build_sets();
             for id in todo {
-                let mut parents: Vec<(L, Id, Option<DenseNodeColors>)> = all_groups.get(&id)
+                let mut parents: Vec<(L, DenseNodeColors, Id)> = all_groups.get(&id)
                     .unwrap().iter()
                     .flat_map(|g| egraph[*g].parents.iter())
-                    .map(|(n, id)| {
-                        let memoed = memo.remove(n);
+                    .map(|(n, cs, id)| {
+                        memo.remove(n);
                         let mut res = n.clone();
                         res.update_children(|child| self.union_find.find(child));
-                        // Memo is already updated so use res and not orig (n).
-                        (res, (self.union_find.find(*id)), memoed.map(|(_, cs)| cs))
+                        (res, cs.clone(), (self.union_find.find(*id)))
                     }).collect();
 
                 // We assume the edges are pretty sorted so sort will be faster then unstable_sort.
@@ -191,19 +185,20 @@ impl Color {
                 // colors at once, and if some edges becomes colorless we can remove it during
                 // `rebuild_classes`.
                 parents.dedup_by(|
-                    (n1, e1, memoed1),
-                    (n2, e2, memoed2)| {
+                    (n1, memoed1, e1),
+                    (n2, memoed2, e2)| {
                     n1 == n2 && {
-                        <EGraph<L, N>>::update_option_memo(memoed1, memoed2);
+                        <EGraph<L, N>>::update_memoed(memoed1, memoed2);
                         to_union.push((*e1, *e2));
                         true
                     }
                 });
 
-                for (n, e, cs) in parents.iter_mut() {
+                for (n, cs , e) in parents.iter_mut() {
                     // It is possible we don't have colors because parent was updated from different
                     // class.
-                    <EGraph<L, N>>::update_memo_from_parent(&mut memo, &mut to_union, n, e, cs);
+                    let res = <EGraph<L, N>>::update_memo_from_parent(&mut memo, n, e, cs);
+                    to_union.extend(res.into_iter());
                 }
             }
 

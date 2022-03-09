@@ -52,6 +52,7 @@ fn for_each_matching_node<L, D>(eclass: &EClass<L, D>,
                 node.matches(n) && cs.is_empty()
             })
         };
+    // TODO: maybe I need to choose color for current eclass when I see colored edges.
     if eclass.nodes.len() < 50 {
         eclass.nodes.iter().filter(|x| filterer(x)).map(|(n, cs)| n).for_each(f)
     } else {
@@ -63,7 +64,7 @@ fn for_each_matching_node<L, D>(eclass: &EClass<L, D>,
             .chain(eclass.nodes[start..].iter().take_while(|x| filterer(x)).map(|(n, _)| n));
         debug_assert_eq!(
             matching.clone().count(),
-            eclass.nodes.iter().filter(|(n, cs)| node.matches(n)).count(),
+            eclass.nodes.iter().filter(|x| filterer(x)).count(),
             "matching node {:?}\nstart={}\n{:?} != {:?}\nnodes: {:?}",
             node,
             start,
@@ -71,7 +72,7 @@ fn for_each_matching_node<L, D>(eclass: &EClass<L, D>,
             eclass
                 .nodes
                 .iter()
-                .filter(|(n, cs)| node.matches(n))
+                .filter(|x| filterer(x))
                 .collect::<indexmap::IndexSet<_>>(),
             eclass.nodes
         );

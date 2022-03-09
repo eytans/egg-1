@@ -5,6 +5,7 @@ use std::fmt;
 use crate::{machine, Analysis, Applier, EGraph, Id, Language, RecExpr, Searcher, Subst, Var, OpId};
 use std::fmt::Formatter;
 use itertools::Itertools;
+use crate::expression_ops::{RecExpSlice, Tree};
 
 /// A pattern that can function as either a [`Searcher`] or [`Applier`].
 ///

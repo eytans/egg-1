@@ -420,6 +420,7 @@ where
 
         let mut matches = Vec::new();
         for rule in rules {
+            trace!("Searching with rule {:?}", rule.name());
             let ms = self.scheduler.search_rewrite(i, &self.egraph, rule);
             matches.push(ms);
             if self.check_limits().is_err() {

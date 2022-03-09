@@ -2,6 +2,7 @@ use std::fmt::Debug;
 use std::iter::ExactSizeIterator;
 
 use crate::{ColorId, Id, Language};
+use crate::egraph::DenseNodeColors;
 
 pub type SparseNodeColors = Vec<ColorId>;
 
@@ -16,9 +17,9 @@ pub struct EClass<L, D> {
     pub nodes: Vec<(L, SparseNodeColors)>,
     /// The analysis data associated with this eclass.
     pub data: D,
-    pub(crate) parents: Vec<(L, Id)>,
-    // Some colors not yet added to 'nodes', or clear if none.
-    pub(crate) dirty_colors: Vec<(L, Option<ColorId>)>,
+    pub(crate) parents: Vec<(L, DenseNodeColors, Id)>,
+    /// Some colors not yet added to 'nodes', or clear if none.
+    pub(crate) dirty_colors: Vec<(L, ColorId)>,
 }
 
 impl<L, D> EClass<L, D> {
