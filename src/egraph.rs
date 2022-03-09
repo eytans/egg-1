@@ -867,7 +867,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                             if cs1.not_any() {
                                 *e2 = *e1;
                             }
-                            cs2.clear();
+                            cs2.fill(false);
                             true
                         } else {
                             // TODO: make sure to drop duplicates in color rebuild
@@ -913,7 +913,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         if let Some((old, mut old_cs)) = memo.insert(n.clone(), (*e, cs.clone())) {
             for (_, new_cs) in memo.get_mut(n).iter_mut() {
                 if (old_cs.not_any()) || cs.not_any() {
-                    new_cs.clear();
+                    new_cs.fill(false);
                     return Some((old, *e));
                 } else {
                     new_cs.bitor_assign(&old_cs);
@@ -926,7 +926,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// Updated cs2 to contain all colors of cs1 or black if needed.
     pub fn update_memoed(cs1: &mut DenseNodeColors, cs2: &mut DenseNodeColors) {
         if cs1.not_any() || cs2.not_any() {
-            cs2.clear();
+            cs2.fill(false);
         } else {
             // Sparse will have the same merge during rebuild_classes
             cs2.bitor_assign(&*cs1);
@@ -1018,7 +1018,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     fn apply_dirty_colors_to_parents(&mut self) {
 // It makes sense that we won't have many dirty colors. In this case it is more
         // efficient to pass through dirties and apply to parents with binary search.
-        let dirty_colors = self.classes.iter_mut()
+        let mut dirty_colors = self.classes.iter_mut()
             // Oh how I hate rust. I need to take ownership and return it later instead of cloning
             // all the nodes.
             .map(|x| x.as_mut()
@@ -1029,11 +1029,16 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         if dirty_colors_len > (self.total_number_of_nodes() as f64).log2().ceil() as usize {
             warn!("Many dirty colors, this may be slow. Implement a hashing version");
         }
+        for dirty_vec in dirty_colors.iter_mut() {
+            if let Some(dv) = dirty_vec {
+                dv.iter_mut().for_each(|(n, _)| n.update_children(|c| self.find(c)));
+            }
+        }
         for dirty_vec in dirty_colors.iter().filter_map(|x| x.as_ref()) {
             for (dirty_node, c) in dirty_vec.iter() {
                 for child in dirty_node.children() {
                     let target = &mut self.classes.get_mut(child.0 as usize).unwrap().as_mut().unwrap().parents;
-                    let idx = target.binary_search_by(|(n, _, _)| dirty_node.cmp(n)).unwrap();
+                    let idx = target.binary_search_by(|(n, _, _)| n.cmp(dirty_node)).unwrap();
                     target[idx].1.set(c.0, true);
                 }
             }
