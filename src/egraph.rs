@@ -441,6 +441,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// [`add`]: struct.EGraph.html#method.add
     pub fn add(&mut self, mut enode: L) -> Id {
         let inner_res = self.inner_lookup(&mut enode);
+        let colored = inner_res.as_ref().map(|(_, cs)| cs.any());
         // can't blacken an edge because it might dirty the black color
         if inner_res.is_some() && inner_res.as_ref().unwrap().1.not_any() {
             let (id, _) = inner_res.unwrap();
@@ -462,9 +463,20 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             });
 
             // add this enode to the parent lists of its children
-            enode.for_each(|child| {
+            enode.children().iter().copied().unique().for_each(|child| {
                 let tup = (enode.clone(), Self::init_color_vec(), id);
-                self[child].parents.push(tup);
+                if self.dirty_unions.contains(&child) {
+                    self[child].parents.push(tup);
+                } else {
+                    // TODO: don't sort parents, and change process colored unions to not fail
+                    match self[child].parents.binary_search(&tup) {
+                        Ok(i) => {
+                            assert!(false, "Edge should not exist - {:?}. New Id is {}.", self[child].parents[i], id);
+                        },
+                        Err(i) => self[child].parents.insert(i, tup),
+                    }
+                }
+
             });
             assert_eq!(self.classes.len(), usize::from(id));
             self.classes.push(Some(class));
@@ -517,9 +529,19 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
 
             // add this enode to the parent lists of its children
-            enode.for_each(|child| {
+            enode.children().iter().copied().unique().for_each(|child| {
                 let tup = (enode.clone(), colors.clone(), id);
-                self[child].parents.push(tup);
+                if self.dirty_unions.contains(&child) {
+                    self[child].parents.push(tup);
+                } else {
+                    // TODO: don't sort parents, and change process colored unions to not fail
+                    match self[child].parents.binary_search(&tup) {
+                        Ok(i) => {
+                            assert!(false, "Edge should not exist - {:?}. New Id is {}.", self[child].parents[i], id);
+                        },
+                        Err(i) => self[child].parents.insert(i, tup),
+                    }
+                }
             });
 
             assert_eq!(self.classes.len(), usize::from(id));
@@ -735,16 +757,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     }
                 }
             }
-            // let mut nodes = class.nodes.iter();
-            // if let Some(mut prev) = nodes.next() {
-            //     add(prev);
-            //     for n in nodes {
-            //         if !prev.matches(n) {
-            //             add(n);
-            //             prev = n;
-            //         }
-            //     }
-            // }
         }
 
         #[cfg(debug_assertions)]
@@ -983,6 +995,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         let merged = self.process_unions().iter().filter(|t| t.2.is_none())
             .map(|(id1, id2, _)| (*id1, *id2)).collect_vec();
 
+        debug_assert!(self.classes.iter().all(|c| c.is_none()
+            || c.as_ref().unwrap().parents.windows(2).all(|w| w[0] <= w[1])));
         // Parents are now sorted, so we can apply the dirty colors to them (necessary for colored
         // unions).
         self.apply_dirty_colors_to_parents();
@@ -1016,7 +1030,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     }
 
     fn apply_dirty_colors_to_parents(&mut self) {
-// It makes sense that we won't have many dirty colors. In this case it is more
+        // It makes sense that we won't have many dirty colors. In this case it is more
         // efficient to pass through dirties and apply to parents with binary search.
         let mut dirty_colors = self.classes.iter_mut()
             // Oh how I hate rust. I need to take ownership and return it later instead of cloning

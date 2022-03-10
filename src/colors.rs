@@ -126,7 +126,7 @@ impl Color {
         // edges.
         let mut memo: HashMap<L, (Id, DenseNodeColors)> = {
             let mut v = egraph.memo.iter()
-                // .filter(|(_, (_, cs))| cs.not_any() || cs[self.color_id.0])
+                .filter(|(_, (_, cs))| cs.not_any() || cs[self.color_id.0])
                 .map(|(orig, (e, cs))| {
                     let mut cloned = orig.clone();
                     cloned.update_children(|c| self.find(c));
@@ -149,8 +149,6 @@ impl Color {
             self.colored_union(id1, id2);
         }
 
-        // TODO: Apply class dirty colors
-
         while !self.dirty_unions.is_empty() {
             // take the worklist, we'll get the stuff that's added the next time around
             // deduplicate the dirty list to avoid extra work
@@ -170,6 +168,7 @@ impl Color {
                 let mut parents: Vec<(L, DenseNodeColors, Id)> = all_groups.get(&id)
                     .unwrap().iter()
                     .flat_map(|g| egraph[*g].parents.iter())
+                    .filter(|(_, cs, _)| cs.not_any() || cs[self.color_id.0])
                     .map(|(n, cs, id)| {
                         memo.remove(n);
                         let mut res = n.clone();
