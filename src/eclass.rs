@@ -18,7 +18,8 @@ pub struct EClass<L, D> {
     pub nodes: Vec<(L, SparseNodeColors)>,
     /// The analysis data associated with this eclass.
     pub data: D,
-    pub(crate) parents: Vec<(L, DenseNodeColors, Id)>,
+    pub(crate) parents: Vec<(L, Id)>,
+    pub(crate) colored_parents: Vec<(L, Id, DenseNodeColors)>,
     /// Some colors not yet added to 'nodes', or clear if none.
     pub(crate) dirty_colors: HashMap<L, DenseNodeColors>,
 }

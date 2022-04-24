@@ -111,10 +111,6 @@ impl Color {
 
     /// Reapply congruence closure for color.
     /// Returns which colors to remove from which edges.
-    // TODO: When deleting an edge we need to remove it from: node, parents, dirty
-    //       colors, and memo (parent can include other classes). Removing an edge
-    //       from many classes may be expensive (search wise) so it might be better
-    //       o do it during rebuild classes.
     pub fn cong_closure<L: Language, N: Analysis<L>>(&mut self, egraph: &mut EGraph<L, N>, black_merged: &[(Id, Id)]) {
         self.assert_black_ids(egraph);
         debug_assert!(black_merged.iter()
@@ -169,16 +165,19 @@ impl Color {
             // rep to all contained
             let all_groups = self.union_find.build_sets();
             for id in todo {
-                let mut parents: Vec<(L, DenseNodeColors, Id)> = all_groups.get(&id)
+                // We are using optional colors to prevent color creation for all parents.
+                let mut parents: Vec<(L, Id, Option<DenseNodeColors>)> = all_groups.get(&id)
                     .unwrap().iter()
-                    .flat_map(|g| egraph[*g].parents.iter())
-                    .filter(|(_, cs, _)| cs.not_any() || cs[self.color_id.0])
-                    .map(|(n, cs, id)| {
+                    .flat_map(|g| egraph[*g].parents.iter().map(|(p, id)| (p, id, None))
+                    .chain(egraph[*g].colored_parents.iter()
+                        .filter(|(_, _, cs)| cs.not_any() || cs[self.color_id.0])
+                        .map(|(p, id, cs)| (p, id, Some(cs.clone())))
+                    )).map(|(n, id, cs)| {
                         // TODO: take colors from memo and merge with parents here.
                         memo.remove(n);
                         let mut res = n.clone();
                         res.update_children(|child| self.union_find.find(child));
-                        (res, cs.clone(), (self.union_find.find(*id)))
+                        (res, (self.union_find.find(*id)), cs)
                     }).collect();
 
                 // Prevent comparing colors (as it can be expensive).
@@ -189,19 +188,20 @@ impl Color {
                 // different colors, we keep the egraph immutable. Later we will update memo for all
                 // colors at once, and if some edges becomes colorless we can remove it during
                 // `rebuild_classes`.
-                parents.dedup_by(|(n1, memoed1, e1),
-                                  (n2, memoed2, e2)| {
+                parents.dedup_by(|(n1, e1, memoed1),
+                                  (n2, e2, memoed2)| {
                     n1 == n2 && {
-                        <EGraph<L, N>>::update_memoed(memoed1, memoed2);
+                        <EGraph<L, N>>::update_optional_memoed(memoed1, memoed2);
                         to_union.push((*e1, *e2));
                         true
                     }
                 });
 
-                for (n, cs, e) in parents.iter_mut() {
+                let empty_colors = <EGraph<L, N>>::init_color_vec();
+                for (n, e, cs) in parents.iter_mut() {
                     // It is possible we don't have colors because parent was updated from different
                     // class.
-                    let res = <EGraph<L, N>>::update_memo_from_parent(&mut memo, n, e, cs);
+                    let res = <EGraph<L, N>>::update_memo_from_parent(&mut memo, n, e, cs.as_ref().unwrap_or(&empty_colors));
                     to_union.extend(res.into_iter());
                 }
             }

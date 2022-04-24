@@ -460,12 +460,13 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 nodes: vec![(enode.clone(), vec![])],
                 data: N::make(self, &enode),
                 parents: Default::default(),
+                colored_parents: Default::default(),
                 dirty_colors: Default::default(),
             });
 
             // add this enode to the parent lists of its children
             enode.children().iter().copied().unique().for_each(|child| {
-                let tup = (enode.clone(), Self::init_color_vec(), id);
+                let tup = (enode.clone(), id);
                 self[child].parents.push(tup);
             });
             assert_eq!(self.classes.len(), usize::from(id));
@@ -517,14 +518,15 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 nodes: vec![(enode.clone(), vec![color.clone()])],
                 data: N::make(self, &enode),
                 parents: Default::default(),
+                colored_parents: Default::default(),
                 dirty_colors: Default::default()
             });
 
 
             // add this enode to the parent lists of its children
             enode.children().iter().copied().unique().for_each(|child| {
-                let tup = (enode.clone(), colors.clone(), id);
-                self[child].parents.push(tup);
+                let tup = (enode.clone(), id, colors.clone());
+                self[child].colored_parents.push(tup);
             });
 
             assert_eq!(self.classes.len(), usize::from(id));
@@ -615,6 +617,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             self.analysis.merge(&mut to_class.data, from_class.data);
             concat(&mut to_class.nodes, from_class.nodes);
             concat(&mut to_class.parents, from_class.parents);
+            concat(&mut to_class.colored_parents, from_class.colored_parents);
             from_class.dirty_colors.into_iter().for_each(|(k, v)|
                 to_class.dirty_colors.entry(k).or_default().extend(v));
             N::modify(self, to);
@@ -633,9 +636,10 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         self.memo_parents_agree();
         let union = self.union_impl(id1, id2);
         if union.1 && cfg!(feature = "upward-merging") {
-            let merged = self.process_unions().iter()
-                .filter(|&tup| tup.2.is_none())
-                .map(|(id1, id2, color)| (*id1, *id2)).collect_vec();
+            // let merged = self.process_unions().iter()
+            //     // .filter(|&tup| tup.2.is_none())
+            //     .map(|(id1, id2, color)| (*id1, *id2)).collect_vec();
+            let merged = self.process_unions();
             if cfg!(feature = "colored") {
                 if !self.colors.is_empty() {
                     self.process_colored_unions(merged);
@@ -688,8 +692,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 .iter_mut()
                 .for_each(|(n, cs)| n.update_children(|id| uf.find(id)));
 
-            // Prevent comparing colors.
-            class.nodes.sort_unstable_by_key(|(n, cs)| n.clone());
+            // Prevent comparing colors. Black should be first for better dirty color application.
+            class.nodes.sort_unstable_by_key(|(n, cs)| (n.clone(), !cs.is_empty()));
 
             debug_assert!(todo.iter().all(|(n, _)| class.nodes.iter().any(|(n2, _)| n == n2)));
             // Hack: Using dedup_by to update colors on the remaining node. This should work because
@@ -764,18 +768,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         trimmed
     }
 
-    fn apply_dirty_colors(mut it: &mut Peekable<IntoIter<(L, ColorId)>>,
-                          a: &mut (L, SparseNodeColors)) {
-        while it.peek().is_some() && a.0 == it.peek().as_ref().unwrap().0 {
-            let item = it.next();
-            if item.is_none() {
-                a.1.clear();
-            } else if (!a.1.is_empty()) || !a.1.contains(&item.as_ref().unwrap().1) {
-                a.1.push(item.unwrap().1);
-            }
-        }
-    }
-
     fn check_colored_edges(memo: &HashMap<L, (Id, DenseNodeColors)>, class: &EClass<L, N::Data>) {
         if cfg!(debug_assertions) {
             fn into_dense(cs: &SparseNodeColors) -> DenseNodeColors {
@@ -837,7 +829,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     }
 
     #[inline(never)]
-    fn process_unions(&mut self) -> Vec<(Id, Id, Option<ColorId>)> {
+    fn process_unions(&mut self) -> Vec<(Id, Id)> {
         let mut res = vec![];
         let mut to_union = vec![];
 
@@ -855,46 +847,47 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             for id in todo {
                 self.repairs_since_rebuild += 1;
                 let mut parents = std::mem::take(&mut self[id].parents)
-                    .into_iter().map(|(n, mut cs, e)| {
+                    .into_iter().map(|(n, e)| {
                     self.memo.remove(&n);
-                    (n, cs, e)
+                    (n, e)
                 }).collect_vec();
-                parents.iter_mut().for_each(|(n, _, id)| {
+                parents.iter_mut().for_each(|(n, id)| {
                     n.update_children(|child| self.find(child));
                     *id = self.find(*id);
                 });
-                // TODO: use permutations library to prevent clone
                 // We are using cs.any() to make sure black edges are first.
-                parents.sort_unstable_by_key(|(n, cs, _)| (n.clone(), cs.any()));
-                parents.dedup_by(|(n1, cs1, e1), (n2, cs2, e2)| {
+                parents.sort_unstable();
+                parents.dedup_by(|(n1, e1), (n2, e2)| {
                     n1 == n2 && {
+                        to_union.push((*e1, *e2));
+                        true
                         // Dedup removed 1 and keeps 2. Update 2's colors.
-                        if cs1.not_any() && cs2.not_any() {
-                            Self::update_memoed(cs1, cs2);
-                            to_union.push((*e1, *e2, None));
-                            true
-                        } else if cs1.not_any() || cs2.not_any() {
-                            // TODO: consider sparse vector for parents
-                            for c in cs2.iter_ones().chain(cs1.iter_ones()) {
-                                to_union.push((*e1, *e2, Some(ColorId(c))));
-                            }
-                            if cs1.not_any() {
-                                *e2 = *e1;
-                            }
-                            cs2.set_elements(0);
-                            true
-                        } else {
-                            // TODO: make sure to drop duplicates in color rebuild
-                            false
-                        }
+                        // if cs1.not_any() && cs2.not_any() {
+                        //     Self::update_memoed(cs1, cs2);
+                        //     to_union.push((*e1, *e2, None));
+                        //     true
+                        // } else if cs1.not_any() || cs2.not_any() {
+                        //
+                        //     for c in cs2.iter_ones().chain(cs1.iter_ones()) {
+                        //         to_union.push((*e1, *e2, Some(ColorId(c))));
+                        //     }
+                        //     if cs1.not_any() {
+                        //         *e2 = *e1;
+                        //     }
+                        //     cs2.set_elements(0);
+                        //     true
+                        // } else {
+                        //     false
+                        // }
                     }
                 });
 
-                for (n, cs, e) in parents.iter_mut() {
+                let empty_colors = Self::init_color_vec();
+                for (n, e) in parents.iter_mut() {
                     // It is possible we don't have colors because parent was updated from different
                     // class.
-                    let temp = Self::update_memo_from_parent(&mut self.memo, n, e, cs);
-                    to_union.extend(temp.into_iter().map(|(e1, e2)| (e1, e2, None)));
+                    let temp = Self::update_memo_from_parent(&mut self.memo, n, e, &empty_colors);
+                    to_union.extend(temp.into_iter());
                 }
 
                 self.propagate_metadata(&parents[..]);
@@ -904,16 +897,21 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             }
 
             res.extend_from_slice(&to_union);
-            for (id1, id2, color_opt) in to_union.drain(..) {
-                if let Some(c_id) = color_opt {
-                    let (to, did_something) = self.colored_union(c_id, id1, id2);
-                    // We will deal with the dirty unions of the color later.
-                } else {
+            for (id1, id2) in to_union.drain(..) {
                     let (to, did_something) = self.union_impl(id1, id2);
                     if did_something {
                         self.dirty_unions.push(to);
                     }
-                }
+
+                // if let Some(c_id) = color_opt {
+                //     let (to, did_something) = self.colored_union(c_id, id1, id2);
+                //     // We will deal with the dirty unions of the color later.
+                // } else {
+                //     let (to, did_something) = self.union_impl(id1, id2);
+                //     if did_something {
+                //         self.dirty_unions.push(to);
+                //     }
+                // }
             }
         }
         assert!(self.dirty_unions.is_empty());
@@ -922,7 +920,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     }
 
     pub fn update_memo_from_parent(memo: &mut HashMap<L, (Id, DenseNodeColors)>,
-                                   n: &L, e: &Id, cs: &mut DenseNodeColors) -> Option<(Id, Id)> {
+                                   n: &L, e: &Id, cs: &DenseNodeColors) -> Option<(Id, Id)> {
         if let Some((old, mut old_cs)) = memo.insert(n.clone(), (*e, cs.clone())) {
             for (_, new_cs) in memo.get_mut(n).iter_mut() {
                 if (old_cs.not_any()) || cs.not_any() {
@@ -937,12 +935,23 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     }
 
     /// Updated cs2 to contain all colors of cs1 or black if needed.
-    pub fn update_memoed(cs1: &mut DenseNodeColors, cs2: &mut DenseNodeColors) {
+    pub fn update_memoed(cs1: &DenseNodeColors, cs2: &mut DenseNodeColors) {
         if cs1.not_any() || cs2.not_any() {
             cs2.set_elements(0);
         } else {
             // Sparse will have the same merge during rebuild_classes
+            // TODO: will it though? Especially when this is a colored merge, but I think it doesn't
+            //      matter in colroed merge.
             cs2.bitor_assign(&*cs1);
+        }
+    }
+
+    /// Updated cs2 to contain all colors of cs1 or black if needed.
+    pub fn update_optional_memoed(cs1: &mut Option<DenseNodeColors>, cs2: &mut Option<DenseNodeColors>) {
+        if cs1.is_none() || cs2.is_none() {
+            *cs2 = None;
+        } else {
+            Self::update_memoed(&cs1.as_ref().unwrap(), &mut cs2.as_mut().unwrap());
         }
     }
 
@@ -1000,7 +1009,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         };
         let mut classes = std::mem::take(&mut self.classes);
         for c in classes.iter_mut().filter_map(|c| c.as_mut()) {
-            for (n, cs, e) in c.parents.iter_mut() {
+            for (n, e, cs) in c.colored_parents.iter_mut() {
                 let dirty_cs = dirty_color_map.get(&self.canonize(n));
                 if let Some(dirty_cs) = dirty_cs {
                     if cs.any() {
@@ -1011,8 +1020,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         }
         self.classes = classes;
 
-        let merged = self.process_unions().iter().filter(|t| t.2.is_none())
-            .map(|(id1, id2, _)| (*id1, *id2)).collect_vec();
+        let merged = self.process_unions();
 
         self.memo_parents_agree();
 
@@ -1096,47 +1104,9 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         }));
     }
 
-    fn apply_dirty_colors_to_parents(&mut self) {
-        // It makes sense that we won't have many dirty colors. In this case it is more
-        // efficient to pass through dirties and apply to parents with binary search.
-
-        // TODO: have a better version using HashMap dirty inside process_unions
-        // let mut dirty_colors = self.classes.iter_mut()
-        //     // Oh how I hate rust. I need to take ownership and return it later instead of cloning
-        //     // all the nodes.
-        //     .map(|x| x.as_mut()
-        //         .map(|x| std::mem::take(&mut x.dirty_colors)))
-        //     .collect_vec();
-        // let dirty_colors_len = dirty_colors.iter().map(|x|
-        //     x.as_ref().map_or_else(|| 0, |x| x.len())).sum::<usize>();
-        // if dirty_colors_len > (self.total_number_of_nodes() as f64).log2().ceil() as usize {
-        //     warn!("Many dirty colors, this may be slow. Implement a hashing version");
-        // }
-        // for dirty_vec in dirty_colors.iter_mut() {
-        //     if let Some(dv) = dirty_vec {
-        //         dv.iter_mut().for_each(|(n, _)| n.update_children(|c| self.find(c)));
-        //     }
-        // }
-        // for dirty_vec in dirty_colors.iter().filter_map(|x| x.as_ref()) {
-        //     for (dirty_node, c) in dirty_vec.iter() {
-        //         for child in dirty_node.children() {
-        //             let target = &mut self.classes.get_mut(child.0 as usize).unwrap().as_mut().unwrap().parents;
-        //             let idx = target.binary_search_by(|(n, _, _)| n.cmp(dirty_node)).unwrap();
-        //             target[idx].1.set(c.0, true);
-        //         }
-        //     }
-        // }
-        // for (eclass, dirty_colors) in self.classes.iter_mut().zip(dirty_colors) {
-        //     if let Some(eclass) = eclass {
-        //         debug_assert!(dirty_colors.is_some());
-        //         eclass.dirty_colors = dirty_colors.unwrap();
-        //     }
-        // }
-    }
-
     #[inline(never)]
-    fn propagate_metadata(&mut self, parents: &[(L, DenseNodeColors, Id)]) {
-        for (n, cs, e) in parents {
+    fn propagate_metadata(&mut self, parents: &[(L, Id)]) {
+        for (n, e) in parents {
             let e = self.find(*e);
             let node_data = N::make(self, n);
             let class = self.classes[usize::from(e)].as_mut().unwrap();
