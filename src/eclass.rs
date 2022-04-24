@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::iter::ExactSizeIterator;
 
@@ -19,7 +20,7 @@ pub struct EClass<L, D> {
     pub data: D,
     pub(crate) parents: Vec<(L, DenseNodeColors, Id)>,
     /// Some colors not yet added to 'nodes', or clear if none.
-    pub(crate) dirty_colors: Vec<(L, ColorId)>,
+    pub(crate) dirty_colors: HashMap<L, DenseNodeColors>,
 }
 
 impl<L, D> EClass<L, D> {
@@ -36,6 +37,10 @@ impl<L, D> EClass<L, D> {
     /// Iterates over the enodes in this eclass.
     pub fn iter(&self) -> impl ExactSizeIterator<Item = &(L, SparseNodeColors)> {
         self.nodes.iter()
+    }
+
+    pub fn iter_without_colors(&self) -> impl ExactSizeIterator<Item = &L> {
+        self.nodes.iter().map(|(l, _)| l)
     }
 }
 

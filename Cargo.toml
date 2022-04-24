@@ -29,6 +29,7 @@ bitvec = "1.0.0"
 
 [dev-dependencies]
 env_logger = {version = "0.7", default-features = false}
+proptest = "1.0.0"
 ordered-float = "1"
 
 [features]

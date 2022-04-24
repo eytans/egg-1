@@ -6,6 +6,7 @@ use crate::util::JoinDisp;
 use std::collections::{HashSet, HashMap};
 use itertools::Itertools;
 use std::fmt::Formatter;
+use std::ops::BitXor;
 use indexmap::IndexSet;
 use log::{error, info, trace, warn};
 use crate::egraph::DenseNodeColors;
@@ -131,8 +132,11 @@ impl Color {
                     let mut cloned = orig.clone();
                     cloned.update_children(|c| self.find(c));
                     (cloned, (self.find(*e), cs.clone()))
-                }).sorted()
+                })
                 .collect_vec();
+
+            // Sort by node. Colors are irrelevant here.
+            v.sort_unstable_by_key(|(k, _)| k.clone());
 
             // TODO: Create dedup with side effects for iterator
             v.dedup_by(|(n1, (e1, cs1)), (n2, (e2, cs2))| {
@@ -170,22 +174,23 @@ impl Color {
                     .flat_map(|g| egraph[*g].parents.iter())
                     .filter(|(_, cs, _)| cs.not_any() || cs[self.color_id.0])
                     .map(|(n, cs, id)| {
+                        // TODO: take colors from memo and merge with parents here.
                         memo.remove(n);
                         let mut res = n.clone();
                         res.update_children(|child| self.union_find.find(child));
                         (res, cs.clone(), (self.union_find.find(*id)))
                     }).collect();
 
-                // We assume the edges are pretty sorted so sort will be faster then unstable_sort.
-                parents.sort();
+                // Prevent comparing colors (as it can be expensive).
+                // TODO: We should improve and work without cloning by using permutations library.
+                parents.sort_unstable_by_key(|x| x.0.clone());
                 // When two edges are equal, and one of them is colored, we may be able to remove
                 // the edges dependence on the color. Because we can parallelize over the
                 // different colors, we keep the egraph immutable. Later we will update memo for all
                 // colors at once, and if some edges becomes colorless we can remove it during
                 // `rebuild_classes`.
-                parents.dedup_by(|
-                    (n1, memoed1, e1),
-                    (n2, memoed2, e2)| {
+                parents.dedup_by(|(n1, memoed1, e1),
+                                  (n2, memoed2, e2)| {
                     n1 == n2 && {
                         <EGraph<L, N>>::update_memoed(memoed1, memoed2);
                         to_union.push((*e1, *e2));
@@ -193,7 +198,7 @@ impl Color {
                     }
                 });
 
-                for (n, cs , e) in parents.iter_mut() {
+                for (n, cs, e) in parents.iter_mut() {
                     // It is possible we don't have colors because parent was updated from different
                     // class.
                     let res = <EGraph<L, N>>::update_memo_from_parent(&mut memo, n, e, cs);

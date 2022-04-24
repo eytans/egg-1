@@ -22,6 +22,10 @@ mod macros;
 #[macro_use]
 extern crate global_counter;
 
+#[cfg(test)]
+#[macro_use]
+extern crate proptest;
+
 pub mod tutorials;
 
 mod dot;
