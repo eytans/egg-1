@@ -1,3 +1,5 @@
+use num_traits::Float;
+use ordered_float::NotNan;
 use crate::Symbol;
 /** A macro to easily create a [`Language`].
 
@@ -63,10 +65,14 @@ define_language! {
 [`Language`]: trait.Language.html
 **/
 
+#[doc(hidden)]
+#[macro_export]
 macro_rules! replace_expr {
     ($_t:tt $sub:expr) => {$sub};
 }
 
+#[doc(hidden)]
+#[macro_export]
 macro_rules! count {
     ($($tts:tt)*) => {0u32 $(+ replace_expr!($tts 1u32))*};
 }
@@ -79,7 +85,7 @@ macro_rules! define_language {
 }
 
 pub trait GetOp {
-    fn get_op(&self) -> u32;
+    fn get_op(&self) -> u32 { 0 /* shrug */ }
 }
 
 impl GetOp for u32 {
@@ -94,11 +100,17 @@ impl GetOp for i32 {
     }
 }
 
+impl GetOp for bool {
+    fn get_op(&self) -> u32 { if *self { 1 } else { 0 } }
+}
+
 impl GetOp for Symbol {
     fn get_op(&self) -> u32 {
         self.0
     }
 }
+
+impl<T: Float> GetOp for NotNan<T> { }
 
 #[doc(hidden)]
 #[macro_export]
@@ -107,7 +119,7 @@ macro_rules! __define_language {
      $decl:tt $op_id:tt {$($matches:tt)*} $children:tt $children_mut:tt
      $display_op:tt {$($from_op_str:tt)*}
     ) => {
-        use crate::macros::GetOp;
+        //use crate::macros::GetOp;
 
         $(#[$meta])*
         #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
@@ -205,7 +217,7 @@ macro_rules! __define_language {
             $(#[$meta])* $vis enum $name
             { $($variants)* } ->
             { $($decl)*          $variant($data), }
-            { $($op_id)*         $name::$variant(data) => count!($($op_id)*) + ((data.get_op() << 16)), }
+            { $($op_id)*         $name::$variant(data) => count!($($op_id)*) + (($crate::macros::GetOp::get_op(data) << 16)), }
             { $($matches)*       ($name::$variant(data1), $name::$variant(data2)) => data1 == data2, }
             { $($children)*      $name::$variant(_data) => &[], }
             { $($children_mut)*  $name::$variant(_data) => &mut [], }
