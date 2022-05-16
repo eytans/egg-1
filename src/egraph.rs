@@ -1215,7 +1215,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     // add node back into memo and if old exists then union
                     let old = self.memo.insert(n.clone(), (*e, cs.clone()));
                     if let Some((old_e, old_cs)) = old {
-                        if cs.any() {
+                        if old_cs.any() {
                             for c in old_cs.iter_ones() {
                                 debug_assert!(self.colors.len() > c);
                                 to_union.push((Some(ColorId(c)), *e, old_e));
