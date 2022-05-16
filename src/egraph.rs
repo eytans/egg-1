@@ -18,8 +18,12 @@ use log::*;
 use crate::{Analysis, AstSize, Dot, EClass, Extractor, Id, Language, Pattern, RecExpr, Searcher, UnionFind, Runner, Subst, Singleton, OpId, SparseNodeColors};
 
 pub use crate::colors::{Color, ColorParents, ColorId};
-use itertools::{Either, iproduct, Itertools};
+use itertools::{assert_equal, Either, iproduct, Itertools};
 use itertools::Either::Right;
+use smallvec::smallvec;
+
+#[cfg(test)]
+use proptest::collection::vec;
 
 pub type DenseNodeColors = BitVec;
 
@@ -500,7 +504,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             self.memo_parents_agree();
             id
         } else {
-            enode.update_children(|id| self.colored_find(*color, id));
+            enode.update_children(|id| self.find(id));
 
             // look for the node with the colored equivalence relation
             let id = self.unionfind.make_set();
@@ -526,6 +530,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             // add this enode to the parent lists of its children
             enode.children().iter().copied().unique().for_each(|child| {
                 let tup = (enode.clone(), id, colors.clone());
+                debug_assert!(colors.iter_ones().all(|c| self.colors().len() > c));
                 self[child].colored_parents.push(tup);
             });
 
@@ -642,10 +647,12 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             let merged = self.process_unions();
             if cfg!(feature = "colored") {
                 if !self.colors.is_empty() {
-                    self.process_colored_unions(merged);
+                    let to_remove = self.process_colored_unions(merged);
+                    assert!(false, "Need to clean colors returned by process_colored_unions");
                 }
             }
         }
+        self.memo_nodes_agree();
         union
     }
 
@@ -666,7 +673,21 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 // All the rebuilding stuff
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     #[inline(never)]
-    fn rebuild_classes(&mut self) -> usize {
+    fn rebuild_classes(&mut self, to_remove: HashMap<L, SparseNodeColors>) -> usize {
+        // for (color, nodes) in &to_remove {
+        //     for n in nodes.iter() {
+        //         debug_assert!(self.memo[n].1.any(), "Node {:?} should have the color {} being removed", n, color);
+        //         self.memo[n].1.set(color.0, false);
+        //         if self.memo[n].1.not_any() {
+        //             todo!("remove from everywhere");
+        //         } else {
+        //             let id = self.memo[n].0;
+        //             self[id].colored_parents.iter_mut()
+        //                 .filter(|(x, y, z)| x == n)
+        //                 .for_each(|(x, y, z)| z.set(color.0, false));
+        //         }
+        //     }
+        // }
         self.memo_parents_agree();
         let mut classes_by_op = std::mem::take(&mut self.classes_by_op);
         classes_by_op.values_mut().for_each(|ids| ids.clear());
@@ -805,10 +826,11 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     assert_eq!(
                         self.find(old),
                         self.find(id),
-                        "Found unexpected equivalence for {:?}\n{:?}\nvs\n{:?}",
+                        "Found unexpected equivalence for {:?}\n{:?}\nvs\n{:?} (colored: {})",
                         node,
                         self[self.find(id)].nodes,
                         self[self.find(old)].nodes,
+                        self.memo[&node].1.any(),
                     );
                 }
             }
@@ -829,8 +851,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     }
 
     #[inline(never)]
-    fn process_unions(&mut self) -> Vec<(Id, Id)> {
-        let mut res = vec![];
+    fn process_unions(&mut self) -> Vec<Id> {
+        let mut res = self.dirty_unions.clone();
         let mut to_union = vec![];
 
         while !self.dirty_unions.is_empty() {
@@ -896,10 +918,10 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 N::modify(self, id);
             }
 
-            res.extend_from_slice(&to_union);
             for (id1, id2) in to_union.drain(..) {
                     let (to, did_something) = self.union_impl(id1, id2);
                     if did_something {
+                        res.push(to);
                         self.dirty_unions.push(to);
                     }
 
@@ -919,8 +941,30 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         res
     }
 
+    // pub(crate) fn update_from_parent_access_fn<'a, 'b, K>(mut memo: &mut HashMap<L, K>, accessor: impl FnMut(&'a mut HashMap<L, K>, L) -> Option<(Id, DenseNodeColors, &'a mut DenseNodeColors)>,
+    //                                                n: &L, e: &Id, cs: &DenseNodeColors) -> Option<(Id, Id)>
+    // {
+    //     let old_memo = accessor(memo, n.clone());
+    //     if let Some((old, old_cs, mut new_cs)) = old_memo {
+    //         if (old_cs.not_any()) || cs.not_any() {
+    //             new_cs.set_elements(0);
+    //             return Some((old, *e));
+    //         } else {
+    //             new_cs.bitor_assign(&old_cs);
+    //         }
+    //     }
+    //     None
+    // }
+
+
     pub fn update_memo_from_parent(memo: &mut HashMap<L, (Id, DenseNodeColors)>,
                                    n: &L, e: &Id, cs: &DenseNodeColors) -> Option<(Id, Id)> {
+        // let mut accessor = |x: (L, Id, DenseNodeColors)| {
+        //     let (n, id, cs) = x;
+        //     let old = memo.insert(n.clone(), (id, cs));
+        //     old.map(|(id, cs)| (id, cs, memo.get_mut(&n).map(|(x, y)| y).unwrap()))
+        // };
+        // Self::update_from_parent_access_fn(&mut accessor, n, e, cs)
         if let Some((old, mut old_cs)) = memo.insert(n.clone(), (*e, cs.clone())) {
             for (_, new_cs) in memo.get_mut(n).iter_mut() {
                 if (old_cs.not_any()) || cs.not_any() {
@@ -997,40 +1041,16 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         self.memo_nodes_agree();
         self.memo_parents_agree();
 
-        let dirty_color_map: HashMap<L, DenseNodeColors> = {
-            let mut res: HashMap<L, DenseNodeColors> = Default::default();
-            for c in self.classes() {
-                for (n, cs) in &c.dirty_colors {
-                    let mut cur = res.entry(self.canonize(n)).or_insert_with(|| DenseNodeColors::repeat(false, MAX_COLORS));
-                    cur.bitor_assign(cs);
-                }
-            }
-            res
-        };
-        let mut classes = std::mem::take(&mut self.classes);
-        for c in classes.iter_mut().filter_map(|c| c.as_mut()) {
-            for (n, e, cs) in c.colored_parents.iter_mut() {
-                let dirty_cs = dirty_color_map.get(&self.canonize(n));
-                if let Some(dirty_cs) = dirty_cs {
-                    if cs.any() {
-                        cs.bitor_assign(dirty_cs);
-                    }
-                }
-            }
-        }
-        self.classes = classes;
-
         let merged = self.process_unions();
 
         self.memo_parents_agree();
+        self.memo_black_canonized();
 
-        if cfg!(feature = "colored") {
-            self.process_colored_unions(merged);
-        }
+        let to_remove = self.process_colored_unions(merged);
         self.memo_parents_agree();
         let n_unions = std::mem::take(&mut self.repairs_since_rebuild);
-        let trimmed_nodes = self.rebuild_classes();
-
+        let trimmed_nodes = self.rebuild_classes(to_remove);
+        self.memo_black_canonized();
         let elapsed = start.elapsed();
         info!(
             concat!(
@@ -1049,12 +1069,24 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             trimmed_nodes,
         );
 
-        debug_assert!(self.check_memo());
+        // debug_assert!(self.check_memo());
         n_unions
     }
 
-    fn canonize(&self, e: &L) -> L {
+    pub(crate) fn canonize(&self, e: &L) -> L {
         e.clone().map_children(|e| self.find(e))
+    }
+
+    fn memo_black_canonized(&self) {
+        debug_assert!(self.memo.iter().all(|(n, cs)| cs.1.any() || n == &self.canonize(n)));
+    }
+
+    fn memo_all_canonized(&self) {
+        if cfg!(debug_assertions) {
+            for (n, (id, cs)) in self.memo.iter() {
+                debug_assert!(n == &self.canonize(n), "{:?} with colors: {:?} @ {}", n, cs.iter_ones().collect_vec(), id);
+            }
+        }
     }
 
     fn memo_parents_agree(&self) {
@@ -1089,10 +1121,11 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         // }
     }
 
-    fn memo_nodes_agree(&mut self) {
+    fn memo_nodes_agree(&self) {
         debug_assert!(self.memo.iter().all(|(n, (id, cs))| {
             // Find n in nodes of id
-            let (n2, cs2) = self[*id].iter().find(|(n2, cs2)| n == n2).unwrap();
+            // assert!(&self.canonize(n) == n);
+            let (n2, cs2) = self[self.find(*id)].iter().find(|(n2, cs2)| n == n2).unwrap();
             let temp_hashset = Default::default();
             let dirty = self[*id].dirty_colors.get(n).unwrap_or(&temp_hashset);
             let mut new_dense = Self::init_color_vec();
@@ -1146,12 +1179,139 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         new_color_id
     }
 
-    fn process_colored_unions(&mut self, black_merged: Vec<(Id, Id)>) {
+    fn process_colored_unions(&mut self, mut black_merged: Vec<Id>) -> HashMap<L, SparseNodeColors> {
+        let mut res: HashMap<L, SparseNodeColors> = Default::default();
+        let mut next = black_merged.iter().unique().copied().collect_vec();
+        let mut todo = vec![];
+        while !next.is_empty() {
+            todo = std::mem::take(&mut next);
+            let mut to_union = vec![];
+            for id in todo.iter().unique().copied() {
+                let mut ps = std::mem::take(&mut self[id].colored_parents);
+                for (n, e, cs) in ps.iter_mut() {
+                    let old = self.memo.remove(n);
+                    debug_assert!(old.iter().all(|(id, old_cs)| id == e && cs.any() == old_cs.any()));
+                    n.update_children(|c| self.find(c));
+                }
+                // I need to dedup here. I should assert that there is only one edge in a colored class.
+                // If it is true and there is always only one edge I can union the classes on all their
+                // colors and union the color set into a single class. Also I might need to union with a
+                // black edge from memo after canonization so be aware of that when inserting edges back.
+                ps.sort_unstable_by_key(|(n, _, _)| n.clone());
+                ps.dedup_by(|(n1, e1, cs1), (n2, e2, cs2)| {
+                    assert!(cs1.any() && cs2.any());
+                    n1 == n2 && {
+                        assert!(1 == self[*e1].len() && 1 == self[*e2].len(),
+                                "Colored eclasses should always have one edge (or be black)");
+                        for c in cs1.iter_ones() {
+                            debug_assert!(self.colors.len() > c);
+                            to_union.push((Some(ColorId(c)), *e1, *e2));
+                        }
+                        cs2.bitor_assign(std::mem::take(cs1));
+                        true
+                    }
+                });
+                for (n, e, cs) in ps.iter() {
+                    // add node back into memo and if old exists then union
+                    let old = self.memo.insert(n.clone(), (*e, cs.clone()));
+                    if let Some((old_e, old_cs)) = old {
+                        if cs.any() {
+                            for c in old_cs.iter_ones() {
+                                debug_assert!(self.colors.len() > c);
+                                to_union.push((Some(ColorId(c)), *e, old_e));
+                            }
+                            self.memo.get_mut(&n).unwrap().1.bitor_assign(&old_cs);
+                            self[*e].dirty_colors.entry(n.clone()).and_modify(|d_cs| d_cs.bitor_assign(&old_cs)).or_insert(old_cs);
+                        } else {
+                            assert!(self[*e].parents.is_empty());
+                            to_union.push((None, *e, old_e));
+                            // Clear colors because edge should be black now.
+                            self.memo.get_mut(n).unwrap().1.set_elements(0);
+                        }
+                    }
+                }
+                self[id].colored_parents = ps;
+                for (c, e1, e2) in to_union.drain(..) {
+                    if let Some(c) = c {
+                        self.colored_union(c, e1, e2);
+                    } else {
+                        let (res, did_something) = self.union_impl(e1, e2);
+                        // Because there are no parents, we don't need black congruence
+                        // closure. We just need to update all relevant data structures locally.
+                        // We will handle dirty colored unions in the next step, so it is not needed
+                        // here (and union will handle that update).
+                        if did_something {
+                            assert_eq!(self.dirty_unions.len(), 0,
+                                       "Should have been empty after process unions");
+                            next.push(res);
+                            black_merged.push(res);
+                            // no parents so no **uncolored** node changes in memo.
+                        }
+                    }
+                }
+            }
+        }
+
+        self.memo_all_canonized();
+
+        let dirty_color_map: HashMap<L, DenseNodeColors> = {
+            let mut res: HashMap<L, DenseNodeColors> = Default::default();
+            for c in self.classes() {
+                for (n, cs) in &c.dirty_colors {
+                    let mut cur = res.entry(self.canonize(n)).or_insert_with(|| DenseNodeColors::repeat(false, MAX_COLORS));
+                    cur.bitor_assign(cs);
+                }
+            }
+            res
+        };
+        let mut classes = std::mem::take(&mut self.classes);
+        for c in classes.iter_mut().filter_map(|c| c.as_mut()) {
+            for (n, e, cs) in c.colored_parents.iter_mut() {
+                let dirty_cs = dirty_color_map.get(&self.canonize(n));
+                if let Some(dirty_cs) = dirty_cs {
+                    if cs.any() {
+                        cs.bitor_assign(dirty_cs);
+                    }
+                }
+            }
+        }
+        self.classes = classes;
+
         let mut colors = std::mem::take(&mut self.colors);
         for c in &mut colors {
-            c.cong_closure(self, &black_merged);
+            let to_remove = c.cong_closure(self, &black_merged);
+            debug_assert!(to_remove.iter().all(|(n1, n2)| n1 == &self.canonize(n1) && n2 == &self.canonize(n2)));
+            debug_assert!(to_remove.iter().all(|(n1, n2)| self.memo.contains_key(&n1) && self.memo.contains_key(&n2)));
+            let mut mapping: HashMap<L, Id> = HashMap::default();
+            let mut uf: UnionFind = Default::default();
+            for (n1, n2) in to_remove {
+                if !mapping.contains_key(&n1) {
+                    mapping.insert(n1.clone(), uf.make_set());
+                }
+                if !mapping.contains_key(&n2) {
+                    mapping.insert(n2.clone(), uf.make_set());
+                }
+                uf.union(mapping[&n1], mapping[&n2]);
+            }
+            debug_assert!(mapping.iter().all(|(n, i)| &self.canonize(n) == n && self.memo.contains_key(&n)));
+            let mut groups = mapping.keys().into_iter()
+                .map(|n| (uf.find(mapping[n]), n)).into_group_map();
+            debug_assert!(groups.iter().all(|(_, ns)| ns.iter().all(|n| self.memo.contains_key(n))));
+            for (_, vs) in groups.iter_mut() {
+                let max: usize = vs.iter().position_max_by_key(|v| self.memo[**v].1.count_ones()).unwrap();
+                for (i, v) in vs.into_iter().enumerate() {
+                    // skip max
+                    if i == max {
+                        continue;
+                    }
+                    // get v's entry, use default if it doesn't exist.
+                    // Add c to the entry.
+                    res.entry(v.clone()).or_default().push(c.get_id());
+                }
+            }
         }
         self.colors = colors;
+        res
     }
 
     pub fn create_color(&mut self) -> ColorId {
@@ -1191,7 +1351,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
     pub fn colored_union(&mut self, color: ColorId, id1: Id, id2: Id) -> (Id, bool) {
         self.memo_parents_agree();
-        let c = self.colors.get_mut(usize::from(color)).unwrap();
+        let c = self.colors.get_mut(color.0).unwrap();
         let union = c.colored_union(id1, id2);
         if union.1 {
             for child in c.children().iter().copied().collect_vec() {
@@ -1558,5 +1718,76 @@ mod tests {
             println!("{}", x);
         });
         assert_eq!(egraph.colored_find(color_succ, init), egraph.colored_find(color_succ, res_succ_z), "Black ids for color_succ:\n  {}", egraph.colors[color_succ.0].to_string());
+    }
+
+    #[test]
+    fn color_true_eq_false() {
+        use crate::SymbolLang as S;
+
+        crate::init_logger();
+        let mut egraph = EGraph::<S, ()>::default();
+
+        // rules for:
+        // and (true ?x) => ?x
+        // and (false ?x) => false
+        // or (true ?x) => true
+        // or (false ?x) => ?x
+        // not true => false
+        // not false => true
+        let mut rules = vec![
+            rewrite!("rule2"; "(eq ?x ?y)" => "(eq ?y ?x)"),
+            rewrite!("rule3"; "(and true ?x)" => "?x"),
+            rewrite!("rule4"; "(and false ?x)" => "false"),
+            rewrite!("rule5"; "(or true ?x)" => "true"),
+            rewrite!("rule6"; "(or false ?x)" => "?x"),
+            rewrite!("rule7"; "(not true)" => "false"),
+            rewrite!("rule8"; "(not false)" => "true"),
+        ];
+
+        // Add many boolean expressions like "true", "false", and "(and x (or y true))"
+        let exprs = vec![
+            "true",
+            "false",
+            "(and true true)",
+            "(and x false)",
+            "(and false true)",
+            "(and false false)",
+            "(or y true)",
+            "(or true false)",
+            "(or false true)",
+            "(or false false)",
+            "(not true)",
+            "(not false)",
+            "(not (and z true))",
+            "(not (and true false))",
+            "(not (and false true))",
+            "(not (and false false))",
+            "(not (or true true))",
+            "(not (or true false))",
+            "(not (or false z))",
+            "(not (or false false))",
+        ];
+
+        let mut ids = vec![];
+        for exp in exprs {
+            ids.push(egraph.add_expr(&exp.parse().unwrap()));
+        }
+
+        egraph.rebuild();
+        egraph = Runner::default().with_iter_limit(8).with_node_limit(400000).with_egraph(egraph).run(&rules).egraph;
+        egraph.rebuild();
+
+        let t_id = egraph.add_expr(&"true".parse().unwrap());
+        let f_id = egraph.add_expr(&"false".parse().unwrap());
+
+        let color_tf = egraph.create_color();
+        egraph.colored_union(color_tf, t_id, f_id);
+
+        egraph.rebuild();
+        egraph = Runner::default().with_iter_limit(8).with_node_limit(400000).with_egraph(egraph).run(&rules).egraph;
+        egraph.rebuild();
+
+        assert_eq!(egraph.colored_find(color_tf, ids[0]), egraph.colored_find(color_tf, ids[2]));
+        assert_eq!(egraph.colored_find(color_tf, ids[4]), egraph.colored_find(color_tf, ids[5]));
     }
 }

@@ -6,7 +6,7 @@ use crate::util::JoinDisp;
 use std::collections::{HashSet, HashMap};
 use itertools::Itertools;
 use std::fmt::Formatter;
-use std::ops::BitXor;
+use std::ops::{BitOrAssign, BitXor};
 use indexmap::IndexSet;
 use log::{error, info, trace, warn};
 use crate::egraph::DenseNodeColors;
@@ -111,23 +111,21 @@ impl Color {
 
     /// Reapply congruence closure for color.
     /// Returns which colors to remove from which edges.
-    pub fn cong_closure<L: Language, N: Analysis<L>>(&mut self, egraph: &mut EGraph<L, N>, black_merged: &[(Id, Id)]) {
+    pub fn cong_closure<L: Language, N: Analysis<L>>(&mut self, egraph: &EGraph<L, N>, black_merged: &[Id]) -> Vec<(L, L)> {
+        let mut  colors_to_remove = vec![];
         self.assert_black_ids(egraph);
-        debug_assert!(black_merged.iter()
-            .all(|(id1, id2)| self.find(*id1) == self.find(*id2)));
-
 
         let mut to_union = vec![];
         // We need to build memo ahead of time because even a single merge might miss needed unions.
         // Need to do some merging and initial color deletion here because we are deleting duplicate
         // edges.
-        let mut memo: HashMap<L, (Id, DenseNodeColors)> = {
+        let mut memo: HashMap<L, (Id, DenseNodeColors, L)> = {
             let mut v = egraph.memo.iter()
                 .filter(|(_, (_, cs))| cs.not_any() || cs[self.color_id.0])
                 .map(|(orig, (e, cs))| {
                     let mut cloned = orig.clone();
                     cloned.update_children(|c| self.find(c));
-                    (cloned, (self.find(*e), cs.clone()))
+                    (cloned, (self.find(*e), cs.clone(), (*orig).clone()))
                 })
                 .collect_vec();
 
@@ -135,14 +133,17 @@ impl Color {
             v.sort_unstable_by_key(|(k, _)| k.clone());
 
             // TODO: Create dedup with side effects for iterator
-            v.dedup_by(|(n1, (e1, cs1)), (n2, (e2, cs2))| {
+            v.dedup_by(|(n1, (e1, cs1, orig1)), (n2, (e2, cs2, orig2))| {
                 n1 == n2 && {
                     <EGraph<L, N>>::update_memoed(cs1, cs2);
                     to_union.push((*e1, *e2));
+                    let colored = cs1.any() || cs2.any();
+                    debug_assert!(orig1 == &egraph.canonize(orig1) && orig2 == &egraph.canonize(orig2));
+                    colors_to_remove.push(((*orig1).clone(), (*orig2).clone()));
                     true
                 }
             });
-            v.into_iter().map(|(n, (e, cs))| (n, (e, cs))).collect()
+            v.into_iter().collect()
         };
 
         for (id1, id2) in to_union.drain(..) {
@@ -166,7 +167,7 @@ impl Color {
             let all_groups = self.union_find.build_sets();
             for id in todo {
                 // We are using optional colors to prevent color creation for all parents.
-                let mut parents: Vec<(L, Id, Option<DenseNodeColors>)> = all_groups.get(&id)
+                let mut parents: Vec<(L, Id, Option<DenseNodeColors>, L)> = all_groups.get(&id)
                     .unwrap().iter()
                     .flat_map(|g| egraph[*g].parents.iter().map(|(p, id)| (p, id, None))
                     .chain(egraph[*g].colored_parents.iter()
@@ -177,32 +178,60 @@ impl Color {
                         memo.remove(n);
                         let mut res = n.clone();
                         res.update_children(|child| self.union_find.find(child));
-                        (res, (self.union_find.find(*id)), cs)
+                        let orig = egraph.canonize(n);
+                        debug_assert!((cs.is_some() && cs.as_ref().unwrap().any()) || egraph.memo.contains_key(&orig), "orig {:?} colors {:#?}", orig, cs);
+                        (res, (self.union_find.find(*id)), cs, orig)
                     }).collect();
 
                 // Prevent comparing colors (as it can be expensive).
                 // TODO: We should improve and work without cloning by using permutations library.
+                // TODO: we might be able to prevent parent recollection by memoization.
                 parents.sort_unstable_by_key(|x| x.0.clone());
                 // When two edges are equal, and one of them is colored, we may be able to remove
                 // the edges dependence on the color. Because we can parallelize over the
                 // different colors, we keep the egraph immutable. Later we will update memo for all
                 // colors at once, and if some edges becomes colorless we can remove it during
                 // `rebuild_classes`.
-                parents.dedup_by(|(n1, e1, memoed1),
-                                  (n2, e2, memoed2)| {
+                parents.dedup_by(|(n1, e1, memoed1, orig1),
+                                  (n2, e2, memoed2, orig2)| {
                     n1 == n2 && {
                         <EGraph<L, N>>::update_optional_memoed(memoed1, memoed2);
                         to_union.push((*e1, *e2));
+                        debug_assert!(orig1 == &egraph.canonize(&orig1));
+                        debug_assert!(orig2 == &egraph.canonize(&orig2));
+                        debug_assert!(egraph.memo.contains_key(&orig1));
+                        debug_assert!(egraph.memo.contains_key(&orig2));
+                        colors_to_remove.push((orig1.clone(), orig2.clone()));
                         true
                     }
                 });
 
                 let empty_colors = <EGraph<L, N>>::init_color_vec();
-                for (n, e, cs) in parents.iter_mut() {
+                for (n, e, cs, orig) in parents.iter_mut() {
                     // It is possible we don't have colors because parent was updated from different
                     // class.
-                    let res = <EGraph<L, N>>::update_memo_from_parent(&mut memo, n, e, cs.as_ref().unwrap_or(&empty_colors));
-                    to_union.extend(res.into_iter());
+                    let res = cs.as_ref().map(|cs| {
+                            if let Some((old, mut old_cs, old_orig)) = memo.insert(n.clone(), (*e, cs.clone(), orig.clone())) {
+                                for (_, new_cs, new_orig) in memo.get_mut(n).iter_mut() {
+                                    if (old_cs.not_any()) || cs.not_any() {
+                                        new_cs.set_elements(0);
+                                        return Some((old, *e, old_orig));
+                                    } else {
+                                        new_cs.bitor_assign(&old_cs);
+                                    }
+                                }
+                            }
+                            None
+                        }).flatten();
+                    //<EGraph<L, N>>::update_memo_from_parent(&mut memo, n, e, cs.as_ref().unwrap_or(&empty_colors));
+                    if let Some((id1, id2, old_orig)) = res {
+                        to_union.push((id1, id2));
+                        debug_assert!(&old_orig == &egraph.canonize(&old_orig));
+                        debug_assert!(orig == &egraph.canonize(&orig));
+                        debug_assert!(egraph.memo.contains_key(&old_orig));
+                        debug_assert!(egraph.memo.contains_key(&orig));
+                        colors_to_remove.push((old_orig, orig.clone()));
+                    }
                 }
             }
 
@@ -214,6 +243,8 @@ impl Color {
         assert!(self.dirty_unions.is_empty(), "Dirty unions should be empty {}", self.dirty_unions.iter().join(", "));
         assert!(to_union.is_empty(), "to_union should be empty {}", to_union.iter().map(|x| format!("{}-{}", x.0, x.1)).join(", "));
         self.assert_black_ids(egraph);
+        debug_assert!(colors_to_remove.iter().all(|(n1, n2)| egraph.memo.contains_key(n1) && egraph.memo.contains_key(n2)));
+        return colors_to_remove;
     }
 
     pub fn black_ids(&self, id: Id) -> Option<&HashSet<Id>> {

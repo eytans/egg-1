@@ -25,6 +25,7 @@ extern crate global_counter;
 #[cfg(test)]
 #[macro_use]
 extern crate proptest;
+extern crate core;
 
 pub mod tutorials;
 
