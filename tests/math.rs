@@ -75,7 +75,7 @@ impl Analysis<Math> for ConstantFold {
             let added = egraph.add(Math::Constant(c));
             let (id, _did_something) = egraph.union(id, added);
             // to not prune, comment this out
-            egraph[id].nodes.retain(|n| n.is_leaf());
+            egraph[id].nodes.retain(|n| n.0.is_leaf());
 
             assert!(
                 !egraph[id].nodes.is_empty(),
@@ -96,7 +96,7 @@ fn is_const_or_distinct_var(v: &str, w: &str) -> impl Fn(&mut EGraph, Id, &Subst
             && egraph[subst[v]]
                 .nodes
                 .iter()
-                .any(|n| matches!(n, Math::Constant(..) | Math::Symbol(..)))
+                .any(|n| matches!(n, (Math::Constant(..) | Math::Symbol(..), ..)))
     }
 }
 
@@ -106,7 +106,7 @@ fn is_const(var: &str) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
         egraph[subst[var]]
             .nodes
             .iter()
-            .any(|n| matches!(n, Math::Constant(..)))
+            .any(|n| matches!(n, (Math::Constant(..), _)))
     }
 }
 
@@ -116,14 +116,14 @@ fn is_sym(var: &str) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
         egraph[subst[var]]
             .nodes
             .iter()
-            .any(|n| matches!(n, Math::Symbol(..)))
+            .any(|n| matches!(n, (Math::Symbol(..), _)))
     }
 }
 
 fn is_not_zero(var: &str) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
     let var = var.parse().unwrap();
     let zero = Math::Constant(0.0.into());
-    move |egraph, _, subst| !egraph[subst[var]].nodes.contains(&zero)
+    move |egraph, _, subst| !egraph[subst[var]].nodes.iter().any(|n| n.0 == zero)
 }
 
 #[rustfmt::skip]

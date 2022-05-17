@@ -2,13 +2,17 @@
 
 These are not considered part of the public api.
 */
+#![macro_use]
 
+/*
 #[cfg(test)]
-mod test {
+#[macro_use]
+pub mod test {
+ */
     use std::path::PathBuf;
     use std::time::{Duration, Instant};
     use crate::{SymbolLang, Symbol, Id, RecExpr};
-    use proptest::prelude::*;
+    //use proptest::prelude::*;
 
     fn mean_stdev(data: &[f64]) -> (f64, f64) {
         assert_ne!(data.len(), 0);
@@ -152,7 +156,7 @@ mod test {
             result,
         }
     }
-
+/*
     prop_compose! {
     fn arb_symbol(max: u32)(u in 0..=max) -> Symbol {
         Symbol(u)
@@ -171,7 +175,7 @@ mod test {
         vec in prop::collection::vec(arb_id(max_id), 0..=(max_children as usize))) -> SymbolLang {
         SymbolLang::new(sym, vec)
     }
-}
+}*/
 
 // prop_compose! {
 //     fn arb_expression(max_sym: u32, max_children: u32, depth: u32)(
@@ -250,4 +254,7 @@ mod test {
         }
     };
 }
+/*
+    pub(crate) use test_fn;
 }
+*/

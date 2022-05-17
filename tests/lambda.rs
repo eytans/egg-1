@@ -1,5 +1,6 @@
 use egg::{rewrite as rw, *};
 use std::collections::HashSet;
+use std::fmt::{Display, Formatter};
 
 define_language! {
     enum Lambda {
@@ -170,6 +171,13 @@ impl Applier<Lambda, LambdaAnalysis> for CaptureAvoid {
     }
 }
 
+impl Display for CaptureAvoid {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
+#[cfg(test)]
 egg::test_fn! {
     lambda_under, rules(),
     "(lam x (+ 4
