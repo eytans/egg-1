@@ -1,4 +1,3 @@
-use std::borrow::BorrowMut;
 use std::cmp::{max, min};
 pub use crate::{Id, EGraph, Language, Analysis, ColorId};
 use crate::{Singleton, UnionFind};
@@ -6,10 +5,8 @@ use crate::util::JoinDisp;
 use std::collections::{HashSet, HashMap};
 use itertools::Itertools;
 use std::fmt::Formatter;
-use std::ops::{BitOrAssign, BitXor};
 use indexmap::IndexSet;
 use log::{error, info, trace, warn};
-use crate::egraph::DenseNodeColors;
 
 pub type ColorParents = smallvec::SmallVec<[ColorId; 3]>;
 
@@ -95,6 +92,9 @@ impl Color {
         let orig_to = self.find(id1);
         let orig_from = self.find(id2);
         let (mut to, mut from, changed) = self.union_impl(id1, id2);
+        if changed {
+            self.dirty_unions.push(to);
+        }
         self.update_union_map(id1, id2, orig_to, orig_from);
         (to, changed)
     }
@@ -112,6 +112,7 @@ impl Color {
     /// Reapply congruence closure for color.
     /// Returns which colors to remove from which edges.
     pub fn cong_closure<L: Language, N: Analysis<L>>(&mut self, egraph: &EGraph<L, N>, black_merged: &[Id]) -> Vec<(L, L)> {
+        // TODO: When we rebuild the colored_memo, we should point to the *black* representative id.
         let mut  colors_to_remove = vec![];
         self.assert_black_ids(egraph);
 
@@ -124,7 +125,7 @@ impl Color {
                 .filter(|(_, (_, cs))| cs.not_any() || cs[self.color_id.0])
                 .map(|(orig, (e, cs))| {
                     let mut cloned = orig.clone();
-                    cloned.update_children(|c| self.find(c));
+                    egraph.update_node(cloned);
                     (cloned, (self.find(*e), cs.clone(), (*orig).clone()))
                 })
                 .collect_vec();

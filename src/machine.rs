@@ -37,41 +37,18 @@ enum Instruction<L> {
 #[inline(always)]
 fn for_each_matching_node<L, D>(eclass: &EClass<L, D>,
                                 node: &L,
-                                color: Option<ColorId>,
-                                mut f: impl FnMut(&L, Option<ColorId>))
+                                mut f: impl FnMut(&L))
     where
         L: Language,
 {
-    let filterer: Box<dyn Fn(&(L, SparseNodeColors)) -> bool> =
-        if let Some(color) = color {
-            Box::new(move |(n, cs)| {
-                let c = color;
-                node.matches(n) && (cs.is_empty() || cs.contains(&c))
-            })
-        } else {
-            Box::new(|(n, cs)| {
-                node.matches(n)
-            })
-        };
-    let applier: Box<dyn FnMut(&(L, SparseNodeColors))> =
-        if color.is_some() {
-            Box::new(|(n, cs)| f(n, None))
-        } else {
-            Box::new(|(n, cs)|
-                if cs.is_empty() {
-                    f(n, None)
-                } else {
-                    cs.iter().for_each(|c_id| f(n, Some(*c_id)))
-                })
-        };
-    // TODO: maybe I need to choose color for current eclass when I see colored edges.
+    let filterer = |n: &L| { node.matches(n) };
     if eclass.nodes.len() < 50 {
         eclass.nodes.iter().filter(|x| filterer(x))
-            .for_each(applier)
+            .for_each(f)
     } else {
         debug_assert!(node.children().iter().all(|&id| id == Id::from(0)));
-        debug_assert!(eclass.nodes.windows(2).all(|w| w[0].0 < w[1].0));
-        let mut start = eclass.nodes.binary_search_by_key(&node, |(n, cs)| n).unwrap_or_else(|i| i);
+        debug_assert!(eclass.nodes.windows(2).all(|w| w[0] < w[1]));
+        let mut start = eclass.nodes.binary_search(node).unwrap_or_else(|i| i);
         let matching = eclass.nodes[..start].iter().rev()
             .take_while(|x| filterer(x))
             .chain(eclass.nodes[start..].iter().take_while(|x| filterer(x)));
@@ -89,7 +66,7 @@ fn for_each_matching_node<L, D>(eclass: &EClass<L, D>,
                 .collect::<indexmap::IndexSet<_>>(),
             eclass.nodes
         );
-        matching.for_each(applier);
+        matching.for_each(f);
     }
 }
 
@@ -114,9 +91,8 @@ impl Machine {
             match instruction {
                 Instruction::Bind { i, out, node } => {
                     let remaining_instructions = instructions.as_slice();
-                    for_each_matching_node(&egraph[self.reg(*i)], node, None,
-                                           |matched, c_id| {
-                        debug_assert!(c_id.is_none());
+                    for_each_matching_node(&egraph[self.reg(*i)], node,
+                                           |matched| {
                         self.reg.truncate(out.0 as usize);
                         self.reg.extend_from_slice(matched.children());
                         self.run(egraph, remaining_instructions, subst, yield_fn)
@@ -151,30 +127,23 @@ impl Machine {
                     let remaining_instructions = instructions.as_slice();
                     let mut run_matches = |machine: &mut Machine,
                                            eclass: &EClass<L, N::Data>| {
-                        for_each_matching_node(eclass, node, machine.color, |matched, opt_color| {
-                            if opt_color.is_some() {
-                                debug_assert!(machine.color.is_none());
-                                machine.color = opt_color.clone();
-                            }
+                        for_each_matching_node(eclass, node, |matched| {
                             machine.reg.truncate(out.0 as usize);
                             machine.reg.extend_from_slice(matched.children());
                             machine.run_colored(egraph, remaining_instructions, subst, yield_fn);
-                            if opt_color.is_some() {
-                                machine.color = None;
-                            }
                         });
                     };
 
                     // Collect colors that should be run on next instruction. Foreach color
                     // keep which eclasses it needs to run on (all except current reg).
                     // If we are already colored we need all ids.
-                    // TODO: first choose node and then go through colors.
                     run_matches(self, &egraph[self.reg(*i)]);
                     let old_reg = self.reg(*i);
                     if self.color.is_some() {
                         let c = &egraph.colors()[self.color.unwrap().0];
                         self.run_colored_branches(&egraph, i, &mut run_matches, c, old_reg);
                     } else {
+                        // TODO: Have a hashmap or something for each ID specifying relevant colors.
                         for c in egraph.colors() {
                             self.color = Some(c.get_id());
                             self.run_colored_branches(&egraph, i, &mut run_matches, c, old_reg);
@@ -355,6 +324,9 @@ impl<L: Language> Program<L> {
 
         assert_eq!(machine.reg.len(), 0);
         machine.reg.push(eclass);
+        if let Some(c) = egraph[eclass].color {
+            machine.color = Some(c);
+        }
 
         let mut substs = Vec::new();
         machine.run_colored(

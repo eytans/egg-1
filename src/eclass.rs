@@ -1,3 +1,4 @@
+use std::alloc::GlobalAlloc;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::iter::ExactSizeIterator;
@@ -15,13 +16,16 @@ pub struct EClass<L, D> {
     pub id: Id,
     /// The equivalent enodes in this equivalence class with their associated colors.
     /// No color set means it is a black edge (which will never be removed).
-    pub nodes: Vec<(L, SparseNodeColors)>,
+    pub nodes: Vec<L>,
     /// The analysis data associated with this eclass.
     pub data: D,
     pub(crate) parents: Vec<(L, Id)>,
-    pub(crate) colored_parents: Vec<(L, Id, DenseNodeColors)>,
-    /// Some colors not yet added to 'nodes', or clear if none.
-    pub(crate) dirty_colors: HashMap<L, DenseNodeColors>,
+
+    /// Each EClass has a unique color (None is black, i.e. default).
+    #[cfg(feature = "colored")]
+    pub(crate) color: Option<ColorId>,
+    #[cfg(feature = "colored")]
+    pub(crate) colored_parents: HashMap<ColorId, Vec<(L, Id)>>,
 }
 
 impl<L, D> EClass<L, D> {
@@ -36,19 +40,19 @@ impl<L, D> EClass<L, D> {
     }
 
     /// Iterates over the enodes in this eclass.
-    pub fn iter(&self) -> impl ExactSizeIterator<Item = &(L, SparseNodeColors)> {
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = &L> {
         self.nodes.iter()
     }
 
-    pub fn iter_without_colors(&self) -> impl ExactSizeIterator<Item = &L> {
-        self.nodes.iter().map(|(l, _)| l)
+    pub fn color(&self) -> Option<ColorId> {
+        self.color
     }
 }
 
 impl<L: Language, D> EClass<L, D> {
     /// Iterates over the childless enodes in this eclass.
     pub fn leaves(&self) -> impl Iterator<Item = &L> {
-        self.nodes.iter().map(|(n, cs)| n).filter(|n| n.is_leaf())
+        self.nodes.iter().filter(|n| n.is_leaf())
     }
 
     /// Asserts that the childless enodes in this eclass are unique.

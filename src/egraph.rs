@@ -20,6 +20,7 @@ use crate::{Analysis, AstSize, Dot, EClass, Extractor, Id, Language, Pattern, Re
 pub use crate::colors::{Color, ColorParents, ColorId};
 use itertools::{assert_equal, Either, iproduct, Itertools};
 use itertools::Either::Right;
+use multimap::MultiMap;
 use smallvec::smallvec;
 
 #[cfg(test)]
@@ -148,7 +149,7 @@ same eclass.
 pub struct EGraph<L: Language, N: Analysis<L>> {
     /// The `Analysis` given when creating this `EGraph`.
     pub analysis: N,
-    pub(crate) memo: HashMap<L, (Id, DenseNodeColors)>,
+    pub(crate) memo: HashMap<L, Id>,
     unionfind: UnionFind,
     classes: SparseVec<EClass<L, N::Data>>,
     dirty_unions: Vec<Id>,
@@ -163,6 +164,8 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     colors: Vec<Color>,
     #[cfg(feature = "colored")]
     color_hierarchy: HashMap<Vec<ColorId>, ColorId>,
+    #[cfg(feature = "colored")]
+    pub(crate) colored_memo: HashMap<L, HashMap<ColorId, Id>>,
 }
 
 const MAX_COLORS: usize = 1000;
@@ -198,6 +201,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             classes_by_op: IndexMap::default(),
             repairs_since_rebuild: 0,
             color_hierarchy: Default::default(),
+            colored_memo: Default::default(),
         }
     }
 
@@ -370,65 +374,23 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             B: BorrowMut<L>,
     {
         let enode = enode.borrow_mut();
-        self.inner_lookup(enode).filter(|(id, cs)| !cs.any()).map(|(id, _)| id)
-    }
-
-    fn inner_lookup(&self, enode: &mut L) -> Option<(Id, &DenseNodeColors)> {
         enode.update_children(|id| self.find(id));
-        let memoed = self.memo.get(enode);
-        memoed.map(|(id, cs)| (self.find(*id), cs))
+        self.memo.get(enode).map(|id| self.find(*id))
     }
 
     /// Looks up a [`L`] from the [`EGraph`]. This works with equivalences defined in `color`.
-    /// Updates the enode's children to the relevant node, otherwise undefined.
-    /// returns eclass id, node colors, and whether the node was in the correct color.
-    fn inner_colored_lookup(&self, c_id: &ColorId, mut_enode: &mut L) -> Option<(Id, &DenseNodeColors, bool)> {
-        mut_enode.update_children(|id| self.find(id));
-        let mut memoed = self.memo.get(mut_enode);
-        let color = self.get_color(*c_id).unwrap();
-        let mut temp = None;
-        if memoed.is_some() {
-            let (id, cs) = memoed.unwrap();
-            let id = self.find(*id);
-            if cs[c_id.0] || !cs.any() {
-                return Some((id, cs, true));
-            }
-            temp = Some((id, cs, false, mut_enode.clone()));
-        }
-        let enode = mut_enode.clone();
-        // We maybe found an edge, but not in the correct color.
-        // Now go through all possibilities in the correct color and find one of the correct color.
-        // If no one is in the correct color try to find one in the wrong color.
-        let children_options = enode.children().iter()
-            .map(|id| color.black_ids(*id)
-                .map(|hs| Either::Left(hs.into_iter()))
-                .unwrap_or_else(|| Either::Right(std::iter::once(id))));
-        for combination in children_options.into_iter().multi_cartesian_product() {
-            let mut it = combination.iter();
-            mut_enode.update_children(|id| **it.next().unwrap());
-            if let Some((id, cs)) = self.inner_lookup(mut_enode) {
-                if cs[color.get_id().0] || !cs.any() {
-                    return Some((id, cs, true));
-                } else {
-                    temp.get_or_insert((id, cs, false, mut_enode.clone()));
-                }
-            }
-        }
-
-        if let Some((id, cs, b, n)) = temp {
-            *mut_enode = n;
-            Some((id, cs, b))
-        } else {
-             None
-        }
-    }
-
-    pub fn colored_lookup<B>(&self, color: &ColorId, mut enode: B) -> Option<Id>
+    pub fn colored_lookup<B>(&self, color: ColorId, mut enode: B) -> Option<Id>
         where
             B: BorrowMut<L>,
     {
-        self.inner_colored_lookup(color, enode.borrow_mut())
-            .filter(|(_, _, b)| *b).map(|(id, _, _)| id)
+        let enode = enode.borrow_mut();
+        enode.update_children(|id| self.find(id));
+        self.memo.get(enode).map(|id| self.find(*id)).or_else(|| {
+            enode.update_children(|id| self.colored_find(color, id));
+            // We need to find the black representative of the colored edge (yes, confusing).
+            self.colored_memo.get(enode).map(|colors|
+                colors.get(&color).map(|id| self.find(*id))).flatten()
+        })
     }
 
     /// Adds an enode to the [`EGraph`].
@@ -445,11 +407,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// [`EClass`]: struct.EClass.html
     /// [`add`]: struct.EGraph.html#method.add
     pub fn add(&mut self, mut enode: L) -> Id {
-        let inner_res = self.inner_lookup(&mut enode);
-        let colored = inner_res.as_ref().map(|(_, cs)| cs.any());
-        // can't blacken an edge because it might dirty the black color
-        if inner_res.is_some() && inner_res.as_ref().unwrap().1.not_any() {
-            let (id, _) = inner_res.unwrap();
+        if let Some(id) = self.lookup(&mut enode) {
             id
         } else {
             let id = self.unionfind.make_set();
@@ -461,11 +419,11 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             log::trace!("  ...adding to {}", id);
             let class = Box::new(EClass {
                 id,
-                nodes: vec![(enode.clone(), vec![])],
+                nodes: vec![enode.clone()],
                 data: N::make(self, &enode),
                 parents: Default::default(),
                 colored_parents: Default::default(),
-                dirty_colors: Default::default(),
+                color: None,
             });
 
             // add this enode to the parent lists of its children
@@ -475,7 +433,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             });
             assert_eq!(self.classes.len(), usize::from(id));
             self.classes.push(Some(class));
-            assert!(self.memo.insert(enode, (id, Self::init_color_vec())).is_none());
+            assert!(self.memo.insert(enode, id).is_none());
 
             self.memo_parents_agree();
 
@@ -490,23 +448,11 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     }
 
     pub fn colored_add(&mut self, color: &ColorId, mut enode: L) -> Id {
-        let inner_res = self.inner_colored_lookup(color, &mut enode);
-        if inner_res.is_some() {
-            let (id, cs, b) = inner_res.unwrap();
-            if !b {
-                // enode is colored now. Check if it is, and if it matters to these ops.
-                self.memo.get_mut(&enode).iter_mut()
-                    .for_each(|(id, cs)| cs.set(color.0, true));
-                debug_assert!(self[id].nodes.iter().find(|x| x.0 == enode).is_some());
-                debug_assert!(self[id].nodes.len() == 1);
-                self[id].dirty_colors.entry(enode).or_insert_with(|| Self::init_color_vec()).set(color.0, true);
-            }
-            self.memo_parents_agree();
+        if let Some(id) = self.colored_lookup(*color, &mut enode) {
             id
         } else {
-            enode.update_children(|id| self.find(id));
+            enode.update_children(|id| self.colored_find(*color, id));
 
-            // look for the node with the colored equivalence relation
             let id = self.unionfind.make_set();
             if cfg!(feature = "colored") {
                 for c in &mut self.colors {
@@ -515,28 +461,25 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             }
 
             log::trace!("  ...colored ({}) adding to {}", color, id);
-            let mut colors = Self::init_color_vec();
-            colors.set(color.0, true);
             let class = Box::new(EClass {
                 id,
-                nodes: vec![(enode.clone(), vec![color.clone()])],
+                nodes: vec![enode.clone()],
                 data: N::make(self, &enode),
                 parents: Default::default(),
                 colored_parents: Default::default(),
-                dirty_colors: Default::default()
+                color: Some(*color)
             });
 
 
             // add this enode to the parent lists of its children
             enode.children().iter().copied().unique().for_each(|child| {
-                let tup = (enode.clone(), id, colors.clone());
-                debug_assert!(colors.iter_ones().all(|c| self.colors().len() > c));
-                self[child].colored_parents.push(tup);
+                self[child].colored_parents.entry(*color).or_default().push((enode.clone(), id));
             });
 
             assert_eq!(self.classes.len(), usize::from(id));
             self.classes.push(Some(class));
-            assert!(self.memo.insert(enode, (id, colors)).is_none());
+            let mut color_map = self.colored_memo.entry(enode).or_default();
+            assert!(color_map.insert(*color, id).is_none());
             self.memo_parents_agree();
             N::modify(self, id);
             id
@@ -618,13 +561,13 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             // update the classes data structure
             let from_class = self.classes[usize::from(from)].take().unwrap();
             let to_class = self.classes[usize::from(to)].as_mut().unwrap();
+            debug_assert!(from_class.color == to_class.color);
 
             self.analysis.merge(&mut to_class.data, from_class.data);
             concat(&mut to_class.nodes, from_class.nodes);
             concat(&mut to_class.parents, from_class.parents);
-            concat(&mut to_class.colored_parents, from_class.colored_parents);
-            from_class.dirty_colors.into_iter().for_each(|(k, v)|
-                to_class.dirty_colors.entry(k).or_default().extend(v));
+            from_class.colored_parents.into_iter().for_each(|(k, v)|
+                to_class.colored_parents.entry(k).or_default().extend(v));
             N::modify(self, to);
             self.memo_parents_agree();
         }
@@ -652,7 +595,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 }
             }
         }
-        self.memo_nodes_agree();
+        self.memo_classes_agree();
         union
     }
 
@@ -711,7 +654,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             class
                 .nodes
                 .iter_mut()
-                .for_each(|(n, cs)| n.update_children(|id| uf.find(id)));
+                .for_each(|n| n.update_children(|id| uf.find(id)));
 
             // Prevent comparing colors. Black should be first for better dirty color application.
             class.nodes.sort_unstable_by_key(|(n, cs)| (n.clone(), !cs.is_empty()));
@@ -789,27 +732,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         trimmed
     }
 
-    fn check_colored_edges(memo: &HashMap<L, (Id, DenseNodeColors)>, class: &EClass<L, N::Data>) {
-        if cfg!(debug_assertions) {
-            fn into_dense(cs: &SparseNodeColors) -> DenseNodeColors {
-                let mut dense = DenseNodeColors::repeat(false, MAX_COLORS);
-                for c in cs.iter() {
-                    dense.set(c.0, true);
-                }
-                dense
-            }
-            for (n, cs) in class.nodes.iter() {
-                let dense = &memo.get(n).unwrap().1;
-                if into_dense(cs).bitxor(dense).any() {
-                    warn!("class nodes len {:?}", class.nodes.len());
-                    assert!(false, "Dense and sparse colors (node {:?}; sparse {}; dense {}) don't \
-                    match in class: \n{:?}", n, cs.iter().map(|c_id| c_id.0).join(", "), dense.iter_ones().join(", "), class)
-
-                }
-            }
-        }
-    }
-
     #[inline(never)]
     fn check_memo(&self) -> bool {
         let mut test_memo = IndexMap::new();
@@ -820,17 +742,20 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 Some(class) => class,
                 None => continue,
             };
+            if class.color.is_some() {
+                continue;
+            }
+            // TODO: also work with colored classes and memo
             assert_eq!(class.id, id);
-            for (node, cs) in &class.nodes {
+            for node in &class.nodes {
                 if let Some(old) = test_memo.insert(node, id) {
                     assert_eq!(
                         self.find(old),
                         self.find(id),
-                        "Found unexpected equivalence for {:?}\n{:?}\nvs\n{:?} (colored: {})",
+                        "Found unexpected equivalence for {:?}\n{:?}\nvs\n{:?}",
                         node,
                         self[self.find(id)].nodes,
                         self[self.find(old)].nodes,
-                        self.memo[&node].1.any(),
                     );
                 }
             }
@@ -840,7 +765,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             assert_eq!(e, self.find(e));
             assert_eq!(
                 Some(e),
-                self.memo.get(n).map(|(id, cs)| self.find(*id)),
+                self.memo.get(n).map(|id| self.find(*id)),
                 "Entry for {:?} at {} in test_memo was incorrect",
                 n,
                 e
@@ -876,6 +801,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 parents.iter_mut().for_each(|(n, id)| {
                     n.update_children(|child| self.find(child));
                     *id = self.find(*id);
+                    debug_assert!(self[*id].color.is_none());
                 });
                 // We are using cs.any() to make sure black edges are first.
                 parents.sort_unstable();
@@ -883,28 +809,9 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     n1 == n2 && {
                         to_union.push((*e1, *e2));
                         true
-                        // Dedup removed 1 and keeps 2. Update 2's colors.
-                        // if cs1.not_any() && cs2.not_any() {
-                        //     Self::update_memoed(cs1, cs2);
-                        //     to_union.push((*e1, *e2, None));
-                        //     true
-                        // } else if cs1.not_any() || cs2.not_any() {
-                        //
-                        //     for c in cs2.iter_ones().chain(cs1.iter_ones()) {
-                        //         to_union.push((*e1, *e2, Some(ColorId(c))));
-                        //     }
-                        //     if cs1.not_any() {
-                        //         *e2 = *e1;
-                        //     }
-                        //     cs2.set_elements(0);
-                        //     true
-                        // } else {
-                        //     false
-                        // }
                     }
                 });
 
-                let empty_colors = Self::init_color_vec();
                 for (n, e) in parents.iter_mut() {
                     // It is possible we don't have colors because parent was updated from different
                     // class.
@@ -924,16 +831,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                         res.push(to);
                         self.dirty_unions.push(to);
                     }
-
-                // if let Some(c_id) = color_opt {
-                //     let (to, did_something) = self.colored_union(c_id, id1, id2);
-                //     // We will deal with the dirty unions of the color later.
-                // } else {
-                //     let (to, did_something) = self.union_impl(id1, id2);
-                //     if did_something {
-                //         self.dirty_unions.push(to);
-                //     }
-                // }
             }
         }
         assert!(self.dirty_unions.is_empty());
@@ -1038,12 +935,10 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         let start = instant::Instant::now();
 
         // Verify colors on nodes and in memo only differ by dirty colors
-        self.memo_nodes_agree();
-        self.memo_parents_agree();
+        self.memo_classes_agree();
 
         let merged = self.process_unions();
 
-        self.memo_parents_agree();
         self.memo_black_canonized();
 
         let to_remove = self.process_colored_unions(merged);
@@ -1073,68 +968,50 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         n_unions
     }
 
+    pub(crate) fn colored_update_node(&self, color: ColorId, e: &mut L) {
+        e.update_children(|e| self.colored_find(color, e));
+    }
+
+    pub(crate) fn colored_canonize(&self, color: ColorId, e: &L) -> L {
+        let mut res = e.clone();
+        self.colored_update_node(color, &mut res);
+        res
+    }
+
+    pub(crate) fn update_node(&self, e: &mut L) {
+        e.update_children(|e| self.find(e));
+    }
+
     pub(crate) fn canonize(&self, e: &L) -> L {
-        e.clone().map_children(|e| self.find(e))
+        let mut res = e.clone();
+        self.update_node(&mut res);
+        res
     }
 
     fn memo_black_canonized(&self) {
-        debug_assert!(self.memo.iter().all(|(n, cs)| cs.1.any() || n == &self.canonize(n)));
+        debug_assert!(self.memo.keys().all(|n| n == &self.canonize(n)));
     }
 
-    fn memo_all_canonized(&self) {
+    fn colored_memo_canonized(&self) {
         if cfg!(debug_assertions) {
-            for (n, (id, cs)) in self.memo.iter() {
-                debug_assert!(n == &self.canonize(n), "{:?} with colors: {:?} @ {}", n, cs.iter_ones().collect_vec(), id);
+            for (n, colors) in self.colored_memo.iter() {
+                debug_assert!(!colors.is_empty());
+                for (c, _) in colors {
+                    debug_assert!(&self.colored_canonize(*c, n) == n)
+                }
             }
         }
     }
 
-    fn memo_parents_agree(&self) {
-        // if cfg!(debug_assertions) {
-        //     for (n, (id, cs)) in self.memo.iter() {
-        //         let (n, cs) = if n != &self.canonize(n) {
-        //             let mut result_cs = cs.clone();
-        //             let n = self.canonize(n);
-        //             for (n2, (_, cs)) in self.memo.iter() {
-        //                 if &self.canonize(n2) == &n {
-        //                     result_cs.bitor_assign(&*cs);
-        //                 }
-        //             }
-        //             (n, result_cs)
-        //         } else {
-        //             (n.clone(), cs.clone())
-        //         };
-        //         if n.len() != 0 {
-        //             let mut bitv = n.children().iter().flat_map(|c| {
-        //                 self[*c].parents.iter()
-        //                     .map(|(n1, cs, _)| (self.canonize(n1), cs))
-        //                     .filter(|(n1, cs)| { &n == n1 })
-        //                     .map(|t| t.1.clone())
-        //             }).fold1(|a, b| a.bitor(b)).unwrap();
-        //             let empty = Self::init_color_vec();
-        //             let dirty = self[*id].dirty_colors.get(&n).unwrap_or(&empty);
-        //             bitv.bitor_assign(dirty);
-        //             let res = bitv.clone().bitxor(&cs).not_any();
-        //             assert!(res);
-        //         }
-        //     }
-        // }
+    fn memo_all_canonized(&self) {
+        self.memo_black_canonized();
+        self.colored_memo_canonized();
     }
 
-    fn memo_nodes_agree(&self) {
-        debug_assert!(self.memo.iter().all(|(n, (id, cs))| {
-            // Find n in nodes of id
-            // assert!(&self.canonize(n) == n);
-            let (n2, cs2) = self[self.find(*id)].iter().find(|(n2, cs2)| n == n2).unwrap();
-            let temp_hashset = Default::default();
-            let dirty = self[*id].dirty_colors.get(n).unwrap_or(&temp_hashset);
-            let mut new_dense = Self::init_color_vec();
-            for c in cs2.iter() {
-                new_dense.set(c.0, true);
-            }
-            new_dense.bitor_assign(dirty);
-            new_dense.bitxor(cs).not_any()
-        }));
+    fn memo_classes_agree(&self) {
+        debug_assert!(self.memo.iter().all(|(n, id)| self[self.find(*id)].color.is_none())
+            && self.colored_memo.iter().all(|(_, cs)| cs.iter().all(|(c, id)|
+                self[self.find(*id)].color == Some(*c))));
     }
 
     #[inline(never)]
@@ -1183,14 +1060,17 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         let mut res: HashMap<L, SparseNodeColors> = Default::default();
         let mut next = black_merged.iter().unique().copied().collect_vec();
         let mut todo = vec![];
+        let mut round = 0;
         while !next.is_empty() {
             todo = std::mem::take(&mut next);
+            round += 1;
             let mut to_union = vec![];
             for id in todo.iter().unique().copied() {
                 let mut ps = std::mem::take(&mut self[id].colored_parents);
                 for (n, e, cs) in ps.iter_mut() {
                     let old = self.memo.remove(n);
-                    debug_assert!(old.iter().all(|(id, old_cs)| id == e && cs.any() == old_cs.any()));
+                    debug_assert!(cs.any());
+                    debug_assert!(old.iter().all(|(old_id, old_cs)| old_id == e && cs.any() == old_cs.any()), "From memo: id {} old_cs {:#?}", old.as_ref().unwrap().0, old.as_ref().unwrap().1.iter_ones().collect_vec());
                     n.update_children(|c| self.find(c));
                 }
                 // I need to dedup here. I should assert that there is only one edge in a colored class.
@@ -1241,8 +1121,9 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                         // We will handle dirty colored unions in the next step, so it is not needed
                         // here (and union will handle that update).
                         if did_something {
-                            assert_eq!(self.dirty_unions.len(), 0,
+                            assert_eq!(self.dirty_unions.len(), 1,
                                        "Should have been empty after process unions");
+                            self.dirty_unions.clear();
                             next.push(res);
                             black_merged.push(res);
                             // no parents so no **uncolored** node changes in memo.
@@ -1712,8 +1593,6 @@ mod tests {
 
 
         assert_eq!(egraph.colored_find(color_z, init), egraph.colored_find(color_z, res_z), "Black ids for color_z:\n  {}", egraph.colors[color_z.0].to_string());
-        println!("Nodes from 7 with colors {}", egraph[Id(7)].nodes.iter().map(|x| format!("node {:?} - cs [{}]", x.0, x.1.iter().join(", "))).join(", "));
-        println!("Matches from rule2:\n  {}", rules[0].search(&egraph).iter().map(|x| format!("{}", x)).join(", "));
         rules[0].search(&egraph).iter().for_each(|x| {
             println!("{}", x);
         });
