@@ -119,7 +119,7 @@ macro_rules! __define_language {
      $decl:tt $op_id:tt {$($matches:tt)*} $children:tt $children_mut:tt
      $display_op:tt {$($from_op_str:tt)*}
     ) => {
-        //use crate::macros::GetOp;
+        use $crate::macros::GetOp;
 
         $(#[$meta])*
         #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
@@ -319,11 +319,17 @@ impl Applier<SimpleLanguage, ()> for MySillyApplier {
     }
 }
 
+impl std::fmt::Display for MySillyApplier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+         todo!()
+    }
+}
+
 // This returns a function that implements Condition
 fn is_not_zero(var: &'static str) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
     let var = var.parse().unwrap();
     let zero = SimpleLanguage::Num(0);
-    move |egraph, _, subst| !egraph[subst[var]].nodes.contains(&zero)
+    move |egraph, _, subst| !egraph[subst[var]].nodes.iter().any(|n| n.0 == zero)
 }
 ```
 
