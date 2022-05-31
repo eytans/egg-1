@@ -4,9 +4,6 @@ use std::fmt::Debug;
 use std::iter::ExactSizeIterator;
 
 use crate::{ColorId, Id, Language};
-use crate::egraph::DenseNodeColors;
-
-pub type SparseNodeColors = Vec<ColorId>;
 
 /// An equivalence class of enodes.
 #[non_exhaustive]
@@ -24,6 +21,7 @@ pub struct EClass<L, D> {
     /// Each EClass has a unique color (None is black, i.e. default).
     #[cfg(feature = "colored")]
     pub(crate) color: Option<ColorId>,
+    /// Colored parents are colored_canonized pointing to the black ID of the class.
     #[cfg(feature = "colored")]
     pub(crate) colored_parents: HashMap<ColorId, Vec<(L, Id)>>,
 }

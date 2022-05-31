@@ -1,11 +1,10 @@
-use crate::{Analysis, EClass, EGraph, ENodeOrVar, Id, Language, PatternAst, SparseNodeColors, Subst, Var};
+use crate::{Analysis, EClass, EGraph, ENodeOrVar, Id, Language, PatternAst, Subst, Var};
 use std::cmp::Ordering;
 use log::warn;
 use smallvec::SmallVec;
 use crate::ColorId;
 use crate::colors::Color;
 use itertools::Itertools;
-use crate::egraph::DenseNodeColors;
 
 struct Machine {
     reg: Vec<Id>,

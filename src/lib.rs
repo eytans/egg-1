@@ -105,7 +105,7 @@ pub(crate) use unionfind::UnionFind;
 
 pub use {
     dot::Dot,
-    eclass::{EClass, SparseNodeColors},
+    eclass::{EClass},
     egraph::EGraph,
     extract::*,
     language::*,
