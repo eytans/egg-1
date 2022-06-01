@@ -1112,15 +1112,53 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         let mut new_c = self.colors.pop().unwrap();
         let mut todo = vec![];
         for c in colors {
-            let mut c = &mut self.colors[c.0];
-            new_c.dirty_unions.extend_from_slice(&c.dirty_unions);
-            for (black_id, ids) in &c.union_map {
+            let mut new_classes = vec![];
+            let mut id_changer = HashMap::new();
+            new_c.dirty_unions.extend_from_slice(&self.colors[c.0].dirty_unions);
+            let union_map = self.colors[c.0].union_map.clone();
+            for (black_id, ids) in union_map.iter() {
                 for id in ids {
+                    if self[*id].color.is_some() && !self[*id].is_empty() {
+                        let classes_len = self.classes.len();
+                        let mut class = &mut self[*id];
+                        iassert!(class.color == Some(c), "Color mismatch {:?} != {}", class.color, c);
+                        // TODO: do this without creating and merging many classes
+                        let mut class_nodes = class.nodes.clone();
+                        let mut new_class_id = self.colored_add(&new_c.get_id(), class_nodes.remove(0));
+                        for n in class_nodes {
+                            let res_id = self.colored_add(&new_c.get_id(), n);
+                            new_class_id = self.colored_union(new_c.get_id(), new_class_id, res_id).0;
+                        }
+                        iassert!(self.classes[classes_len..].iter().map(|x| if x.is_none() {0} else {1}).sum::<usize>() == 1);
+                        id_changer.insert(id, new_class_id);
+                        new_classes.push(new_class_id);
+                    }
                     todo.extend(new_c.inner_colored_union(*black_id, *id).2);
                 }
             }
-            c.children.push(new_id);
-            new_c.parents.extend(&c.parents);
+
+            let mut parents_to_fix: HashSet<Id> = HashSet::default();
+            for cl in new_classes {
+                for n in self[cl].nodes.iter_mut() {
+                    parents_to_fix.extend(n.children().iter().copied());
+                    n.update_children(|ch| *id_changer.get(&ch).unwrap_or(&ch));
+                }
+            }
+            for mut id in parents_to_fix {
+                if let Some(new_id) = id_changer.get(&id) {
+                    let removed = self[id].colored_parents.remove(&c).unwrap();
+                    self[*new_id].colored_parents.entry(new_c.get_id()).or_default()
+                        .extend(removed);
+                    id = *new_id;
+                }
+                let mut colored_parents = self[id].colored_parents.get_mut(&new_c.get_id()).unwrap();
+                colored_parents.iter_mut().for_each(|(p, p_id)| {
+                    *p_id = *id_changer.get(p_id).unwrap_or(p_id);
+                    p.update_children(|ch| *id_changer.get(&ch).unwrap_or(&ch));
+                });
+            }
+            self.colors[c.0].children.push(new_id);
+            new_c.parents.extend(&self.colors[c.0].parents);
         }
         self.colors.push(new_c);
         for (id1, id2) in todo {
