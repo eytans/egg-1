@@ -156,7 +156,7 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     pub(crate) classes_by_op: IndexMap<OpId, indexmap::IndexSet<Id>>,
 
     #[cfg(feature = "colored")]
-    /// To be used as a mechanism of case splitting.
+    /// To be used as a mechanism for case splitting.
     /// Need to rebuild these, but can probably use original memo for that purpose.
     /// For each inner vector of union finds, if there is a union common to all of them then it will
     /// be applied on the main union find (case split mechanism). Not true for UnionFinds of size 1.
@@ -325,16 +325,20 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// [`RecExpr`]: struct.RecExpr.html
     /// [`add_expr`]: struct.EGraph.html#method.add_expr
     pub fn add_expr(&mut self, expr: &RecExpr<L>) -> Id {
-        self.add_expr_rec(expr.as_ref())
+        self.add_expr_rec(expr.as_ref(), None)
     }
 
-    fn add_expr_rec(&mut self, expr: &[L]) -> Id {
+    fn add_expr_rec(&mut self, expr: &[L], color: Option<ColorId>) -> Id {
         log::trace!("Adding expr {:?}", expr);
         let e = expr.last().unwrap().clone().map_children(|i| {
             let child = &expr[..usize::from(i) + 1];
-            self.add_expr_rec(child)
+            self.add_expr_rec(child, color)
         });
-        let id = self.add(e);
+        let id = if let Some(c) = color {
+            self.colored_add(&c, e)
+        } else {
+            self.add(e)
+        };
         log::trace!("Added!! expr {:?}", expr);
         id
     }
@@ -439,6 +443,17 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     pub(crate) fn init_color_vec() -> BitVec {
         let mut colors = BitVec::repeat(false, MAX_COLORS);
         colors
+    }
+
+    /// Adds a [`RecExpr`] to the [`EGraph`].
+    /// Like [`add_expr`], but under a color.
+    ///
+    /// [`EGraph`]: struct.EGraph.html
+    /// [`RecExpr`]: struct.RecExpr.html
+    /// [`add_expr`]: struct.EGraph.html#method.add_expr
+    /// [`colored_add_expr`]: struct.EGraph.html#method.colored_add_expr
+    pub fn colored_add_expr(&mut self, color: ColorId, expr: &RecExpr<L>) -> Id {
+        self.add_expr_rec(expr.as_ref(), Some(color))
     }
 
     pub fn colored_add(&mut self, color: &ColorId, mut enode: L) -> Id {

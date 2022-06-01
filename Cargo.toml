@@ -27,6 +27,9 @@ global_counter = "0.2.1"
 bimap = "0.5.3"
 bitvec = "1.0.0"
 invariants = "0.1.1"
+# for very silly reasons
+num-traits = "0.2.15"
+ordered-float = "1"
 
 [dev-dependencies]
 env_logger = {version = "0.7", default-features = false}

@@ -12,7 +12,7 @@ pub type ColorParents = smallvec::SmallVec<[ColorId; 3]>;
 
 global_counter!(COLOR_IDS, usize, usize::default());
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct Color {
     pub(crate) union_find: UnionFind,
     color_id: ColorId,

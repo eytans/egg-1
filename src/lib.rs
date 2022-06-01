@@ -17,7 +17,8 @@ describing `egg` and some of its technical novelties.
 
 !*/
 
-mod macros;
+/* needs to be public for trait `GetOp` */
+pub mod macros;
 
 #[macro_use]
 extern crate global_counter;
