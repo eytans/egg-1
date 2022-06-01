@@ -954,32 +954,47 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             // rep to all contained
             let all_groups: IndexMap<Id, IndexSet<Id>> = self.colors[c_id.0].union_find.build_sets();
             for id in todo {
-                let mut parents: Vec<(L, Id)> = vec![];
+                // I need to build parents while aware what is a colored edge
+                // Colored edges might be deleted, and they need to be updated in colored_memo if not
+                let mut parents: Vec<(L, Id, bool)> = vec![];
                 for g in all_groups.get(&id).unwrap() {
                     for (p, id) in &self[*g].parents {
                         let canoned = self.colored_canonize(c_id, p);
                         memo.remove(&canoned);
-                        parents.push((canoned, self.find(*id)));
+                        parents.push((canoned, self.find(*id), true));
                     }
-                    for (p, id) in self[*g].colored_parents.get(&c_id).unwrap_or(&vec![]) {
-                        debug_assert!(self[*id].color.unwrap() == c_id, "Color mismatch");
-                        memo.remove(p);
-                        parents.push((self.colored_canonize(c_id, p), self.find(*id)));
+                    for (mut p, id) in std::mem::take(self[*g].colored_parents.get_mut(&c_id).unwrap_or(&mut vec![])) {
+                        debug_assert!(self[id].color.unwrap() == c_id, "Color mismatch");
+                        self.colored_memo.get_mut(&p).iter_mut().for_each(|x| {
+                            x.remove(&c_id);
+                        });
+                        if self.colored_memo.get(&p).map_or(false, |x| x.is_empty()) {
+                            self.colored_memo.remove(&p);
+                        }
+                        memo.remove(&p);
+                        self.colored_update_node(c_id, &mut p);
+                        parents.push((p, self.find(id), false));
                     }
                 }
                 // TODO: we might be able to prevent parent recollection by memoization.
                 parents.sort_unstable();
-                parents.dedup_by(|(n1, e1),
-                                  (n2, e2)| {
+                parents.dedup_by(|(n1, e1, is_black_1),
+                                  (n2, e2, is_black_2)| {
                     n1 == n2 && {
                         to_union.push((*e1, *e2));
                         true
                     }
                 });
 
-                for (n, e) in parents.iter_mut() {
+                for (n, e, is_black) in parents.iter_mut() {
                     if let Some(old) = memo.insert(n.clone(), *e) {
                         to_union.push((old, *e));
+                    }
+                    if !*is_black {
+                        let old = self.colored_memo.entry(n.clone()).or_default().insert(c_id, *e);
+                        if let Some(old) = old {
+                            to_union.push((old, *e));
+                        }
                     }
                 }
             }
