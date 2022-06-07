@@ -150,8 +150,9 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     /// The `Analysis` given when creating this `EGraph`.
     pub analysis: N,
     pub(crate) memo: IndexMap<L, Id>,
-    unionfind: UnionFind,
-    classes: SparseVec<EClass<L, N::Data>>,
+    /* These need to be pub(crate) for `Deserialization` */
+    pub(crate) unionfind: UnionFind,
+    pub(crate) classes: SparseVec<EClass<L, N::Data>>,
     dirty_unions: Vec<Id>,
     repairs_since_rebuild: usize,
     pub(crate) classes_by_op: IndexMap<OpId, IndexSet<Id>>,
@@ -1046,11 +1047,15 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         self.get_color(c_id).unwrap().assert_black_ids(self);
     }
 
-
+    #[cfg(feature = "eytans_assert")]
     fn memo_black_canonized(&self) {
         debug_assert!(self.memo.keys().all(|n| self.memo.contains_key(&self.canonize(n))));
     }
 
+    #[cfg(not(feature = "eytans_assert"))]
+    fn memo_black_canonized(&self) { }
+
+    #[cfg(feature = "eytans_assert")]
     fn colored_memo_canonized(&self) {
         if cfg!(debug_assertions) {
             for (n, colors) in self.colored_memo.iter() {
@@ -1082,6 +1087,9 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             }
         }
     }
+
+    #[cfg(not(feature = "eytans_assert"))]
+    fn colored_memo_canonized(&self) { }
 
     fn memo_all_canonized(&self) {
         self.memo_black_canonized();
