@@ -13,7 +13,7 @@ use bitvec::macros::internal::funty::Fundamental;
 use bitvec::vec::BitVec;
 
 use indexmap::{IndexMap, IndexSet};
-use invariants::{iassert, tassert};
+use invariants::{dassert, iassert, tassert, wassert};
 use log::*;
 
 use crate::{Analysis, AstSize, Dot, EClass, Extractor, Id, Language, Pattern, RecExpr, Searcher, UnionFind, Runner, Subst, Singleton, OpId};
@@ -410,29 +410,13 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         if let Some(id) = self.lookup(&mut enode) {
             id
         } else {
-            let id = self.unionfind.make_set();
-            if cfg!(feature = "colored") {
-                for c in &mut self.colors {
-                    c.add(id);
-                }
-            }
-            log::trace!("  ...adding to {}", id);
-            let class = Box::new(EClass {
-                id,
-                nodes: vec![enode.clone()],
-                data: N::make(self, &enode),
-                parents: Default::default(),
-                colored_parents: Default::default(),
-                color: None,
-            });
+            let id = self.inner_create_class(&mut enode, None);
 
             // add this enode to the parent lists of its children
             enode.children().iter().copied().unique().for_each(|child| {
                 let tup = (enode.clone(), id);
                 self[child].parents.push(tup);
             });
-            assert_eq!(self.classes.len(), usize::from(id));
-            self.classes.push(Some(class));
             assert!(self.memo.insert(enode, id).is_none());
 
             N::modify(self, id);
@@ -460,38 +444,46 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         if let Some(id) = self.colored_lookup(*color, &mut enode) {
             id
         } else {
-            enode.update_children(|id| self.colored_find(*color, id));
-
-            let id = self.unionfind.make_set();
-            if cfg!(feature = "colored") {
-                for c in &mut self.colors {
-                    c.add(id);
-                }
-            }
-
-            log::trace!("  ...colored ({}) adding to {}", color, id);
-            let class = Box::new(EClass {
-                id,
-                nodes: vec![enode.clone()],
-                data: N::make(self, &enode),
-                parents: Default::default(),
-                colored_parents: Default::default(),
-                color: Some(*color)
-            });
-
-
-            // add this enode to the parent lists of its children
+            let id = self.inner_create_class(&mut enode, Some(*color));
+            self.colors[color.0].black_colored_classes.insert(id, id);
             enode.children().iter().copied().unique().for_each(|child| {
                 self[child].colored_parents.entry(*color).or_default().push((enode.clone(), id));
             });
 
-            assert_eq!(self.classes.len(), usize::from(id));
-            self.classes.push(Some(class));
             let mut color_map = self.colored_memo.entry(enode).or_default();
             assert!(color_map.insert(*color, id).is_none());
             N::modify(self, id);
             id
         }
+    }
+
+    fn inner_create_class(&mut self, mut enode: &mut L, color: Option<ColorId>) -> Id {
+        let id = self.unionfind.make_set();
+        if cfg!(feature = "colored") {
+            for c in &mut self.colors {
+                c.add(id);
+            }
+        }
+
+        if let Some(c) = color {
+            enode.update_children(|id| self.colored_find(c, id));
+        } else {
+            enode.update_children(|id| self.find(id));
+        }
+
+        log::trace!("  ...colored ({:?}) adding to {}", color, id);
+        let class = Box::new(EClass {
+            id,
+            nodes: vec![enode.clone()],
+            data: N::make(self, &enode),
+            parents: Default::default(),
+            colored_parents: Default::default(),
+            color
+        });
+
+        assert_eq!(self.classes.len(), usize::from(id));
+        self.classes.push(Some(class));
+        id
     }
 
     /// Checks whether two [`RecExpr`]s are equivalent.
@@ -971,14 +963,15 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             for id in todo {
                 // I need to build parents while aware what is a colored edge
                 // Colored edges might be deleted, and they need to be updated in colored_memo if not
-                let mut parents: Vec<(L, Id, bool)> = vec![];
+                let mut parents: Vec<(L, Id, bool, Option<Id>)> = vec![];
                 for g in all_groups.get(&id).unwrap() {
                     for (p, id) in &self[*g].parents {
                         let canoned = self.colored_canonize(c_id, p);
                         memo.remove(&canoned);
-                        parents.push((canoned, self.find(*id), true));
+                        // I need bool and option for sorting
+                        parents.push((canoned, self.find(*id), true, None));
                     }
-                    for (mut p, id) in std::mem::take(self[*g].colored_parents.get_mut(&c_id).unwrap_or(&mut vec![])) {
+                    for (mut p, id) in self[*g].colored_parents.remove(&c_id).unwrap_or(vec![]) {
                         debug_assert!(self[id].color.unwrap() == c_id, "Color mismatch");
                         self.colored_memo.get_mut(&p).iter_mut().for_each(|x| {
                             x.remove(&c_id);
@@ -988,28 +981,30 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                         }
                         memo.remove(&p);
                         self.colored_update_node(c_id, &mut p);
-                        parents.push((p, self.find(id), false));
+                        parents.push((p, self.find(id), false, Some(*g)));
                     }
                 }
                 // TODO: we might be able to prevent parent recollection by memoization.
                 parents.sort_unstable();
-                parents.dedup_by(|(n1, e1, is_black_1),
-                                  (n2, e2, is_black_2)| {
+                parents.dedup_by(|(n1, e1, is_black_1, opt1),
+                                  (n2, e2, is_black_2, opt2)| {
                     n1 == n2 && {
                         to_union.push((*e1, *e2));
                         true
                     }
                 });
 
-                for (n, e, is_black) in parents.iter_mut() {
-                    if let Some(old) = memo.insert(n.clone(), *e) {
-                        to_union.push((old, *e));
+                for (n, e, is_black, orig_class) in parents {
+                    if let Some(old) = memo.insert(n.clone(), e) {
+                        to_union.push((old, e));
                     }
-                    if !*is_black {
-                        let old = self.colored_memo.entry(n.clone()).or_default().insert(c_id, *e);
+                    if !is_black {
+                        let old = self.colored_memo.entry(n.clone()).or_default().insert(c_id, e);
                         if let Some(old) = old {
-                            to_union.push((old, *e));
+                            to_union.push((old, e));
                         }
+                        let orig_class = orig_class.unwrap();
+                        self[orig_class].colored_parents.entry(c_id).or_default().push((n, e));
                     }
                 }
             }
@@ -1105,66 +1100,85 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// Create a new color which is based on given colors. This should be used only if the new color
     /// has no assumptions of it's own (i.e. it is only a combination of existing assumptions).
     pub fn create_combined_color(&mut self, colors: Vec<ColorId>) -> ColorId {
-        // TODO: Colored edges and hierarchy
         // First check if assumptions exist
-        let new_id = self.create_color();
+        let new_c_id = self.create_color();
         assert!(colors.len() > 0);
-        let mut new_c = self.colors.pop().unwrap();
         let mut todo = vec![];
         for c in colors {
             let mut new_classes = vec![];
             let mut id_changer = HashMap::new();
-            new_c.dirty_unions.extend_from_slice(&self.colors[c.0].dirty_unions);
-            let union_map = self.colors[c.0].union_map.clone();
-            for (black_id, ids) in union_map.iter() {
-                for id in ids {
+            let old_dirty_unions = self.colors[c.0].dirty_unions.clone();
+            self.colors.last_mut().unwrap().dirty_unions.extend_from_slice(&old_dirty_unions);
+            let union_map = self.colors[c.0].union_map.iter().map(|(x,y)| (*x, y.clone())).collect_vec();
+            union_map.iter().for_each(|(black_id, ids)| {
+                dassert!(ids.contains(black_id));
+                dassert!(ids.iter().map(|id| if self[*id].color.is_some() && !self[*id].nodes.is_empty() {1} else {0}).sum::<usize>() <= 1, "Ids: {}", ids.iter().join(", "));
+                let colored = ids.iter().find(|id| self[**id].color.is_some());
+                colored.copied().map(|id| id_changer.insert(id, Id((self.classes.len() + id_changer.len()) as u32)));
+            });
+            for (black_id, ids) in union_map {
+                for id in ids.iter() {
                     if self[*id].color.is_some() && !self[*id].is_empty() {
                         let classes_len = self.classes.len();
                         let mut class = &mut self[*id];
-                        iassert!(class.color == Some(c), "Color mismatch {:?} != {}", class.color, c);
-                        // TODO: do this without creating and merging many classes
+                        wassert!(class.color == Some(c), "Color mismatch {:?} != {}", class.color, c);
                         let mut class_nodes = class.nodes.clone();
-                        let mut new_class_id = self.colored_add(&new_c.get_id(), class_nodes.remove(0));
-                        for n in class_nodes {
-                            let res_id = self.colored_add(&new_c.get_id(), n);
-                            new_class_id = self.colored_union(new_c.get_id(), new_class_id, res_id).0;
+                        // Create a class, fix node and Analysis::Data
+                        let mut new_class_id = self.inner_create_class(&mut class_nodes.remove(0), Some(new_c_id));
+                        assert_eq!(new_class_id, id_changer[id]);
+                        let enode = &mut self[new_class_id].nodes[0];
+                        enode.update_children(|id| *id_changer.get(&id).unwrap_or(&id));
+                        let enode = enode.clone();
+                        self[new_class_id].data = N::make(self, &enode);
+                        assert!(self.colored_memo.entry(self[new_class_id].nodes[0].clone())
+                            .or_default().insert(new_c_id, new_class_id).is_none());
+                        for mut n in class_nodes {
+                            n.update_children(|id| {
+                                let canoned = self.colored_find(new_c_id, id);
+                                *id_changer.get(&canoned).unwrap_or(&canoned)
+                            });
+
+                            let mut temp = {
+                                let temp = N::make(self, &enode);
+                                std::mem::replace(&mut self[new_class_id].data, temp)
+                            };
+                            self.analysis.merge(&mut temp, N::make(self, &enode));
+                            self[new_class_id].data = temp;
+
+                            // We are changing nodes later so this is actually a temporary value
+                            self[new_class_id].nodes.push(n.clone());
+                            assert!(self.colored_memo.entry(n).or_default().insert(new_c_id, new_class_id).is_none());
                         }
-                        iassert!(self.classes[classes_len..].iter().map(|x| if x.is_none() {0} else {1}).sum::<usize>() == 1);
-                        id_changer.insert(id, new_class_id);
+                        iassert!(self.classes[classes_len..].iter().map(|x| if x.is_none() {0} else {1}).sum::<usize>() <= 1);
                         new_classes.push(new_class_id);
+                        self.colors[new_c_id.0].black_colored_classes.insert(new_class_id, new_class_id);
                     }
-                    todo.extend(new_c.inner_colored_union(*black_id, *id).2);
+                    todo.extend(self.colors.last_mut().unwrap().inner_colored_union(black_id, *id_changer.get(id).unwrap_or(id)).2);
                 }
             }
 
-            let mut parents_to_fix: HashSet<Id> = HashSet::default();
-            for cl in new_classes {
-                for n in self[cl].nodes.iter_mut() {
-                    parents_to_fix.extend(n.children().iter().copied());
-                    n.update_children(|ch| *id_changer.get(&ch).unwrap_or(&ch));
+            // Now fix nodes, and create data, and put in the parents with id_translation.
+            for id in new_classes {
+                let mut parents_to_add = vec![];
+                for n in self[id].iter() {
+                    for ch in n.children() {
+                        parents_to_add.push((*ch, n.clone(), id));
+                    }
                 }
-            }
-            for mut id in parents_to_fix {
-                if let Some(new_id) = id_changer.get(&id) {
-                    let removed = self[id].colored_parents.remove(&c).unwrap();
-                    self[*new_id].colored_parents.entry(new_c.get_id()).or_default()
-                        .extend(removed);
-                    id = *new_id;
+                for (ch, n, id) in parents_to_add {
+                    self[ch].colored_parents.entry(new_c_id).or_default().push((n, id));
                 }
-                let mut colored_parents = self[id].colored_parents.get_mut(&new_c.get_id()).unwrap();
-                colored_parents.iter_mut().for_each(|(p, p_id)| {
-                    *p_id = *id_changer.get(p_id).unwrap_or(p_id);
-                    p.update_children(|ch| *id_changer.get(&ch).unwrap_or(&ch));
-                });
+                N::modify(self, id);
             }
-            self.colors[c.0].children.push(new_id);
-            new_c.parents.extend(&self.colors[c.0].parents);
+
+            self.colors[c.0].children.push(new_c_id);
+            let old_parents = self.colors[c.0].parents.clone();
+            self.colors.last_mut().unwrap().parents.extend(old_parents);
         }
-        self.colors.push(new_c);
         for (id1, id2) in todo {
             self.union(id1, id2);
         }
-        new_id
+        new_c_id
     }
 
     pub fn colored_union(&mut self, color: ColorId, id1: Id, id2: Id) -> (Id, bool) {
@@ -1418,12 +1432,19 @@ mod tests {
 
         let x = egraph.add(S::leaf("x"));
         let y = egraph.add(S::leaf("y"));
+        let z = egraph.add(S::leaf("z"));
+        let w = egraph.add(S::leaf("w"));
 
-        let color = egraph.create_color();
-        let child = egraph.create_sub_color(color);
-
-        egraph.colored_union(color, y, x);
-        assert_eq!(egraph.colored_find(child, x), egraph.colored_find(child, y));
+        let color1 = egraph.create_color();
+        egraph.colored_union(color1, y, x);
+        let color2 = egraph.create_color();
+        egraph.colored_union(color2, w, z);
+        let child = egraph.create_combined_color(vec![color1, color2]);
+        egraph.colored_union(color2, x, z);
+        println!("{}", egraph.colors()[child.0]);
+        egraph.rebuild();
+        println!("{}", egraph.colors()[child.0]);
+        assert_eq!(egraph.colored_find(child, w), egraph.colored_find(child, y));
     }
 
     #[test]
