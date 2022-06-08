@@ -329,7 +329,7 @@ impl std::fmt::Display for MySillyApplier {
 fn is_not_zero(var: &'static str) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
     let var = var.parse().unwrap();
     let zero = SimpleLanguage::Num(0);
-    move |egraph, _, subst| !egraph[subst[var]].nodes.iter().any(|n| n.0 == zero)
+    move |egraph, _, subst| !egraph[subst[var]].nodes.contains(&zero)
 }
 ```
 
