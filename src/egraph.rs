@@ -1114,7 +1114,17 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             let old_dirty_unions = self.colors[c.0].dirty_unions.clone();
             self.colors.last_mut().unwrap().dirty_unions.extend_from_slice(&old_dirty_unions);
             // TODO: also go through non-union map classes
-            let union_map = self.colors[c.0].union_map.iter().map(|(x,y)| (*x, y.clone())).collect_vec();
+            let mut union_map = self.colors[c.0].union_map.iter().map(|(x,y)| (*x, y.clone())).collect_vec();
+            for class in self.classes() {
+                if self.colors[c.0].union_map.contains_key(&self.colored_find(c, class.id)) {
+                    dassert!(self.colors[c.0].union_map[&self.colored_find(c, class.id)].contains(&class.id));
+                    continue;
+                }
+                if class.color.is_none() || class.color == Some(c) {
+                    union_map.push((class.id, HashSet::from([class.id])));
+                }
+            }
+            let union_map = union_map;
             union_map.iter().for_each(|(black_id, ids)| {
                 dassert!(ids.contains(black_id));
                 dassert!(ids.iter().map(|id| if self[*id].color.is_some() && !self[*id].nodes.is_empty() {1} else {0}).sum::<usize>() <= 1, "Ids: {}", ids.iter().join(", "));
@@ -1126,7 +1136,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     if self[*id].color.is_some() && !self[*id].is_empty() {
                         let classes_len = self.classes.len();
                         let mut class = &mut self[*id];
-                        wassert!(class.color == Some(c), "Color mismatch {:?} != {}", class.color, c);
+                        wassert!(class.color == Some(c), "Color mismatch {:?} != {:?}", class.color, c);
                         let mut class_nodes = class.nodes.clone();
                         // Create a class, fix node and Analysis::Data
                         let mut new_class_id = self.inner_create_class(&mut class_nodes.remove(0), Some(new_c_id));
