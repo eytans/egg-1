@@ -284,7 +284,11 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     ///
     /// [`Dot`]: struct.Dot.html
     pub fn dot(&self) -> Dot<L, N> {
-        Dot { egraph: self }
+        Dot { egraph: self, color: None }
+    }
+
+    pub fn colored_dot(&self, color: ColorId) -> Dot<L, N> {
+        Dot { egraph: self, color: Some(color) }
     }
 }
 
@@ -1109,6 +1113,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             let mut id_changer = HashMap::new();
             let old_dirty_unions = self.colors[c.0].dirty_unions.clone();
             self.colors.last_mut().unwrap().dirty_unions.extend_from_slice(&old_dirty_unions);
+            // TODO: also go through non-union map classes
             let union_map = self.colors[c.0].union_map.iter().map(|(x,y)| (*x, y.clone())).collect_vec();
             union_map.iter().for_each(|(black_id, ids)| {
                 dassert!(ids.contains(black_id));

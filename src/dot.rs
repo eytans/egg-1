@@ -8,12 +8,15 @@ Use the [`Dot`] struct to visualize an [`EGraph`]
 [GraphViz]: https://graphviz.gitlab.io/
 !*/
 
+use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::io::{Error, ErrorKind, Result, Write};
 use std::path::Path;
+use std::str::FromStr;
+use itertools::Itertools;
 
-use crate::{egraph::EGraph, Analysis, Language};
+use crate::{egraph::EGraph, Analysis, Language, RecExpr, SymbolLang, EClass, ColorId};
 
 /**
 A wrapper for an [`EGraph`] that can output [GraphViz] for
@@ -55,6 +58,7 @@ instead of to its own eclass.
 **/
 pub struct Dot<'a, L: Language, N: Analysis<L>> {
     pub(crate) egraph: &'a EGraph<L, N>,
+    pub(crate) color: Option<ColorId>,
 }
 
 impl<'a, L, N> Dot<'a, L, N>
@@ -172,23 +176,36 @@ where
         writeln!(f, "  clusterrank=local")?;
 
         // define all the nodes, clustered by eclass
-        for class in self.egraph.classes() {
-            writeln!(f, "  subgraph cluster_{} {{", class.id)?;
-            writeln!(f, "    style=dotted")?;
-            for (i, node) in class.iter().enumerate() {
-                writeln!(
-                    f,
-                    "    {}.{}[label = \"{} : {}\"]",
-                    class.id,
-                    i,
-                    node.display_op(),
-                    class.id
-                )?;
+        if let Some(c) = self.color {
+            let color = self.egraph.get_color(c).unwrap();
+            let mut done = HashSet::new();
+            for (black_id, ids) in &color.union_map {
+                writeln!(f, "  subgraph cluster_colored_{} {{", black_id)?;
+                writeln!(f, "    color=blue")?;
+                for class in ids.iter().map(|id| &self.egraph[*id]) {
+                    Self::format_class(f, class)?;
+                }
+                writeln!(f, "  }}")?;
+                done.extend(ids.iter().copied());
             }
-            writeln!(f, "  }}")?;
+            for c in self.egraph.classes() {
+                if done.contains(&c.id) {
+                    continue;
+                }
+                Self::format_class(f, c)?;
+            }
+        } else {
+            for c in self.egraph.classes().filter(|c| c.color.is_none()) {
+                Self::format_class(f, c)?
+            }
         }
 
-        for class in self.egraph.classes() {
+        for c in self.egraph.classes() {
+            println!("id: {}", c.id);
+        }
+        for class in self.egraph.classes().filter(|c| c.color.is_none() || c.color == self.color) {
+            println!("id: {}", class.id);
+            let color_text = if class.color.is_some() {", color=blue"} else {""};
             for (i_in_class, node) in class.iter().enumerate() {
                 for (arg_i, child) in node.children().iter().enumerate() {
                     // write the edge to the child, but clip it to the eclass with lhead
@@ -199,15 +216,15 @@ where
                         writeln!(
                             f,
                             // {}.0 to pick an arbitrary node in the cluster
-                            "  {}.{}{} -> {}.{}:n [lhead = cluster_{}, {}]",
-                            class.id, i_in_class, anchor, class.id, i_in_class, class.id, label
+                            "  {}.{}{} -> {}.{}:n [lhead = cluster_{}{}, {}]",
+                            class.id, i_in_class, anchor, class.id, i_in_class, class.id, color_text, label
                         )?;
                     } else {
                         writeln!(
                             f,
                             // {}.0 to pick an arbitrary node in the cluster
-                            "  {}.{}{} -> {}.0 [lhead = cluster_{}, {}]",
-                            class.id, i_in_class, anchor, child, child_leader, label
+                            "  {}.{}{} -> {}.0 [lhead = cluster_{}{}, {}]",
+                            class.id, i_in_class, anchor, child, child_leader, color_text, label
                         )?;
                     }
                 }
@@ -216,4 +233,38 @@ where
 
         write!(f, "}}")
     }
+}
+
+impl<'a, L, N> Dot<'a, L, N> where L: Language, N: Analysis<L> {
+    fn format_class(f: &mut Formatter, class: &EClass<L, <N as Analysis<L>>::Data>) -> fmt::Result {
+        let color_text = if class.color.is_some() {", color=blue"} else {""};
+        writeln!(f, "  subgraph cluster_{} {{", class.id.0)?;
+        writeln!(f, "    style=dotted color=black")?;
+        for (i, node) in class.iter().enumerate() {
+            writeln!(
+                f,
+                "    {}.{}[label = \"{} : {}\"{}]",
+                class.id,
+                i,
+                node.display_op(),
+                class.id,
+                color_text,
+            )?;
+        }
+        writeln!(f, "  }}")
+    }
+}
+
+#[test]
+fn draw_if_xy_then_a_else_b() {
+    let mut egraph: EGraph<SymbolLang, ()> = EGraph::new(());
+    let if_statement = egraph.add_expr(&RecExpr::from_str("(if (< x y) hello world)").unwrap());
+    egraph.dot().to_dot("if.dot").unwrap();
+    let color = egraph.create_color();
+    let cond = egraph.add_expr(&RecExpr::from_str("(< x y)").unwrap());
+    let tru = egraph.colored_add_expr(color, &RecExpr::from_str("true").unwrap());
+    let hello = egraph.add_expr(&RecExpr::from_str("hello").unwrap());
+    egraph.colored_union(color, cond, tru);
+    egraph.colored_union(color, if_statement, hello);
+    egraph.colored_dot(color).to_dot("if_tru.dot").unwrap();
 }
