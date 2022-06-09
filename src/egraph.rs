@@ -1114,7 +1114,15 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             let old_dirty_unions = self.colors[c.0].dirty_unions.clone();
             self.colors.last_mut().unwrap().dirty_unions.extend_from_slice(&old_dirty_unions);
             // TODO: also go through non-union map classes
-            let union_map = self.colors[c.0].union_map.iter().map(|(x,y)| (*x, y.clone())).collect_vec();
+            let mut union_map = self.colors[c.0].union_map.iter().map(|(x,y)| (*x, y.clone())).collect_vec();
+            for class in self.classes() {
+                if self.colors[c.0].union_map.contains_key(&self.colored_find(c, class.id)) {
+                    dassert!(self.colors[c.0].union_map[&self.colored_find(c, class.id)].contains(&class.id));
+                    continue;
+                }
+                union_map.push((class.id, HashSet::from([class.id])));
+            }
+            let union_map = union_map;
             union_map.iter().for_each(|(black_id, ids)| {
                 dassert!(ids.contains(black_id));
                 dassert!(ids.iter().map(|id| if self[*id].color.is_some() && !self[*id].nodes.is_empty() {1} else {0}).sum::<usize>() <= 1, "Ids: {}", ids.iter().join(", "));
