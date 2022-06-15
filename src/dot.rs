@@ -59,6 +59,7 @@ instead of to its own eclass.
 pub struct Dot<'a, L: Language, N: Analysis<L>> {
     pub(crate) egraph: &'a EGraph<L, N>,
     pub(crate) color: Option<ColorId>,
+    pub(crate) print_color: String,
 }
 
 impl<'a, L, N> Dot<'a, L, N>
@@ -66,6 +67,13 @@ where
     L: Language,
     N: Analysis<L>,
 {
+    pub fn set_print_color(mut self, text: String) -> Self {
+        // Oh no! a security problem!
+        assert!(text.len() < 20);
+        self.print_color = text;
+        self
+    }
+
     /// Writes the `Dot` to a .dot file with the given filename.
     /// Does _not_ require a `dot` binary.
     pub fn to_dot(&self, filename: impl AsRef<Path>) -> Result<()> {
@@ -176,36 +184,31 @@ where
         writeln!(f, "  clusterrank=local")?;
 
         // define all the nodes, clustered by eclass
-        if let Some(c) = self.color {
-            let color = self.egraph.get_color(c).unwrap();
+        if let Some(c_id) = self.color {
+            let color = self.egraph.get_color(c_id).unwrap();
             let mut done = HashSet::new();
             for (black_id, ids) in &color.union_map {
                 writeln!(f, "  subgraph cluster_colored_{} {{", black_id)?;
-                writeln!(f, "    color=blue")?;
+                writeln!(f, "    color={}", self.print_color)?;
                 for class in ids.iter().map(|id| &self.egraph[*id]) {
-                    Self::format_class(f, class)?;
+                    Self::format_class(f, class, &self.print_color)?;
                 }
                 writeln!(f, "  }}")?;
                 done.extend(ids.iter().copied());
             }
             for c in self.egraph.classes() {
-                if done.contains(&c.id) {
+                if done.contains(&c.id) || c.color().iter().any(|c1| c1 != &c_id) {
                     continue;
                 }
-                Self::format_class(f, c)?;
+                Self::format_class(f, c, &self.print_color)?;
             }
         } else {
             for c in self.egraph.classes().filter(|c| c.color.is_none()) {
-                Self::format_class(f, c)?
+                Self::format_class(f, c, &self.print_color)?
             }
         }
-
-        for c in self.egraph.classes() {
-            println!("id: {}", c.id);
-        }
         for class in self.egraph.classes().filter(|c| c.color.is_none() || c.color == self.color) {
-            println!("id: {}", class.id);
-            let color_text = if class.color.is_some() {", color=blue"} else {""};
+            let color_text = if class.color.is_some() {", color=".to_owned()+&self.print_color.to_owned()} else {"".to_string()};
             for (i_in_class, node) in class.iter().enumerate() {
                 for (arg_i, child) in node.children().iter().enumerate() {
                     // write the edge to the child, but clip it to the eclass with lhead
@@ -236,18 +239,17 @@ where
 }
 
 impl<'a, L, N> Dot<'a, L, N> where L: Language, N: Analysis<L> {
-    fn format_class(f: &mut Formatter, class: &EClass<L, <N as Analysis<L>>::Data>) -> fmt::Result {
-        let color_text = if class.color.is_some() {", color=blue"} else {""};
+    fn format_class(f: &mut Formatter, class: &EClass<L, <N as Analysis<L>>::Data>, print_color: &String) -> fmt::Result {
+        let color_text = if class.color.is_some() {", color=".to_owned() + print_color} else {"".to_string()};
         writeln!(f, "  subgraph cluster_{} {{", class.id.0)?;
         writeln!(f, "    style=dotted color=black")?;
         for (i, node) in class.iter().enumerate() {
             writeln!(
                 f,
-                "    {}.{}[label = \"{} : {}\"{}]",
+                "    {}.{}[label = \"{}\"{}]",
                 class.id,
                 i,
                 node.display_op(),
-                class.id,
                 color_text,
             )?;
         }
@@ -266,5 +268,56 @@ fn draw_if_xy_then_a_else_b() {
     let hello = egraph.add_expr(&RecExpr::from_str("hello").unwrap());
     egraph.colored_union(color, cond, tru);
     egraph.colored_union(color, if_statement, hello);
-    egraph.colored_dot(color).to_dot("if_tru.dot").unwrap();
+    egraph.colored_dot(color).set_print_color("red".to_string()).to_dot("if_tru.dot").unwrap();
+}
+
+#[test]
+fn draw_max() {
+    let mut egraph: EGraph<SymbolLang, ()> = EGraph::new(());
+    let max_st = egraph.add_expr(&RecExpr::from_str("(max x y)").unwrap());
+    let min_st = egraph.add_expr(&RecExpr::from_str("(min x y)").unwrap());
+    let minus = egraph.add_expr(&RecExpr::from_str("(- (max x y) (min x y))").unwrap());
+    let abs = egraph.add_expr(&RecExpr::from_str("(abs (- x y))").unwrap());
+    egraph.dot().to_dot("maxmin.dot").unwrap();
+    let mut smaller_egraph = egraph.clone();
+    let smaller_then = smaller_egraph.add_expr(&RecExpr::from_str("(< x y)").unwrap());
+    let tru = smaller_egraph.add_expr(&RecExpr::from_str("true").unwrap());
+    smaller_egraph.union(smaller_then, tru);
+    smaller_egraph.dot().to_dot("smaller_maxmin.dot").unwrap();
+    let x = smaller_egraph.add_expr(&RecExpr::from_str("x").unwrap());
+    let y = smaller_egraph.add_expr(&RecExpr::from_str("y").unwrap());
+    smaller_egraph.union(x, min_st);
+    smaller_egraph.union(y, max_st);
+    smaller_egraph.rebuild();
+    smaller_egraph.dot().to_dot("smaller_maxmin_rw.dot").unwrap();
+    let smaller_abs = smaller_egraph.add_expr(&RecExpr::from_str("(abs (- x y))").unwrap());
+    smaller_egraph.union(smaller_abs, minus);
+    smaller_egraph.rebuild();
+    smaller_egraph.dot().to_dot("smaller_final.dot").unwrap();
+    let c_smaller = egraph.create_color();
+    let smaller_then = egraph.colored_add_expr(c_smaller, &RecExpr::from_str("(< x y)").unwrap());
+    let tru = egraph.colored_add_expr(c_smaller, &RecExpr::from_str("true").unwrap());
+    egraph.colored_union(c_smaller, smaller_then, tru);
+    egraph.colored_dot(c_smaller).set_print_color("blue".to_string()).to_dot("smaller_no_rw.dot").unwrap();
+    let x = egraph.add_expr(&RecExpr::from_str("x").unwrap());
+    let y = egraph.add_expr(&RecExpr::from_str("y").unwrap());
+    egraph.colored_union(c_smaller, x, min_st);
+    egraph.colored_union(c_smaller, y, max_st);
+    egraph.rebuild();
+    let c_smaller_abs = egraph.colored_add_expr(c_smaller, &RecExpr::from_str("(abs (- x y))").unwrap());
+    egraph.colored_union(c_smaller, c_smaller_abs, minus);
+    egraph.rebuild();
+    egraph.colored_dot(c_smaller).set_print_color("blue".to_string()).to_dot("c_smaller_final.dot").unwrap();
+    let c_bigger = egraph.create_color();
+    let bigger_then = egraph.colored_add_expr(c_bigger, &RecExpr::from_str("(> x y)").unwrap());
+    let tru = egraph.colored_add_expr(c_bigger, &RecExpr::from_str("true").unwrap());
+    egraph.colored_union(c_bigger, bigger_then, tru);
+    egraph.colored_dot(c_bigger).set_print_color("red".to_string()).to_dot("bigger_no_rw.dot").unwrap();
+    egraph.colored_union(c_bigger, y, min_st);
+    egraph.colored_union(c_bigger, x, max_st);
+    egraph.rebuild();
+    let c_smaller_abs = egraph.colored_add_expr(c_bigger, &RecExpr::from_str("(abs (- x y))").unwrap());
+    egraph.colored_union(c_bigger, c_smaller_abs, minus);
+    egraph.rebuild();
+    egraph.colored_dot(c_bigger).set_print_color("red".to_string()).to_dot("c_bigger_final.dot").unwrap();
 }

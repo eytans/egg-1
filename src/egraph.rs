@@ -284,11 +284,11 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     ///
     /// [`Dot`]: struct.Dot.html
     pub fn dot(&self) -> Dot<L, N> {
-        Dot { egraph: self, color: None }
+        Dot { egraph: self, color: None , print_color: "blue".to_string() }
     }
 
     pub fn colored_dot(&self, color: ColorId) -> Dot<L, N> {
-        Dot { egraph: self, color: Some(color) }
+        Dot { egraph: self, color: Some(color), print_color: "blue".to_string() }
     }
 }
 
@@ -1032,8 +1032,11 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         if cfg!(debug_assertions) {
             for (n, colors) in self.colored_memo.iter() {
                 debug_assert!(!colors.is_empty());
-                for (c, _) in colors {
-                    debug_assert!(&self.colored_canonize(*c, n) == n)
+                for (c, id) in colors {
+                    dassert!(self.colored_memo.contains_key(&self.colored_canonize(*c, n)));
+                    dassert!(self.colored_memo[&self.colored_canonize(*c, n)].contains_key(c));
+                    dassert!(self.colored_memo[&self.colored_canonize(*c, n)][c] == self.colored_find(*c, *id));
+                    dassert!(&self.colored_canonize(*c, n) == n, "The node {:?} was not canonized to {:?} in {}", n, self.colored_canonize(*c, n), c);
                 }
             }
         }
@@ -1139,7 +1142,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                         wassert!(class.color == Some(c), "Color mismatch {:?} != {:?}", class.color, c);
                         let mut class_nodes = class.nodes.clone();
                         // Create a class, fix node and Analysis::Data
-                        let mut new_class_id = self.inner_create_class(&mut class_nodes.remove(0), Some(new_c_id));
+                        let new_class_id = self.inner_create_class(&mut class_nodes.remove(0), Some(new_c_id));
                         assert_eq!(new_class_id, id_changer[id]);
                         let enode = &mut self[new_class_id].nodes[0];
                         enode.update_children(|id| *id_changer.get(&id).unwrap_or(&id));
@@ -1165,6 +1168,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                             assert!(self.colored_memo.entry(n).or_default().insert(new_c_id, new_class_id).is_none());
                         }
                         iassert!(self.classes[classes_len..].iter().map(|x| if x.is_none() {0} else {1}).sum::<usize>() <= 1);
+                        let new_class_id = self.find(new_class_id);
                         new_classes.push(new_class_id);
                         self.colors[new_c_id.0].black_colored_classes.insert(new_class_id, new_class_id);
                     }
