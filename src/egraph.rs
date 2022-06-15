@@ -1165,7 +1165,10 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
                             // We are changing nodes later so this is actually a temporary value
                             self[new_class_id].nodes.push(n.clone());
-                            assert!(self.colored_memo.entry(n).or_default().insert(new_c_id, new_class_id).is_none());
+                            let old = self.colored_memo.entry(n).or_default().insert(new_c_id, new_class_id);
+                            for old in old {
+                                let res = self.colored_union(new_c_id, old, new_class_id);
+                            }
                         }
                         iassert!(self.classes[classes_len..].iter().map(|x| if x.is_none() {0} else {1}).sum::<usize>() <= 1);
                         let new_class_id = self.find(new_class_id);
