@@ -1035,7 +1035,9 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 for (c, id) in colors {
                     dassert!(self.colored_memo.contains_key(&self.colored_canonize(*c, n)));
                     dassert!(self.colored_memo[&self.colored_canonize(*c, n)].contains_key(c));
-                    dassert!(self.colored_memo[&self.colored_canonize(*c, n)][c] == self.colored_find(*c, *id));
+                    if n.children().len() > 0 {
+                        dassert!(self.colored_memo[&self.colored_canonize(*c, n)][c] == self.colored_find(*c, *id));
+                    }
                     dassert!(&self.colored_canonize(*c, n) == n, "The node {:?} was not canonized to {:?} in {}", n, self.colored_canonize(*c, n), c);
                 }
             }
@@ -1195,6 +1197,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
             self.colors[c.0].children.push(new_c_id);
             let old_parents = self.colors[c.0].parents.clone();
+            self.colors.last_mut().unwrap().parents.push(c);
             self.colors.last_mut().unwrap().parents.extend(old_parents);
         }
         for (id1, id2) in todo {
@@ -1648,5 +1651,116 @@ mod tests {
 
         assert_eq!(egraph.colored_find(color_tf, ids[0]), egraph.colored_find(color_tf, ids[2]));
         assert_eq!(egraph.colored_find(color_tf, ids[4]), egraph.colored_find(color_tf, ids[5]));
+    }
+
+    fn choose<T: Clone>(mut from: Vec<Vec<T>>, amount: usize) -> Vec<Vec<T>> {
+        if from.len() < amount || amount == 0 {
+            return vec![];
+        }
+        if amount == 1 {
+            return from.clone().into_iter().flatten().map(|v| vec![v]).collect_vec();
+        }
+        let cur = from.pop().unwrap();
+        let rec_res = choose(from.clone(), amount - 1);
+        let mut new_res = vec![];
+        for res in rec_res {
+            for u in cur.clone() {
+                let mut new = res.clone();
+                new.push(u);
+                new_res.push(new);
+            }
+        }
+        let other_rec = choose(from, amount);
+        new_res.extend(other_rec);
+        new_res
+    }
+
+    #[test]
+    fn multi_level_colored_filter() {
+        use crate::SymbolLang as S;
+
+        crate::init_logger();
+        let (mut egraph, rules, expr_id, lv1_colors) = initialize_filter_tests();
+        let mut lv2_colors = vec![];
+        for color_vec in choose(lv1_colors.clone(), 2) {
+            lv2_colors.push(egraph.create_combined_color(color_vec));
+        }
+        let mut lv3_colors = vec![];
+        for color_vec in choose(lv1_colors.clone(), 3) {
+            lv3_colors.push(egraph.create_combined_color(color_vec));
+        }
+
+        let egraph = Runner::default().with_egraph(egraph).run(&rules).egraph;
+        for c in lv3_colors {
+            println!("Doing something");
+            assert!(egraph.get_color(c).unwrap().black_ids(expr_id)
+                .map(|x| x.clone())
+                .unwrap_or([egraph.colored_find(c, expr_id)].iter().copied().collect())
+                .iter().any(|id|
+                    egraph[*id].nodes.iter().any(|n| {
+                        let op = format!("{}", n.display_op());
+                        op == "nil" || op == "cons"
+                    })
+            ));
+        }
+    }
+
+    #[test]
+    fn multi_level_colored_bad_filter() {
+        use crate::SymbolLang as S;
+
+        crate::init_logger();
+
+        let (mut egraph, rules, expr_id, lv1_colors) = initialize_filter_tests();
+        let mut lv2_colors = vec![];
+        for c1 in lv1_colors.iter().flatten() {
+            for c2 in lv1_colors.iter().flatten() {
+                lv2_colors.push(egraph.create_combined_color(vec![*c1, *c2]));
+            }
+        }
+        let mut lv3_colors = vec![];
+        for c1 in lv1_colors.iter().flatten() {
+            for c2 in lv2_colors.iter() {
+                lv3_colors.push(egraph.create_combined_color(vec![*c1, *c2]));
+            }
+        }
+
+        let mut egraph = Runner::default().with_egraph(egraph).run(&rules).egraph;
+        egraph.rebuild();
+        egraph.check_memo();
+        egraph.memo_all_canonized();
+    }
+
+    fn initialize_filter_tests() -> (EGraph<SymbolLang, ()>, Vec<Rewrite<SymbolLang, ()>>, Id, Vec<Vec<ColorId>>) {
+        use crate::SymbolLang as S;
+
+        let mut egraph = EGraph::<S, ()>::default();
+
+        let rules: Vec<Rewrite<SymbolLang, ()>> = vec![
+            rewrite!("rule1"; "(ite true ?x ?y)" => "?x"),
+            rewrite!("rule2"; "(ite false ?x ?y)" => "?y"),
+            rewrite!("rule3"; "(and true ?x)" => "?x"),
+            rewrite!("rule4"; "(and false ?x)" => "false"),
+            rewrite!("rule5"; "(or true ?x)" => "true"),
+            rewrite!("rule6"; "(or false ?x)" => "?x"),
+            rewrite!("rule7"; "(not true)" => "false"),
+            rewrite!("rule8"; "(not false)" => "true"),
+            rewrite!("rule9"; "(filter p (cons ?x ?xs))" => "(ite (p ?x) (cons x (filter p ?xs)) (filter p ?xs))"),
+            rewrite!("rule10"; "(filter p nil)" => "nil"),
+        ];
+
+        let expr_id = egraph.add_expr(&"(filter p (cons x1 (cons x2 (cons x3 nil))))".parse().unwrap());
+        let vars = [egraph.add_expr(&"(p x1)".parse().unwrap()), egraph.add_expr(&"(p x2)".parse().unwrap()), egraph.add_expr(&"(p x3)".parse().unwrap())];
+        let tru = egraph.add_expr(&"true".parse().unwrap());
+        let fals = egraph.add_expr(&"false".parse().unwrap());
+        let lv1_colors = vars.iter().map(|id| {
+            let color_true = egraph.create_color();
+            let color_false = egraph.create_color();
+            egraph.colored_union(color_true, *id, tru);
+            egraph.colored_union(color_false, *id, fals);
+            vec![color_true, color_false]
+        }).collect_vec();
+        egraph.rebuild();
+        (egraph, rules, expr_id, lv1_colors)
     }
 }

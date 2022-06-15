@@ -34,7 +34,7 @@ impl Color {
             union_map: Default::default(),
             black_colored_classes: Default::default(),
             children: vec![],
-            parents: vec![new_id]
+            parents: vec![]
         }
     }
 
