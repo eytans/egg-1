@@ -923,13 +923,10 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         // edges.
         let mut memo: HashMap<L, Id> = {
             let mut v = self.memo.iter()
+                .map(|(orig, e)| (self.colored_canonize(c_id, orig), self.find(*e)))
                 .chain(self.colored_memo.iter()
                     .filter_map(|(x, map)|
-                        map.get(&c_id).map(|c| (x, c))))
-                .map(|(orig, e)| {
-                    let cloned = self.colored_canonize(c_id, orig);
-                    (cloned, self.find(*e))
-                })
+                        map.get(&c_id).map(|c| (x.clone(), *c))))
                 .collect_vec();
             v.sort_unstable();
             // TODO: Create dedup with side effects for iterator
@@ -1033,10 +1030,10 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             for (n, colors) in self.colored_memo.iter() {
                 debug_assert!(!colors.is_empty());
                 for (c, id) in colors {
-                    dassert!(self.colored_memo.contains_key(&self.colored_canonize(*c, n)));
+                    dassert!(self.colored_memo.contains_key(&self.colored_canonize(*c, n)), "Missing {:?} (orig: {:?}) in {} id (under color {})", self.colored_canonize(*c, n), n, id, c);
                     dassert!(self.colored_memo[&self.colored_canonize(*c, n)].contains_key(c));
                     if n.children().len() > 0 {
-                        dassert!(self.colored_memo[&self.colored_canonize(*c, n)][c] == self.colored_find(*c, *id));
+                        dassert!(self.find(self.colored_memo[&self.colored_canonize(*c, n)][c]) == self.find(*id), "Colored memo does not have correct id for {:?} in color {}. It is {} but should be {}", n, c, self.colored_memo[&self.colored_canonize(*c, n)][c], self.find(*id));
                     }
                     dassert!(&self.colored_canonize(*c, n) == n, "The node {:?} was not canonized to {:?} in {}", n, self.colored_canonize(*c, n), c);
                 }
@@ -1115,10 +1112,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         let mut todo = vec![];
         for c in colors {
             let mut new_classes = vec![];
-            let mut id_changer = HashMap::new();
             let old_dirty_unions = self.colors[c.0].dirty_unions.clone();
             self.colors.last_mut().unwrap().dirty_unions.extend_from_slice(&old_dirty_unions);
-            // TODO: also go through non-union map classes
             let mut union_map = self.colors[c.0].union_map.iter().map(|(x,y)| (*x, y.clone())).collect_vec();
             for class in self.classes() {
                 if self.colors[c.0].union_map.contains_key(&self.colored_find(c, class.id)) {
@@ -1130,12 +1125,20 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 }
             }
             let union_map = union_map;
+            let mut id_changer = HashMap::new();
             union_map.iter().for_each(|(black_id, ids)| {
                 dassert!(ids.contains(black_id));
                 dassert!(ids.iter().map(|id| if self[*id].color.is_some() && !self[*id].nodes.is_empty() {1} else {0}).sum::<usize>() <= 1, "Ids: {}", ids.iter().join(", "));
                 let colored = ids.iter().find(|id| self[**id].color.is_some());
-                colored.copied().map(|id| id_changer.insert(id, Id((self.classes.len() + id_changer.len()) as u32)));
+                colored.copied().map(|id| {
+                    id_changer.insert(id, Id((self.classes.len() + id_changer.len()) as u32))
+                });
             });
+            for (key, value) in id_changer.iter() {
+                let mut node = self[*key].nodes[0].clone();
+                let new_class_id = self.inner_create_class(&mut node, Some(new_c_id));
+                dassert!(new_class_id.0 == value.0);
+            }
             for (black_id, ids) in union_map {
                 for id in ids.iter() {
                     if self[*id].color.is_some() && !self[*id].is_empty() {
@@ -1143,26 +1146,27 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                         let mut class = &mut self[*id];
                         wassert!(class.color == Some(c), "Color mismatch {:?} != {:?}", class.color, c);
                         let mut class_nodes = class.nodes.clone();
+                        class_nodes.remove(0);
                         // Create a class, fix node and Analysis::Data
-                        let new_class_id = self.inner_create_class(&mut class_nodes.remove(0), Some(new_c_id));
-                        assert_eq!(new_class_id, id_changer[id]);
+                        let new_class_id = id_changer[id];
                         let enode = &mut self[new_class_id].nodes[0];
                         enode.update_children(|id| *id_changer.get(&id).unwrap_or(&id));
                         let enode = enode.clone();
                         self[new_class_id].data = N::make(self, &enode);
-                        assert!(self.colored_memo.entry(self[new_class_id].nodes[0].clone())
-                            .or_default().insert(new_c_id, new_class_id).is_none());
+                        let old = self.colored_memo.entry(enode).or_default().insert(new_c_id, new_class_id);
+                        for old in old {
+                            let res = self.colored_union(new_c_id, old, new_class_id);
+                        }
                         for mut n in class_nodes {
                             n.update_children(|id| {
-                                let canoned = self.colored_find(new_c_id, id);
-                                *id_changer.get(&canoned).unwrap_or(&canoned)
+                                self.colored_find(new_c_id, *id_changer.get(&id).unwrap_or(&id))
                             });
 
                             let mut temp = {
-                                let temp = N::make(self, &enode);
+                                let temp = N::make(self, &n);
                                 std::mem::replace(&mut self[new_class_id].data, temp)
                             };
-                            self.analysis.merge(&mut temp, N::make(self, &enode));
+                            self.analysis.merge(&mut temp, N::make(self, &n));
                             self[new_class_id].data = temp;
 
                             // We are changing nodes later so this is actually a temporary value
@@ -1199,6 +1203,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             let old_parents = self.colors[c.0].parents.clone();
             self.colors.last_mut().unwrap().parents.push(c);
             self.colors.last_mut().unwrap().parents.extend(old_parents);
+            let old_unions = self.colors[c.0].dirty_unions.iter().map(|id| id_changer.get(id).unwrap_or(id)).copied().collect_vec();
+            self.colors.last_mut().unwrap().dirty_unions.extend(old_unions);
         }
         for (id1, id2) in todo {
             self.union(id1, id2);
@@ -1724,6 +1730,21 @@ mod tests {
                 lv3_colors.push(egraph.create_combined_color(vec![*c1, *c2]));
             }
         }
+
+        let mut egraph = Runner::default().with_egraph(egraph).run(&rules).egraph;
+        egraph.rebuild();
+        egraph.check_memo();
+        egraph.memo_all_canonized();
+    }
+
+    #[test]
+    fn colored_bad_filter() {
+        use crate::SymbolLang as S;
+
+        crate::init_logger();
+
+        let (mut egraph, rules, expr_id, lv1_colors) = initialize_filter_tests();
+        let bad_color = egraph.create_combined_color(lv1_colors[2].iter().copied().collect_vec());
 
         let mut egraph = Runner::default().with_egraph(egraph).run(&rules).egraph;
         egraph.rebuild();
