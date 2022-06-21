@@ -1,10 +1,15 @@
 use crate::{Analysis, EClass, EGraph, ENodeOrVar, Id, Language, PatternAst, Subst, Var};
 use std::cmp::Ordering;
+use indexmap::IndexSet;
 use log::warn;
 use smallvec::SmallVec;
 use crate::ColorId;
 use crate::colors::Color;
 use itertools::Itertools;
+
+lazy_static!{
+    static ref EMPTY_SET: IndexSet<(ColorId, Id)> = IndexSet::new();
+}
 
 struct Machine {
     reg: Vec<Id>,
@@ -142,10 +147,10 @@ impl Machine {
                         let c = &egraph.colors()[self.color.unwrap().0];
                         self.run_colored_branches(&egraph, i, &mut run_matches, c, old_reg);
                     } else {
-                        // TODO: Have a hashmap or something for each ID specifying relevant colors.
-                        for c in egraph.colors() {
-                            self.color = Some(c.get_id());
-                            self.run_colored_branches(&egraph, i, &mut run_matches, c, old_reg);
+                        for (c, id) in egraph.colored_equivalences.get(&self.reg(*i)).unwrap_or(&EMPTY_SET) {
+                            self.reg[i.0 as usize] = *id;
+                            self.color = Some(*c);
+                            run_matches(self, &egraph[*id]);
                         }
                         self.color = None;
                     }

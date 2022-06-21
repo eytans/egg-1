@@ -3,6 +3,7 @@ use std::{
     fmt::{self, Debug},
 };
 use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Alignment::Left;
 use std::iter::Peekable;
 use std::ops::{BitOr, BitOrAssign, BitXor, BitXorAssign};
@@ -153,7 +154,7 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     classes: SparseVec<EClass<L, N::Data>>,
     dirty_unions: Vec<Id>,
     repairs_since_rebuild: usize,
-    pub(crate) classes_by_op: IndexMap<OpId, indexmap::IndexSet<Id>>,
+    pub(crate) classes_by_op: IndexMap<OpId, IndexSet<Id>>,
 
     #[cfg(feature = "colored")]
     /// To be used as a mechanism for case splitting.
@@ -163,6 +164,8 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     colors: Vec<Color>,
     #[cfg(feature = "colored")]
     pub(crate) colored_memo: IndexMap<L, IndexMap<ColorId, Id>>,
+    #[cfg(feature = "colored")]
+    pub(crate) colored_equivalences: IndexMap<Id, IndexSet<(ColorId, Id)>>,
 }
 
 const MAX_COLORS: usize = 1000;
@@ -198,6 +201,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             classes_by_op: IndexMap::default(),
             repairs_since_rebuild: 0,
             colored_memo: Default::default(),
+            colored_equivalences: Default::default(),
         }
     }
 
@@ -696,8 +700,23 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             let unique: indexmap::IndexSet<Id> = ids.iter().copied().collect();
             assert_eq!(ids.len(), unique.len());
         }
-
         self.classes_by_op = classes_by_op;
+        self.colored_equivalences.clear();
+        let colors = std::mem::take(&mut self.colors);
+        for c in &colors {
+            for (_, ids) in &c.union_map {
+                dassert!(ids.len() > 1);
+                for id in ids {
+                    for id1 in ids {
+                        if id1 == id {
+                            continue;
+                        }
+                        self.colored_equivalences.entry(*id).or_default().insert((c.get_id(), *id1));
+                    }
+                }
+            }
+        }
+        self.colors = colors;
         trimmed
     }
 

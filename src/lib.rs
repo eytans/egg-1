@@ -28,6 +28,9 @@ extern crate global_counter;
 extern crate proptest;
 extern crate core;
 
+#[macro_use]
+extern crate lazy_static;
+
 pub mod tutorials;
 
 mod dot;
