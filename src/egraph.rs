@@ -1030,18 +1030,23 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             for (n, colors) in self.colored_memo.iter() {
                 debug_assert!(!colors.is_empty());
                 for (c, id) in colors {
-                    let deleted = self.memo.iter().any(|(n1, e1)| {
-                        self.colored_canonize(*c, n) == self.colored_canonize(*c, n1)
-                    });
-                    if deleted {
-                        continue;
-                    }
+                    let mut is_deleted: Option<bool> = None;
+                    let deleted: fn(&EGraph<L, N>, n: &L, c: ColorId, &mut Option<bool>) -> bool = |egraph: &EGraph<L, N>, n: &L, c: ColorId, mut is_deleted: &mut Option<bool> | {
+                        if let Some(is_deleted) = is_deleted.clone() {
+                            return is_deleted;
+                        }
+                        let res = egraph.memo.iter().any(|(n1, e1)| {
+                            egraph.colored_canonize(c, n) == egraph.colored_canonize(c, n1)
+                        });
+                        *is_deleted = Some(res);
+                        res
+                    };
                     tassert!({
-                        self.colored_memo.contains_key(&self.colored_canonize(*c, n))
+                        self.colored_memo.contains_key(&self.colored_canonize(*c, n)) || deleted(self, n, *c, &mut is_deleted)
                     }, "Missing {:?} (orig: {:?}) in {} id (under color {})", self.colored_canonize(*c, n), n, id, c);
-                    dassert!(self.colored_memo[&self.colored_canonize(*c, n)].contains_key(c));
-                    if n.children().len() > 0 {
-                        dassert!(self.find(self.colored_memo[&self.colored_canonize(*c, n)][c]) == self.find(*id), "Colored memo does not have correct id for {:?} in color {}. It is {} but should be {}", n, c, self.colored_memo[&self.colored_canonize(*c, n)][c], self.find(*id));
+                    dassert!(((is_deleted.is_none() || !is_deleted.as_ref().unwrap()) && self.colored_memo[&self.colored_canonize(*c, n)].contains_key(c)) || deleted(self, n, *c, &mut is_deleted));
+                    if n.children().len() > 0 && (is_deleted.is_none() || !*is_deleted.as_ref().unwrap()) {
+                        dassert!(self.find(self.colored_memo[&self.colored_canonize(*c, n)][c]) == self.find(*id) || deleted(self, n, *c, &mut is_deleted), "Colored memo does not have correct id for {:?} in color {}. It is {} but should be {}", n, c, self.colored_memo[&self.colored_canonize(*c, n)][c], self.find(*id));
                     }
                     // dassert!(&self.colored_canonize(*c, n) == n ||
                     //     self.memo.iter().any(|(n1, e1)| {
