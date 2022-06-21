@@ -624,36 +624,42 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     #[inline(never)]
     fn rebuild_classes(&mut self) -> usize {
-        // for (color, nodes) in &to_remove {
-        //     for n in nodes.iter() {
-        //         debug_assert!(self.memo[n].1.any(), "Node {:?} should have the color {} being removed", n, color);
-        //         self.memo[n].1.set(color.0, false);
-        //         if self.memo[n].1.not_any() {
-        //             todo!("remove from everywhere");
-        //         } else {
-        //             let id = self.memo[n].0;
-        //             self[id].colored_parents.iter_mut()
-        //                 .filter(|(x, y, z)| x == n)
-        //                 .for_each(|(x, y, z)| z.set(color.0, false));
-        //         }
-        //     }
-        // }
         let mut classes_by_op = std::mem::take(&mut self.classes_by_op);
         classes_by_op.values_mut().for_each(|ids| ids.clear());
 
         let mut trimmed = 0;
 
-        let uf = &self.unionfind;
-        for class in self.classes.iter_mut().filter_map(Option::as_mut) {
+        let mut classes = std::mem::take(&mut self.classes);
+        for class in classes.iter_mut().filter_map(Option::as_mut) {
             let old_len = class.len();
+            let uf = if let Some(c) = class.color {
+                &self.get_color(c).unwrap().union_find
+            } else {
+                &self.unionfind
+            };
+            let mut n_updater: Box<dyn FnMut(&mut L) -> ()> = if let Some(c) = class.color {
+                Box::new(|mut n: &mut L| {
+                    n.update_children(|id| uf.find(id))
+                })
+            } else {
+                Box::new(|mut n: &mut L| {
+                    n.update_children(|id| uf.find(id))
+                })
+            };
+
             class
                 .nodes
                 .iter_mut()
-                .for_each(|n| n.update_children(|id| uf.find(id)));
+                .for_each(n_updater);
 
             // Prevent comparing colors. Black should be first for better dirty color application.
             class.nodes.sort_unstable();
-            class.nodes.dedup();
+            if let Some(c) = class.color {
+                class.nodes.dedup_by(|a, b| a == b
+                    || self.colored_memo.get(a).map_or(false, |m| m.contains_key(&c)));
+            } else {
+                class.nodes.dedup();
+            }
             // There might be unused colors in it, use them.
             // TODO: make sure that a class will not be empty once we remove edges by color.
             debug_assert!(!class.nodes.is_empty());
@@ -683,6 +689,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 }
             }
         }
+        self.classes = classes;
 
         #[cfg(debug_assertions)]
         for ids in classes_by_op.values_mut() {
