@@ -250,7 +250,7 @@ where
         Self {
             iter_limit: 30,
             node_limit: 10_000,
-            time_limit: Duration::from_secs(5),
+            time_limit: Duration::from_secs(500),
 
             egraph: EGraph::new(analysis),
             roots: vec![],
@@ -259,7 +259,7 @@ where
             hooks: vec![],
 
             start_time: None,
-            scheduler: Box::new(BackoffScheduler::default()),
+            scheduler: Box::new(SimpleScheduler::default()),
         }
     }
 
