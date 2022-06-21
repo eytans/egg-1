@@ -1030,12 +1030,23 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             for (n, colors) in self.colored_memo.iter() {
                 debug_assert!(!colors.is_empty());
                 for (c, id) in colors {
-                    dassert!(self.colored_memo.contains_key(&self.colored_canonize(*c, n)), "Missing {:?} (orig: {:?}) in {} id (under color {})", self.colored_canonize(*c, n), n, id, c);
+                    let deleted = self.memo.iter().any(|(n1, e1)| {
+                        self.colored_canonize(*c, n) == self.colored_canonize(*c, n1)
+                    });
+                    if deleted {
+                        continue;
+                    }
+                    tassert!({
+                        self.colored_memo.contains_key(&self.colored_canonize(*c, n))
+                    }, "Missing {:?} (orig: {:?}) in {} id (under color {})", self.colored_canonize(*c, n), n, id, c);
                     dassert!(self.colored_memo[&self.colored_canonize(*c, n)].contains_key(c));
                     if n.children().len() > 0 {
                         dassert!(self.find(self.colored_memo[&self.colored_canonize(*c, n)][c]) == self.find(*id), "Colored memo does not have correct id for {:?} in color {}. It is {} but should be {}", n, c, self.colored_memo[&self.colored_canonize(*c, n)][c], self.find(*id));
                     }
-                    dassert!(&self.colored_canonize(*c, n) == n, "The node {:?} was not canonized to {:?} in {}", n, self.colored_canonize(*c, n), c);
+                    // dassert!(&self.colored_canonize(*c, n) == n ||
+                    //     self.memo.iter().any(|(n1, e1)| {
+                    //         self.colored_canonize(*c, n) == self.colored_canonize(*c, n1)
+                    //     }), "The node {:?} was not canonized to {:?} in {}", n, self.colored_canonize(*c, n), c);
                 }
             }
         }
