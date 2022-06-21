@@ -2,7 +2,6 @@ use std::cmp::{max, min};
 pub use crate::{Id, EGraph, Language, Analysis, ColorId};
 use crate::{Singleton, UnionFind};
 use crate::util::JoinDisp;
-use std::collections::{HashSet, HashMap};
 use itertools::Itertools;
 use std::fmt::Formatter;
 use indexmap::{IndexMap, IndexSet};
@@ -19,8 +18,8 @@ pub struct Color {
     /// Used for rebuilding uf
     pub(crate) dirty_unions: Vec<Id>,
     /// Maintain which classes in black are represented in colored class (including rep)
-    pub(crate) union_map: HashMap<Id, HashSet<Id>>,
-    pub(crate) black_colored_classes: HashMap<Id, Id>,
+    pub(crate) union_map: IndexMap<Id, IndexSet<Id>>,
+    pub(crate) black_colored_classes: IndexMap<Id, Id>,
     pub(crate) children: Vec<ColorId>,
     pub(crate) parents: Vec<ColorId>,
 }
@@ -61,8 +60,8 @@ impl Color {
         let rep = min(to, from);
         if to != from {
             let non_rep = max(to, from);
-            let from_ids = self.union_map.remove(&non_rep).unwrap_or_else(|| HashSet::singleton(non_rep));
-            let to_ids = self.union_map.entry(rep).or_insert_with(|| HashSet::singleton(rep));
+            let from_ids = self.union_map.remove(&non_rep).unwrap_or_else(|| IndexSet::singleton(non_rep));
+            let to_ids = self.union_map.entry(rep).or_insert_with(|| IndexSet::singleton(rep));
             to_ids.retain(|id| !from_ids.contains(id));
             self.union_map.entry(rep).and_modify(|s| { s.remove(&max(id1, id2)); });
         } else if id1 != id2 {
@@ -135,13 +134,13 @@ impl Color {
         let (to, from, changed, g_todo) = self.union_impl(id1, id2);
         if changed {
             self.dirty_unions.push(to);
-            let from_ids = self.union_map.remove(&from).unwrap_or_else(|| HashSet::singleton(from));
-            self.union_map.entry(to).or_insert_with(|| HashSet::singleton(to)).extend(from_ids);
+            let from_ids = self.union_map.remove(&from).unwrap_or_else(|| IndexSet::singleton(from));
+            self.union_map.entry(to).or_insert_with(|| IndexSet::singleton(to)).extend(from_ids);
         }
         (to, changed, g_todo)
     }
 
-    pub fn black_ids(&self, id: Id) -> Option<&HashSet<Id>> {
+    pub fn black_ids(&self, id: Id) -> Option<&IndexSet<Id>> {
         self.union_map.get(&self.union_find.find(id))
     }
 

@@ -1,7 +1,7 @@
 use std::alloc::GlobalAlloc;
-use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::iter::ExactSizeIterator;
+use indexmap::IndexMap;
 
 use crate::{ColorId, Id, Language};
 
@@ -23,7 +23,7 @@ pub struct EClass<L, D> {
     pub(crate) color: Option<ColorId>,
     /// Colored parents are colored_canonized pointing to the black ID of the class.
     #[cfg(feature = "colored")]
-    pub(crate) colored_parents: HashMap<ColorId, Vec<(L, Id)>>,
+    pub(crate) colored_parents: IndexMap<ColorId, Vec<(L, Id)>>,
 }
 
 impl<L, D> EClass<L, D> {

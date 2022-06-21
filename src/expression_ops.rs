@@ -1,6 +1,6 @@
-use std::collections::{HashMap, HashSet};
 use std::fmt::Formatter;
 use std::hash::{Hash, Hasher};
+use indexmap::{IndexMap, IndexSet};
 
 use itertools::Itertools;
 use smallvec::alloc::fmt::Display;
@@ -61,7 +61,7 @@ impl<'a, L: Language + Clone> From<&'a RecExpSlice<'a, L>> for RecExpr<L> {
         // Need to remove unneeded nodes because recexpr comparison works straigt on vec
         let mut nodes: Vec<RecExpSlice<L>> = vec![];
         nodes.push(expr.clone());
-        let mut indices = HashSet::new();
+        let mut indices = IndexSet::new();
         while !nodes.is_empty() {
             let current = nodes.pop().unwrap();
             indices.insert(current.index);
@@ -70,7 +70,7 @@ impl<'a, L: Language + Clone> From<&'a RecExpSlice<'a, L>> for RecExpr<L> {
             }
         }
         let mut res: Vec<L> = vec![];
-        let mut id_trans: HashMap<Id, Id> = HashMap::new();
+        let mut id_trans: IndexMap<Id, Id> = IndexMap::new();
         for i in indices.iter().sorted() {
             id_trans.insert(Id::from(*i), Id::from(res.len()));
             res.push(expr.exp.as_ref()[*i].clone().map_children(|id| *id_trans.get(&id).unwrap()));

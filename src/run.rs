@@ -605,6 +605,7 @@ where
 /// method.
 ///
 /// [`RewriteScheduler`]: trait.RewriteScheduler.html
+#[derive(Default)]
 pub struct SimpleScheduler;
 
 impl<L, N> RewriteScheduler<L, N> for SimpleScheduler

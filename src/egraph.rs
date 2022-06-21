@@ -1,4 +1,3 @@
-use std::collections::{HashMap, HashSet};
 use std::{
     borrow::BorrowMut,
     fmt::{self, Debug},
@@ -11,6 +10,7 @@ use std::thread::current;
 use std::vec::IntoIter;
 use bitvec::macros::internal::funty::Fundamental;
 use bitvec::vec::BitVec;
+use std::iter::FromIterator;
 
 use indexmap::{IndexMap, IndexSet};
 use invariants::{dassert, iassert, tassert, wassert};
@@ -148,7 +148,7 @@ same eclass.
 pub struct EGraph<L: Language, N: Analysis<L>> {
     /// The `Analysis` given when creating this `EGraph`.
     pub analysis: N,
-    pub(crate) memo: HashMap<L, Id>,
+    pub(crate) memo: IndexMap<L, Id>,
     unionfind: UnionFind,
     classes: SparseVec<EClass<L, N::Data>>,
     dirty_unions: Vec<Id>,
@@ -162,7 +162,7 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     /// be applied on the main union find (case split mechanism). Not true for UnionFinds of size 1.
     colors: Vec<Color>,
     #[cfg(feature = "colored")]
-    pub(crate) colored_memo: HashMap<L, HashMap<ColorId, Id>>,
+    pub(crate) colored_memo: IndexMap<L, IndexMap<ColorId, Id>>,
 }
 
 const MAX_COLORS: usize = 1000;
@@ -813,7 +813,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     // }
 
 
-    pub fn update_memo_from_parent(memo: &mut HashMap<L, Id>, n: &L, e: &Id) -> Option<(Id, Id)> {
+    pub fn update_memo_from_parent(memo: &mut IndexMap<L, Id>, n: &L, e: &Id) -> Option<(Id, Id)> {
         if let Some(old) = memo.insert(n.clone(), *e) {
             return Some((old, *e));
         }
@@ -921,7 +921,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         // We need to build memo ahead of time because even a single merge might miss needed unions.
         // Need to do some merging and initial color deletion here because we are deleting duplicate
         // edges.
-        let mut memo: HashMap<L, Id> = {
+        let mut memo: IndexMap<L, Id> = {
             let mut v = self.memo.iter()
                 .map(|(orig, e)| (self.colored_canonize(c_id, orig), self.find(*e)))
                 .chain(self.colored_memo.iter()
@@ -1074,11 +1074,11 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             .map(|i2| {
                 let s1_ids = self.gather_all_ids(s1, i1);
                 let s2_ids = self.gather_all_ids(s2, i2);
-                i1 == i2 || !s1_ids.unwrap_or(&HashSet::default()).is_disjoint(&s2_ids.unwrap_or(&HashSet::default()))
+                i1 == i2 || !s1_ids.unwrap_or(&IndexSet::default()).is_disjoint(&s2_ids.unwrap_or(&IndexSet::default()))
             }).unwrap_or(false))
     }
 
-    fn gather_all_ids(&self, subs: &Subst, id: &Id) -> Option<&HashSet<Id>> {
+    fn gather_all_ids(&self, subs: &Subst, id: &Id) -> Option<&IndexSet<Id>> {
         let s1_ids = subs.color.map(|c_id| self.colors()[c_id.0].black_ids(*id)).flatten();
         s1_ids
     }
@@ -1121,11 +1121,11 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     continue;
                 }
                 if class.color.is_none() || class.color == Some(c) {
-                    union_map.push((class.id, HashSet::from([class.id])));
+                    union_map.push((class.id, IndexSet::from_iter([class.id].into_iter().copied())));
                 }
             }
             let union_map = union_map;
-            let mut id_changer = HashMap::new();
+            let mut id_changer = IndexMap::new();
             union_map.iter().for_each(|(black_id, ids)| {
                 dassert!(ids.contains(black_id));
                 dassert!(ids.iter().map(|id| if self[*id].color.is_some() && !self[*id].nodes.is_empty() {1} else {0}).sum::<usize>() <= 1, "Ids: {}", ids.iter().join(", "));
