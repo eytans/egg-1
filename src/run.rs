@@ -345,7 +345,6 @@ where
         let rules: Vec<&Rewrite<L, N>> = rules.into_iter().collect();
         check_rules(&rules);
         self.egraph.rebuild();
-        // TODO check that we haven't
         loop {
             if let Err(stop_reason) = self.run_one(&rules) {
                 info!("Stopping: {:?}", stop_reason);

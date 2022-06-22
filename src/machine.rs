@@ -164,9 +164,9 @@ impl Machine {
                                 return;
                             }
                         } else {
-                            for c in egraph.colors() {
-                                if c.find(self.reg(*j)) == c.find(self.reg(*i)) {
-                                    self.color = Some(c.get_id());
+                            for (c, id) in egraph.colored_equivalences.get(&self.reg(*i)).unwrap_or(&EMPTY_SET) {
+                                if *id == self.reg(*j) {
+                                    self.color = Some(*c);
                                     self.run_colored(egraph, instructions.as_slice(), subst, yield_fn);
                                 }
                             }
