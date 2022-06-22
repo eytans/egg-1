@@ -312,7 +312,7 @@ fn apply_pat<L: Language, A: Analysis<L>>(
                 .map_children(|child| apply_pat(&pat[..usize::from(child) + 1], egraph, subst));
             trace!("adding: {:?}", n);
             if let Some(c) = subst.color {
-                egraph.colored_add(&c, n)
+                egraph.colored_add(c, n)
             } else {
                 egraph.add(n)
             }

@@ -144,7 +144,7 @@ impl Machine {
                     run_matches(self, &egraph[self.reg(*i)]);
                     let old_reg = self.reg(*i);
                     if self.color.is_some() {
-                        let c = &egraph.colors()[self.color.unwrap().0];
+                        let c = &egraph.get_color(self.color.unwrap()).unwrap();
                         self.run_colored_branches(&egraph, i, &mut run_matches, c, old_reg);
                     } else {
                         for (c, id) in egraph.colored_equivalences.get(&self.reg(*i)).unwrap_or(&EMPTY_SET) {
