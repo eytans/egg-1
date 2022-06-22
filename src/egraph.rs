@@ -1308,6 +1308,20 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     pub fn get_color_mut(&mut self, color: ColorId) -> Option<&mut Color> {
         self.colors[usize::from(color)].as_mut()
     }
+
+    pub fn detect_vacuity(&self, disjoints: Vec<OpId>) -> Vec<ColorId> {
+        let dis_classes= disjoints.into_iter()
+            .map(|o_id| self.classes_by_op[&o_id])
+            .map(|x| x.iter().map(|x| (self[*x].color, *x)).into_group_map()).collect_vec();
+        dassert!(dis_classes.iter().flat_map(|x| x.get(&None).map_or(vec![])).unique().count() == dis_classes.iter().map(|x| x.get(&None).map_or(0, |x| x.len())).sum());
+        self.colors().filter(|c| {
+            let canonized = dis_classes.iter().map(|map|
+                map.get(&None).map_or(vec![].iter(), |x| x.iter())
+                    .chain(map.get(&Some(c.get_id())).map_or(vec![].iter(), |x| x.iter()))
+                    .map(|x| self.colored_find(c.get_id(), *x)).collect::<IndexSet<Id>>()).collect_vec();
+            canonized.iter().map(|x| x.len()).sum() == canonized.into_iter().flatten().unique().count()
+        }).map(|c| c.get_id()).collect_vec()
+    }
 }
 
 struct EGraphDump<'a, L: Language, N: Analysis<L>>(&'a EGraph<L, N>);
