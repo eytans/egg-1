@@ -517,18 +517,29 @@ pub trait Condition<L, N>
     fn describe(&self) -> String;
 }
 
-impl<L, F, N> Condition<L, N> for F
+pub struct FunctionCondition<L, F, N> where
+    L: Language,
+    N: Analysis<L>,
+    F: Fn(&mut EGraph<L, N>, Id, &Subst) -> bool,
+{
+    f: F,
+    description: String,
+    phantom_l: PhantomData<L>,
+    phantom_n: PhantomData<N>,
+}
+
+impl<L, F, N> Condition<L, N> for FunctionCondition<L, F, N>
     where
         L: Language,
         N: Analysis<L>,
         F: Fn(&mut EGraph<L, N>, Id, &Subst) -> bool,
 {
     fn check(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
-        self(egraph, eclass, subst)
+        (self.f)(egraph, eclass, subst)
     }
 
     fn describe(&self) -> String {
-        format!("Function Condition over {}", self.vars().iter().map(|v| v.to_string()).join(" "))
+        self.description.clone()
     }
 }
 
@@ -612,18 +623,42 @@ pub trait ImmutableCondition<L, N> where
     }
 }
 
-impl<L, F, N> ImmutableCondition<L, N> for F
+pub struct ImmutableFunctionCondition<L, F, N> where
+    L: Language,
+    N: Analysis<L>,
+    F: Fn(&EGraph<L, N>, Id, &Subst) -> bool,
+{
+    f: F,
+    description: String,
+    phantom_l: PhantomData<L>,
+    phantom_n: PhantomData<N>,
+}
+
+impl<L, F, N> ImmutableFunctionCondition<L, F, N>
+    where
+        L: Language,
+        N: Analysis<L>,
+        F: Fn(&EGraph<L, N>, Id, &Subst) -> bool,
+{
+    pub fn new(f: F, desc: String) -> Self {
+        Self {
+            f, description: desc, phantom_l: Default::default(), phantom_n: Default::default(),
+        }
+    }
+}
+
+impl<L, F, N> ImmutableCondition<L, N> for ImmutableFunctionCondition<L, F, N>
     where
         L: Language,
         N: Analysis<L>,
         F: Fn(&EGraph<L, N>, Id, &Subst) -> bool,
 {
     fn check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
-        self(egraph, eclass, subst)
+        (self.f)(egraph, eclass, subst)
     }
 
     fn describe(&self) -> String {
-        format!("Function Condition over {}", self.vars().iter().map(|v| v.to_string()).join(" "))
+        self.description.clone()
     }
 }
 
@@ -680,7 +715,7 @@ mod tests {
     use std::str::FromStr;
     use std::fmt::Formatter;
     use std::rc::Rc;
-    use crate::rewrite::{ImmutableCondition, RcImmutableCondition};
+    use crate::rewrite::{ImmutableCondition, ImmutableFunctionCondition, RcImmutableCondition};
 
     type EGraph = crate::EGraph<S, ()>;
 
@@ -763,9 +798,9 @@ mod tests {
     #[test]
     fn rc_imm_condition_not_infinite_rec() {
         crate::init_logger();
-        let cond: RcImmutableCondition<SymbolLang, ()> = RcImmutableCondition::new(|graph: &EGraph, id: Id, s: &Subst| {
+        let cond: RcImmutableCondition<SymbolLang, ()> = RcImmutableCondition::new(ImmutableFunctionCondition::new(|graph: &EGraph, id: Id, s: &Subst| {
             true
-        });
+        }, "true".to_string()));
         assert!(cond.vars().is_empty())
     }
 }

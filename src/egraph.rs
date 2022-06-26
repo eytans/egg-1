@@ -1276,6 +1276,14 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             ids.iter().chain([(c_id, *id)].iter()).all(|(c_id, id)| self[*id].color.iter().all(|c| c != c_id))));
     }
 
+    pub fn opt_colored_union(&mut self, color: Option<ColorId>, id1: Id, id2: Id) -> (Id, bool) {
+        if let Some(color) = color {
+            self.colored_union(color, id1, id2)
+        } else {
+            self.union(id1, id2)
+        }
+    }
+
     pub fn colored_union(&mut self, color: ColorId, id1: Id, id2: Id) -> (Id, bool) {
         let (to, changed, todo) = self.get_color_mut(color).unwrap().inner_colored_union(id1, id2);
         if let Some((id1, id2)) = todo {
@@ -1291,6 +1299,14 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
     pub fn colored_find(&self, color: ColorId, id: Id) -> Id {
         self.get_color(color).unwrap().find(id)
+    }
+
+    pub fn opt_colored_find(&self, color: Option<ColorId>, id: Id) -> Id {
+        if let Some(color) = color {
+            self.get_color(color).unwrap().find(id)
+        } else {
+            self.find(id)
+        }
     }
 
     pub fn colors(&self) -> impl Iterator<Item=&Color> {
@@ -1309,17 +1325,22 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         self.colors[usize::from(color)].as_mut()
     }
 
-    pub fn detect_vacuity(&self, disjoints: Vec<OpId>) -> Vec<ColorId> {
+    pub fn detect_vacuity(&self, disjoints: &[OpId]) -> Vec<ColorId> {
+        let empty = Default::default();
         let dis_classes= disjoints.into_iter()
-            .map(|o_id| self.classes_by_op[&o_id])
+            .map(|o_id| self.classes_by_op.get(o_id).unwrap_or(&empty))
             .map(|x| x.iter().map(|x| (self[*x].color, *x)).into_group_map()).collect_vec();
-        dassert!(dis_classes.iter().flat_map(|x| x.get(&None).map_or(vec![])).unique().count() == dis_classes.iter().map(|x| x.get(&None).map_or(0, |x| x.len())).sum());
+        dassert!({
+            let empty = vec![];
+            dis_classes.iter().flat_map(|x| x.get(&None).unwrap_or(&empty)).unique().count() ==
+            dis_classes.iter().map(|x| x.get(&None).map_or(0, |x| x.len())).sum()
+        });
         self.colors().filter(|c| {
             let canonized = dis_classes.iter().map(|map|
                 map.get(&None).map_or(vec![].iter(), |x| x.iter())
                     .chain(map.get(&Some(c.get_id())).map_or(vec![].iter(), |x| x.iter()))
                     .map(|x| self.colored_find(c.get_id(), *x)).collect::<IndexSet<Id>>()).collect_vec();
-            canonized.iter().map(|x| x.len()).sum() == canonized.into_iter().flatten().unique().count()
+            canonized.iter().map(|x| x.len()).sum::<usize>() != canonized.into_iter().flatten().unique().count()
         }).map(|c| c.get_id()).collect_vec()
     }
 }

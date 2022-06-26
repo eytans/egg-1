@@ -108,7 +108,11 @@ impl<L: Language> Pattern<L> {
                     if n.children().iter().any(|id| child_ids[id.0 as usize].is_none()) {
                         None
                     } else {
-                        egraph.lookup(n.clone().map_children(|id| child_ids[id.0 as usize].unwrap()))
+                        if let Some(c) = subst.color {
+                            egraph.colored_lookup(c, n.clone().map_children(|id| child_ids[id.0 as usize].unwrap()))
+                        } else {
+                            egraph.lookup(n.clone().map_children(|id| child_ids[id.0 as usize].unwrap()))
+                        }
                     }
                 },
                 ENodeOrVar::Var(v) => {
