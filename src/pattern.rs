@@ -105,7 +105,7 @@ impl<L: Language> Pattern<L> {
         for child in self.ast.as_ref() {
             child_ids.push(match child {
                 // Child in enode is a pointer to the pattern
-                ENodeOrVar::ENode(n) => {
+                ENodeOrVar::ENode(n, name) => {
                     if n.children().iter().any(|id| child_ids[id.0 as usize].is_none()) {
                         None
                     } else {
@@ -131,7 +131,7 @@ impl<L: Language> Pattern<L> {
 #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub enum ENodeOrVar<L> {
     /// An enode from the underlying [`Language`](trait.Language.html)
-    ENode(L),
+    ENode(L, Option<String>),
     /// A pattern variable
     Var(Var),
 }
@@ -143,14 +143,14 @@ impl<L: Language> Language for ENodeOrVar<L> {
 
     fn children(&self) -> &[Id] {
         match self {
-            ENodeOrVar::ENode(e) => e.children(),
+            ENodeOrVar::ENode(e, _) => e.children(),
             ENodeOrVar::Var(_) => &[],
         }
     }
 
     fn children_mut(&mut self) -> &mut [Id] {
         match self {
-            ENodeOrVar::ENode(e) => e.children_mut(),
+            ENodeOrVar::ENode(e, _) => e.children_mut(),
             ENodeOrVar::Var(_) => &mut [],
         }
     }
@@ -161,7 +161,7 @@ impl<L: Language> Language for ENodeOrVar<L> {
 
     fn display_op(&self) -> &dyn std::fmt::Display {
         match self {
-            ENodeOrVar::ENode(e) => e.display_op(),
+            ENodeOrVar::ENode(e, _) => e.display_op(),
             ENodeOrVar::Var(v) => v,
         }
     }
@@ -179,8 +179,17 @@ impl<L: Language> Language for ENodeOrVar<L> {
                     op_str
                 ))
             }
+        } else if op_str.starts_with("|@|") && op_str.matches("|@|").count() >= 2 {
+            let matches = op_str.match_indices("|@|").collect_vec();
+            // name between first two |@|
+            let name = &op_str[matches[0].0 + 3..matches[1].0];
+            if !name.starts_with("?") {
+                return Err(format!("Invalid name for pattern: {}. Name should start with ?", name));
+            }
+            let l = L::from_op_str(&op_str[matches[1].0 + 3..], children)?;
+            Ok(ENodeOrVar::ENode(l, Some(name.to_string())))
         } else {
-            L::from_op_str(op_str, children).map(ENodeOrVar::ENode)
+            L::from_op_str(op_str, children).map(|x| ENodeOrVar::ENode(x, None))
         }
     }
 }
@@ -194,7 +203,7 @@ impl<L: Language> std::str::FromStr for Pattern<L> {
 
 impl<'a, L: Language> From<&'a [L]> for Pattern<L> {
     fn from(expr: &'a [L]) -> Self {
-        let nodes: Vec<_> = expr.iter().cloned().map(ENodeOrVar::ENode).collect();
+        let nodes: Vec<_> = expr.iter().cloned().map(|x| ENodeOrVar::ENode(x, None)).collect();
         let ast = RecExpr::from(nodes);
         Self::from(ast)
     }
@@ -213,7 +222,7 @@ impl<L: Language> TryFrom<Pattern<L>> for RecExpr<L> {
         let nodes = pat.ast.as_ref().iter().cloned();
         let ns: Result<Vec<_>, _> = nodes
             .map(|n| match n {
-                ENodeOrVar::ENode(n) => Ok(n),
+                ENodeOrVar::ENode(n, _) => Ok(n),
                 ENodeOrVar::Var(v) => Err(v),
             })
             .collect();
@@ -247,7 +256,7 @@ pub struct SearchMatches {
 impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
     fn search(&self, egraph: &EGraph<L, A>) -> Vec<SearchMatches> {
         match self.ast.as_ref().last().unwrap() {
-            ENodeOrVar::ENode(e) => {
+            ENodeOrVar::ENode(e, _) => {
                 let key = e.op_id();
                 match egraph.classes_by_op.get(&key) {
                     None => vec![],
@@ -311,7 +320,7 @@ fn apply_pat<L: Language, A: Analysis<L>>(
 
     let result = match pat.last().unwrap() {
         ENodeOrVar::Var(w) => subst[*w],
-        ENodeOrVar::ENode(e) => {
+        ENodeOrVar::ENode(e, _) => {
             let n = e
                 .clone()
                 .map_children(|child| apply_pat(&pat[..usize::from(child) + 1], egraph, subst));

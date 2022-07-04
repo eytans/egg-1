@@ -213,10 +213,10 @@ impl<L: Language> Ord for Todo<L> {
         use ENodeOrVar::*;
         match (&self.pat, &other.pat) {
             // fewer children means higher priority
-            (ENode(e1), ENode(e2)) => e2.len().cmp(&e1.len()),
+            (ENode(e1, _), ENode(e2, _)) => e2.len().cmp(&e1.len()),
             // Var is higher prio than enode
-            (ENode(_), Var(_)) => Ordering::Less,
-            (Var(_), ENode(_)) => Ordering::Greater,
+            (ENode(_, _), Var(_)) => Ordering::Less,
+            (Var(_), ENode(_, _)) => Ordering::Greater,
             (Var(_), Var(_)) => Ordering::Equal,
         }
     }
@@ -256,7 +256,7 @@ impl<'a, L: Language> Compiler<'a, L> {
                         self.v2r.insert(v, i);
                     }
                 }
-                ENodeOrVar::ENode(node) => {
+                ENodeOrVar::ENode(node, name) => {
                     let out = self.out;
                     self.out.0 += node.len() as u32;
 
@@ -270,6 +270,9 @@ impl<'a, L: Language> Compiler<'a, L> {
 
                     // zero out the children so Bind can use it to sort
                     let node = node.map_children(|_| Id::from(0));
+                    if let Some(name) = name {
+                        self.v2r.insert(name.parse().unwrap(), out);
+                    }
                     instructions.push(Instruction::Bind { i, node, out })
                 }
             }
