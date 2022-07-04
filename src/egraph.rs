@@ -1111,13 +1111,10 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     }
 
     /// If every `Var` in self agrees with other and the colors match then return true
-    pub fn subst_agrees(&self, s1: &crate::Subst, s2: &crate::Subst) -> bool {
-        s1.vec.iter().all(|(v, i1)| s2.get(*v)
-            .map(|i2| {
-                let s1_ids = self.gather_all_ids(s1, i1);
-                let s2_ids = self.gather_all_ids(s2, i2);
-                i1 == i2 || !s1_ids.unwrap_or(&IndexSet::default()).is_disjoint(&s2_ids.unwrap_or(&IndexSet::default()))
-            }).unwrap_or(false))
+    pub fn subst_agrees(&self, s1: &crate::Subst, s2: &crate::Subst, allow_missing_vars: bool) -> bool {
+        s1.color == s2.color && s1.vec.iter().all(|(v, i1)| s2.get(*v)
+            .map(|i2| self.opt_colored_find(s1.color, *i1) == self.opt_colored_find(s1.color, *i2))
+            .unwrap_or(allow_missing_vars))
     }
 
     fn gather_all_ids(&self, subs: &Subst, id: &Id) -> Option<&IndexSet<Id>> {
