@@ -4,6 +4,7 @@ use std::fmt;
 
 use crate::{machine, Analysis, Applier, EGraph, Id, Language, RecExpr, Searcher, Subst, Var, OpId};
 use std::fmt::Formatter;
+use indexmap::IndexSet;
 use itertools::Itertools;
 use crate::expression_ops::{RecExpSlice, Tree};
 

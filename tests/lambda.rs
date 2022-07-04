@@ -1,6 +1,7 @@
 use egg::{rewrite as rw, *};
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
+use std::rc::Rc;
 
 define_language! {
     enum Lambda {
@@ -102,12 +103,12 @@ fn var(s: &str) -> Var {
     s.parse().unwrap()
 }
 
-fn is_not_same_var(v1: Var, v2: Var) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
-    move |egraph, _, subst| egraph.find(subst[v1]) != egraph.find(subst[v2])
+fn is_not_same_var(v1: Var, v2: Var) -> FunctionCondition<Lambda, LambdaAnalysis> {
+    FunctionCondition::new(Rc::new(move |egraph, _, subst| egraph.find(subst[v1]) != egraph.find(subst[v2])), "is_not_same_var".to_string())
 }
 
-fn is_const(v: Var) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
-    move |egraph, _, subst| egraph[subst[v]].data.constant.is_some()
+fn is_const(v: Var) -> FunctionCondition<Lambda, LambdaAnalysis> {
+    FunctionCondition::new(Rc::new(move |egraph, _, subst| egraph[subst[v]].data.constant.is_some()), "is_const".to_string())
 }
 
 fn rules() -> Vec<Rewrite<Lambda, LambdaAnalysis>> {

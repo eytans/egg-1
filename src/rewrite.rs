@@ -5,6 +5,7 @@ use crate::{Analysis, EGraph, Id, Language, Pattern, SearchMatches, Subst, Var, 
 use std::sync::Arc;
 use std::fmt::{Display, Formatter, Debug};
 use std::marker::PhantomData;
+use std::ops::Deref;
 use itertools::Itertools;
 use log::{info, trace, warn};
 
@@ -517,22 +518,20 @@ pub trait Condition<L, N>
     fn describe(&self) -> String;
 }
 
-pub struct FunctionCondition<L, F, N> where
+pub struct FunctionCondition<L, N> where
     L: Language,
     N: Analysis<L>,
-    F: Fn(&mut EGraph<L, N>, Id, &Subst) -> bool,
 {
-    f: F,
+    f: Rc<dyn Fn(&mut EGraph<L, N>, Id, &Subst) -> bool>,
     description: String,
     phantom_l: PhantomData<L>,
     phantom_n: PhantomData<N>,
 }
 
-impl<L, F, N> Condition<L, N> for FunctionCondition<L, F, N>
+impl<L, N> Condition<L, N> for FunctionCondition<L, N>
     where
         L: Language,
         N: Analysis<L>,
-        F: Fn(&mut EGraph<L, N>, Id, &Subst) -> bool,
 {
     fn check(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
         (self.f)(egraph, eclass, subst)
@@ -540,6 +539,24 @@ impl<L, F, N> Condition<L, N> for FunctionCondition<L, F, N>
 
     fn describe(&self) -> String {
         self.description.clone()
+    }
+}
+
+impl<L, N> FunctionCondition<L, N>
+    where
+        L: Language,
+        N: Analysis<L>,
+{
+    pub fn new<S>(f: Rc<dyn Fn(&mut EGraph<L, N>, Id, &Subst) -> bool>, description: S) -> Self
+        where
+            S: Into<String>,
+    {
+        FunctionCondition {
+            f,
+            description: description.into(),
+            phantom_l: PhantomData,
+            phantom_n: PhantomData,
+        }
     }
 }
 
@@ -587,11 +604,23 @@ impl<L, N, A1, A2> Condition<L, N> for ConditionEqual<A1, A2>
     }
 }
 
-pub trait ImmutableCondition<L, N> where
+pub trait ToCondRc<L, N> where
     L: Language,
     N: Analysis<L>,
 {
-    fn check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> bool;
+    fn into_rc(self) -> Rc<dyn ImmutableCondition<L, N>>
+        where
+            Self: Sized, Self: ImmutableCondition<L, N>, Self: 'static,
+    {
+        Rc::new(self)
+    }
+}
+
+pub trait ImmutableCondition<L, N>: ToCondRc<L, N> where
+    L: Language,
+    N: Analysis<L>,
+{
+    fn check_imm<'a>(&'a self, egraph: &'a EGraph<L, N>, eclass: Id, subst: &'a Subst) -> bool;
 
     /// Returns a list of variables that this Condition assumes are bound.
     ///
@@ -623,35 +652,36 @@ pub trait ImmutableCondition<L, N> where
     }
 }
 
-pub struct ImmutableFunctionCondition<L, F, N> where
+pub type RcImmutableCondition<L, N> = Rc<dyn ImmutableCondition<L, N>>;
+
+pub struct ImmutableFunctionCondition<L, N> where
     L: Language,
     N: Analysis<L>,
-    F: Fn(&EGraph<L, N>, Id, &Subst) -> bool,
 {
-    f: F,
+    f: Rc<dyn Fn(&EGraph<L, N>, Id, &Subst) -> bool>,
     description: String,
     phantom_l: PhantomData<L>,
     phantom_n: PhantomData<N>,
 }
 
-impl<L, F, N> ImmutableFunctionCondition<L, F, N>
+impl<L, N> ImmutableFunctionCondition<L, N>
     where
         L: Language,
         N: Analysis<L>,
-        F: Fn(&EGraph<L, N>, Id, &Subst) -> bool,
 {
-    pub fn new(f: F, desc: String) -> Self {
+    pub fn new(f: Rc<dyn Fn(&EGraph<L, N>, Id, &Subst) -> bool>, desc: String) -> Self {
         Self {
             f, description: desc, phantom_l: Default::default(), phantom_n: Default::default(),
         }
     }
 }
 
-impl<L, F, N> ImmutableCondition<L, N> for ImmutableFunctionCondition<L, F, N>
+impl<L, N> ToCondRc<L, N> for ImmutableFunctionCondition<L, N> where L: Language, N: Analysis<L> {}
+
+impl<L, N> ImmutableCondition<L, N> for ImmutableFunctionCondition<L, N>
     where
         L: Language,
         N: Analysis<L>,
-        F: Fn(&EGraph<L, N>, Id, &Subst) -> bool,
 {
     fn check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
         (self.f)(egraph, eclass, subst)
@@ -662,32 +692,22 @@ impl<L, F, N> ImmutableCondition<L, N> for ImmutableFunctionCondition<L, F, N>
     }
 }
 
-#[derive(Clone)]
-pub struct RcImmutableCondition<L: Language, N: Analysis<L>> {
-    ptr: Rc<dyn ImmutableCondition<L, N>>
-}
-
-impl<L: Language, N: Analysis<L>> RcImmutableCondition<L, N> {
-    pub fn new(c: impl ImmutableCondition<L, N> + 'static)
-        -> RcImmutableCondition<L, N> {
-        RcImmutableCondition{ptr: Rc::new(c)}
-    }
-}
+impl<L, N> ToCondRc<L, N> for RcImmutableCondition<L, N> where L: Language, N: Analysis<L> {}
 
 impl<L, N> ImmutableCondition<L, N> for RcImmutableCondition<L, N> where
     L: Language,
     N: Analysis<L>,
 {
     fn check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
-        self.ptr.check_imm(egraph, eclass, subst)
+        self.deref().check_imm(egraph, eclass, subst)
     }
 
     fn vars(&self) -> Vec<Var> {
-        self.ptr.vars()
+        self.deref().vars()
     }
 
     fn describe(&self) -> String {
-        self.ptr.describe()
+        self.deref().describe()
     }
 }
 
@@ -798,9 +818,9 @@ mod tests {
     #[test]
     fn rc_imm_condition_not_infinite_rec() {
         crate::init_logger();
-        let cond: RcImmutableCondition<SymbolLang, ()> = RcImmutableCondition::new(ImmutableFunctionCondition::new(|graph: &EGraph, id: Id, s: &Subst| {
+        let cond: RcImmutableCondition<SymbolLang, ()> = Rc::new(ImmutableFunctionCondition::<SymbolLang, ()>::new(Rc::new(|graph: &EGraph, id: Id, s: &Subst| {
             true
-        }, "true".to_string()));
+        }), "true".to_string()));
         assert!(cond.vars().is_empty())
     }
 }

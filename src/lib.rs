@@ -114,7 +114,7 @@ pub use {
     extract::*,
     language::*,
     pattern::{ENodeOrVar, Pattern, PatternAst, SearchMatches},
-    rewrite::{Applier, ImmutableCondition, RcImmutableCondition, FunctionCondition, ImmutableFunctionCondition, Condition, ConditionEqual, ConditionalApplier, Rewrite, Searcher},
+    rewrite::{Applier, ImmutableCondition, FunctionCondition, ImmutableFunctionCondition, Condition, ConditionEqual, ConditionalApplier, Rewrite, Searcher, RcImmutableCondition, ToCondRc},
     run::*,
     subst::{Subst, Var},
     util::*,

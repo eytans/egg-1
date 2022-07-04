@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use egg::{rewrite as rw, *};
 use ordered_float::NotNan;
 
@@ -88,42 +89,42 @@ impl Analysis<Math> for ConstantFold {
     }
 }
 
-fn is_const_or_distinct_var(v: &str, w: &str) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
+fn is_const_or_distinct_var(v: &str, w: &str) -> FunctionCondition<Math, ConstantFold> {
     let v = v.parse().unwrap();
     let w = w.parse().unwrap();
-    move |egraph, _, subst| {
+    FunctionCondition::new(Rc::new(move |egraph, _, subst| {
         egraph.find(subst[v]) != egraph.find(subst[w])
             && egraph[subst[v]]
-                .nodes
-                .iter()
-                .any(|n| matches!(n, Math::Constant(..) | Math::Symbol(..)))
-    }
+            .nodes
+            .iter()
+            .any(|n| matches!(n, Math::Constant(..) | Math::Symbol(..)))
+    }), "is_const_or_distinct_var")
 }
 
-fn is_const(var: &str) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
+fn is_const(var: &str) -> FunctionCondition<Math, ConstantFold> {
     let var = var.parse().unwrap();
-    move |egraph, _, subst| {
+    FunctionCondition::new(Rc::new(move |egraph, _, subst| {
         egraph[subst[var]]
             .nodes
             .iter()
             .any(|n| matches!(n, Math::Constant(..)))
-    }
+    }), "is_const")
 }
 
-fn is_sym(var: &str) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
+fn is_sym(var: &str) -> FunctionCondition<Math, ConstantFold> {
     let var = var.parse().unwrap();
-    move |egraph, _, subst| {
+    FunctionCondition::new(Rc::new(move |egraph, _, subst| {
         egraph[subst[var]]
             .nodes
             .iter()
             .any(|n| matches!(n, Math::Symbol(..)))
-    }
+    }), "is_sym")
 }
 
-fn is_not_zero(var: &str) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
+fn is_not_zero(var: &str) -> FunctionCondition<Math, ConstantFold> {
     let var = var.parse().unwrap();
     let zero = Math::Constant(0.0.into());
-    move |egraph, _, subst| !egraph[subst[var]].nodes.contains(&zero)
+    FunctionCondition::new(Rc::new(move |egraph, _, subst| !egraph[subst[var]].nodes.contains(&zero)), "is_not_zero".to_string())
 }
 
 #[rustfmt::skip]
