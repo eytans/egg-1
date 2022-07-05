@@ -165,7 +165,7 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     #[cfg(feature = "colored")]
     pub(crate) colored_memo: IndexMap<L, IndexMap<ColorId, Id>>,
     #[cfg(feature = "colored")]
-    pub(crate) colored_equivalences: IndexMap<Id, IndexSet<(ColorId, Id)>>,
+    pub colored_equivalences: IndexMap<Id, IndexSet<(ColorId, Id)>>,
 }
 
 const MAX_COLORS: usize = 1000;
@@ -1320,6 +1320,10 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
     pub fn get_color_mut(&mut self, color: ColorId) -> Option<&mut Color> {
         self.colors[usize::from(color)].as_mut()
+    }
+
+    pub fn get_colored_equalities(&self, id: Id) -> &IndexSet<(ColorId, Id)> {
+        &self.colored_equivalences[&id]
     }
 
     pub fn detect_vacuity(&self, disjoints: &[OpId]) -> Vec<ColorId> {
