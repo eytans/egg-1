@@ -2,7 +2,7 @@ use log::*;
 use std::convert::TryFrom;
 use std::fmt;
 
-use crate::{machine, Analysis, Applier, EGraph, Id, Language, RecExpr, Searcher, Subst, Var, OpId};
+use crate::{machine, Analysis, Applier, EGraph, Id, Language, RecExpr, Searcher, Subst, Var, OpId, ColorId};
 use std::fmt::Formatter;
 use indexmap::IndexSet;
 use itertools::Itertools;
@@ -250,7 +250,7 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
 
     fn search_eclass(&self, egraph: &EGraph<L, A>, eclass: Id) -> Option<SearchMatches> {
         let substs = if cfg!(feature = "colored") {
-            self.program.colored_run(egraph, eclass)
+            self.program.colored_run(egraph, eclass, None)
         }  else {
             self.program.run(egraph, eclass)
         };
@@ -259,6 +259,23 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
         } else {
             Some(SearchMatches { eclass, substs: substs.into_iter().unique().collect_vec() })
         }
+    }
+
+    fn colored_search_eclass(&self, egraph: &EGraph<L, A>, eclass: Id, color: ColorId) -> Vec<SearchMatches> {
+        let eq_classes = egraph.get_color(color).unwrap().black_ids(eclass);
+        let mut todo: Box<dyn Iterator<Item=Id>> = if let Some(ids) = eq_classes {
+            Box::new(ids.iter().copied())
+        } else {
+            Box::new(std::iter::once(eclass))
+        };
+        let mut res = vec![];
+        for id in todo {
+            let substs = self.program.colored_run(egraph, id, Some(color));
+            if !substs.is_empty() {
+                res.push(SearchMatches { eclass: id, substs: substs.into_iter().unique().collect_vec() })
+            }
+        }
+        res
     }
 
     fn vars(&self) -> Vec<Var> {

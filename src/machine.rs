@@ -323,7 +323,7 @@ impl<L: Language> Program<L> {
         substs
     }
 
-    pub fn colored_run<A>(&self, egraph: &EGraph<L, A>, eclass: Id) -> Vec<Subst>
+    pub fn colored_run<A>(&self, egraph: &EGraph<L, A>, eclass: Id, color: Option<ColorId>) -> Vec<Subst>
         where
             A: Analysis<L>,
     {
@@ -332,6 +332,10 @@ impl<L: Language> Program<L> {
         assert_eq!(machine.reg.len(), 0);
         machine.reg.push(eclass);
         if let Some(c) = egraph[eclass].color {
+            machine.color = Some(c);
+            color.as_ref().map(|c1| assert_eq!(c1, &c));
+        }
+        if let Some(c) = color {
             machine.color = Some(c);
         }
 

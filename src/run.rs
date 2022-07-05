@@ -259,7 +259,7 @@ where
             hooks: vec![],
 
             start_time: None,
-            scheduler: Box::new(SimpleScheduler::default()),
+            scheduler: Box::new(BackoffScheduler::default()),
         }
     }
 
