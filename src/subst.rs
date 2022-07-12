@@ -61,6 +61,14 @@ impl Subst {
         }
     }
 
+    #[cfg(feature = "colored")]
+    pub fn colored_with_capacity(capacity: usize, color: Option<ColorId>) -> Self {
+        Self {
+            vec: smallvec::SmallVec::with_capacity(capacity),
+            color,
+        }
+    }
+
     /// Insert something, returning the old `Id` if present.
     pub fn insert(&mut self, var: Var, id: Id) -> Option<Id> {
         for pair in &mut self.vec {

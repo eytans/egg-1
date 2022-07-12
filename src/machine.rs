@@ -271,7 +271,7 @@ impl<'a, L: Language> Compiler<'a, L> {
                     // zero out the children so Bind can use it to sort
                     let node = node.map_children(|_| Id::from(0));
                     if let Some(name) = name {
-                        self.v2r.insert(name.parse().unwrap(), out);
+                        self.v2r.insert(name.parse().unwrap(), i);
                     }
                     instructions.push(Instruction::Bind { i, node, out })
                 }

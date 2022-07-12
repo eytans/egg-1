@@ -4,6 +4,7 @@ use std::fmt;
 
 use crate::{machine, Analysis, Applier, EGraph, Id, Language, RecExpr, Searcher, Subst, Var, OpId, ColorId};
 use std::fmt::Formatter;
+use std::str::FromStr;
 use indexmap::IndexSet;
 use itertools::Itertools;
 use crate::expression_ops::{RecExpSlice, Tree};
@@ -85,10 +86,19 @@ impl<L: Language> Pattern<L> {
     pub fn vars(&self) -> Vec<Var> {
         let mut vars = vec![];
         for n in self.ast.as_ref() {
-            if let ENodeOrVar::Var(v) = n {
-                if !vars.contains(v) {
-                    vars.push(*v)
+            match n {
+                ENodeOrVar::ENode(_, Some(n)) => {
+                    let v = Var::from_str(n).unwrap();
+                    if !vars.contains(&v) {
+                        vars.push(v)
+                    }
                 }
+                ENodeOrVar::Var(v) => {
+                    if !vars.contains(v) {
+                        vars.push(*v)
+                    }
+                }
+                _ => {}
             }
         }
         vars
@@ -331,7 +341,7 @@ fn apply_pat<L: Language, A: Analysis<L>>(
 
 #[cfg(test)]
 mod tests {
-
+    use std::str::FromStr;
     use crate::{SymbolLang as S, *};
 
     type EGraph = crate::EGraph<S, ()>;
@@ -406,5 +416,32 @@ mod tests {
         let matches = commute_plus.search(&egraph);
         assert!(!matches.is_empty());
         assert!(matches.iter().all(|x| x.substs.iter().all(|s| !s.color.is_none())));
+    }
+
+    #[test]
+    fn named_subpattern_is_var() {
+        crate::init_logger();
+        let p: Pattern<SymbolLang> = Pattern::from_str("(|@|?root|@|+ ?x ?y)").unwrap();
+        assert_eq!(p.vars().len(), 3);
+    }
+
+    #[test]
+    fn name_enode_matches_correctly() {
+        crate::init_logger();
+        let p: Pattern<SymbolLang> = Pattern::from_str("(|@|?root|@|+ ?x ?y)").unwrap();
+        let mut egraph = EGraph::default();
+        let x = egraph.add(S::leaf("x"));
+        let y = egraph.add(S::leaf("y"));
+        let plus = egraph.add(S::new("+", vec![x, y]));
+        egraph.rebuild();
+        let matches = p.search(&egraph);
+        assert_eq!(matches.len(), 1);
+        let m = &matches[0];
+        assert_eq!(m.eclass, plus);
+        assert_eq!(m.substs.len(), 1);
+        let s = &m.substs[0];
+        assert_eq!(s[Var::from_str("?x").unwrap()], x);
+        assert_eq!(s[Var::from_str("?y").unwrap()], y);
+        assert_eq!(s[Var::from_str("?root").unwrap()], plus);
     }
 }
