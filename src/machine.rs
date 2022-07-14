@@ -347,7 +347,7 @@ impl<L: Language> Program<L> {
             &mut |machine, subst| {
                 let subst_vec = subst.vec.iter()
                     // HACK we are reusing Ids here, this is bad
-                    .map(|(v, reg_id)| (*v, machine.reg(Reg(usize::from(*reg_id) as u32))))
+                    .map(|(v, reg_id)| (*v, egraph.opt_colored_find(subst.color(), machine.reg(Reg(usize::from(*reg_id) as u32)))))
                     .collect();
                 substs.push(Subst { vec: subst_vec, color: machine.color.clone() })
             },
