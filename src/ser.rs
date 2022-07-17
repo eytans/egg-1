@@ -9,17 +9,17 @@ pub trait Serialization {
     fn to_tuples(&self) -> Vec<(String, Vec<Id>)>;
     /// Exports graph data as a set of tuples. The format is one tuple per line,
     /// space-separated: `op eclass children`.
-    fn to_tuples_text(&self, out: &mut impl Write) -> Result<()>;
+    fn to_tuples_text(&self, palette: &ColorPalette, out: &mut impl Write) -> Result<()>;
 }
 
 /// A trait for deserializing EGraphs from previously serialized content.
 pub trait Deserialization {
     /// Constructs a graph from tuple data (eclass ids as `Id`).
-    fn from_tuples<'a>(tuples: impl Iterator<Item=&'a (impl ToString + 'a, Vec<Id>)>) -> Self;
+    fn from_tuples<'a>(tuples: impl Iterator<Item=&'a (impl ToString + 'a, Vec<Id>)>) -> (Self, ColorPalette) where Self: Sized;
     /// Constructs a graph from tuple data (eclass ids as numbers).
-    fn from_tuples_int<'a>(tuples: impl Iterator<Item=&'a (impl ToString + 'a, Vec<usize>)>) -> Self;
+    fn from_tuples_int<'a>(tuples: impl Iterator<Item=&'a (impl ToString + 'a, Vec<usize>)>) -> (Self, ColorPalette) where Self: Sized;
     /// Parses an constructs a graph from textual representation.
-    fn from_tuples_text(in_: &mut impl Read) -> Result<Self> where Self: Sized;
+    fn from_tuples_text(in_: &mut impl Read) -> Result<(Self, ColorPalette)> where Self: Sized;
 }
 
 trait DeserializationHelper<L: Language> {
@@ -29,7 +29,7 @@ trait DeserializationHelper<L: Language> {
     fn line_to_tuple(line: &str) -> (String, Vec<Id>);
 }
 
-struct ColorPalette {
+pub struct ColorPalette {
     colors: HashMap<Id, ColorId>
 }
 
@@ -50,6 +50,10 @@ impl ColorPalette {
     }
 }
 
+impl Default for ColorPalette {
+    fn default() -> Self { ColorPalette::new() }
+}
+
 impl<N: Analysis<SymbolLang>> Serialization for EGraph<SymbolLang, N> {
     fn to_tuples(&self) -> Vec<(String, Vec<Id>)> {
         self.classes().flat_map(
@@ -60,16 +64,23 @@ impl<N: Analysis<SymbolLang>> Serialization for EGraph<SymbolLang, N> {
             }).collect::<Vec<_>>()
     }
 
-    fn to_tuples_text(&self, out: &mut impl Write) -> Result<()>{
+    fn to_tuples_text(&self, palette: &ColorPalette, out: &mut impl Write) -> Result<()>{
         // Write edges
         for (op, ids) in self.to_tuples() {
             writeln!(out, "{op} {ids}", ids = ids.iter().join(" "))?;
         }
         // Write colors
         let id_start = self.classes().map(|e| e.id).max().unwrap();
-        for (i, color) in self.colors().iter().enumerate() {
-            let color_id = usize::from(id_start) + i + 1;
-            writeln!(out, "clr#{i} {color_id}")?;
+        for (i, color) in self.colors().enumerate() {
+            let color_id =
+                if let Some(color_entry) = palette.colors.iter().find(|e| e.1 == &color.get_id()) {
+                    usize::from(*color_entry.0)
+                }
+                else {
+                    let color_id = usize::from(id_start) + i + 1;
+                    writeln!(out, "clr#{i} {color_id}")?;
+                    color_id
+                };
             for id in color.black_reps() {
                 writeln!(out, "?~ {color_id} {members}",
                          members = color.black_ids(*id).unwrap().iter().join(" "))?;
@@ -119,7 +130,7 @@ impl<L: Language, N: Analysis<L>> DeserializationHelper<L> for EGraph<L, N> {
 
 impl Deserialization for EGraph<SymbolLang, ()> {
 
-    fn from_tuples<'a>(tuples: impl Iterator<Item=&'a (impl ToString + 'a, Vec<Id>)>) -> EGraph<SymbolLang, ()> {
+    fn from_tuples<'a>(tuples: impl Iterator<Item=&'a (impl ToString + 'a, Vec<Id>)>) -> (Self, ColorPalette) {
         let mut g = EGraph::<SymbolLang, ()>::default();
         let mut leaf_ops = Vec::new();
         let mut color_unions = Vec::new();
@@ -139,7 +150,7 @@ impl Deserialization for EGraph<SymbolLang, ()> {
             let min = *eclass.iter().min().unwrap();
             let others = eclass.iter().filter_map(|u| { if *u != min { Some(*u) } else { None } })
                                .collect::<Vec<Id>>();
-            others.iter().for_each(|u| { g.union(min, *u); });
+            others.iter().for_each(|u| { g.union(min, *u); g.rebuild(); });
         }
         g.rebuild();
         // Performed deferred color merges
@@ -151,17 +162,17 @@ impl Deserialization for EGraph<SymbolLang, ()> {
             for v in &vertices[2..] { g.colored_union(c, u, *v); }
         }
         g.rebuild();
-        g
+        (g, palette)
     }
 
-    fn from_tuples_int<'a>(tuples: impl Iterator<Item=&'a (impl ToString + 'a, Vec<usize>)>) -> EGraph<SymbolLang, ()> {
+    fn from_tuples_int<'a>(tuples: impl Iterator<Item=&'a (impl ToString + 'a, Vec<usize>)>) -> (Self, ColorPalette) {
         EGraph::<SymbolLang, ()>::from_tuples(
             tuples.map(|(op, members)|
                 (op.to_string(), members.iter().map(|v| Id::from(*v)).collect::<Vec<Id>>()))
                 .collect::<Vec<_>>().iter())
     }
 
-    fn from_tuples_text(in_: &mut impl Read) -> Result<Self> {
+    fn from_tuples_text(in_: &mut impl Read) -> Result<(Self, ColorPalette)> {
         Ok(EGraph::<SymbolLang, ()>::from_tuples(BufReader::new(in_).lines()
             .map(|r| r.unwrap().trim().to_string())
             .filter(|s| s.len() > 0)
