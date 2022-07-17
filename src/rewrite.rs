@@ -230,7 +230,7 @@ pub trait Searcher<L, N>: std::fmt::Display
 
     /// Search one eclass with starting color
     /// This should also check all color-equal classes
-    fn colored_search_eclass(&self, egraph: &EGraph<L, N>, eclass: Id, color: ColorId) -> Vec<SearchMatches>;
+    fn colored_search_eclass(&self, egraph: &EGraph<L, N>, eclass: Id, color: ColorId) -> Option<SearchMatches>;
 
     /// Returns a list of the variables bound by this Searcher
     fn vars(&self) -> Vec<Var>;

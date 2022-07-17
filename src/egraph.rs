@@ -1112,7 +1112,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
     /// If every `Var` in self agrees with other and the colors match then return true
     pub fn subst_agrees(&self, s1: &crate::Subst, s2: &crate::Subst, allow_missing_vars: bool) -> bool {
-        s1.color == s2.color && s1.vec.iter().all(|(v, i1)| s2.get(*v)
+        (s1.color == s2.color || s1.color.is_none() || s2.color.is_none()) && s1.vec.iter().all(|(v, i1)| s2.get(*v)
             .map(|i2| self.opt_colored_find(s1.color, *i1) == self.opt_colored_find(s1.color, *i2))
             .unwrap_or(allow_missing_vars))
     }
@@ -1253,6 +1253,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
     pub fn delete_color(&mut self, c_id: ColorId) {
         assert!(self.dirty_unions.is_empty());
+        // TODO: Remove from parents and children
         let color = std::mem::replace(&mut self.colors[c_id.0], None).unwrap();
         for (colored, black) in color.black_colored_classes {
             let class = std::mem::replace(&mut self.classes[black.0 as usize], None).unwrap();
