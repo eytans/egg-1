@@ -122,7 +122,7 @@ impl fmt::Debug for Subst {
                 write!(f, ", ")?;
             }
         }
-        if cfg!(feature = "colored") && self.color.is_some() {
+        if cfg!(feature = "colored") {
             write!(f, " color: {}", self.color.map_or("None".to_string(), |x| x.to_string()));
         }
         write!(f, "}}")

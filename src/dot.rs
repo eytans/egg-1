@@ -242,7 +242,7 @@ impl<'a, L, N> Dot<'a, L, N> where L: Language, N: Analysis<L> {
     fn format_class(f: &mut Formatter, class: &EClass<L, <N as Analysis<L>>::Data>, print_color: &String) -> fmt::Result {
         let color_text = if class.color.is_some() {", color=".to_owned() + print_color} else {"".to_string()};
         writeln!(f, "  subgraph cluster_{} {{", class.id.0)?;
-        writeln!(f, "    style=dotted color=black")?;
+        writeln!(f, "    style=dotted color=black label=\"{}\"", class.id.to_string())?;
         for (i, node) in class.iter().enumerate() {
             writeln!(
                 f,

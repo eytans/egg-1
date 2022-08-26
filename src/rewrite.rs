@@ -451,6 +451,50 @@ pub struct ConditionalApplier<C, A, L, N> {
     pub phantom_n: PhantomData<N>,
 }
 
+impl<L, N, C, A> ConditionalApplier<C, A, L, N> where
+    L: Language,
+    N: Analysis<L>,
+    C: Condition<L, N>,
+    A: Applier<L, N>,
+{
+    /// Create a new [`ConditionalApplier`].
+    ///
+    /// [`ConditionalApplier`]: struct.ConditionalApplier.html
+    pub fn new(condition: C, applier: A) -> Self {
+        ConditionalApplier {
+            condition,
+            applier,
+            phantom_l: PhantomData,
+            phantom_n: PhantomData,
+        }
+    }
+
+    fn conditioned_apply_one(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> Vec<(Option<ColorId>, Id)> {
+        if cfg!(feature = "colored") {
+            if let Some(v) = self.condition.check_colored(egraph, eclass, subst) {
+                if v.is_empty() {
+                    self.applier.apply_one(egraph, eclass, subst).into_iter().map(|id| (subst.color(), id)).collect()
+                } else {
+                    let mut res = vec![];
+                    for c in v {
+                        let ids = self.applier.apply_one(egraph, eclass, subst).into_iter().map(|id| (Some(c), id));
+                        res.extend(ids);
+                    }
+                    res
+                }
+            } else {
+                vec![]
+            }
+        } else {
+            if self.condition.check(egraph, eclass, subst) {
+                self.applier.apply_one(egraph, eclass, subst).into_iter().map(|id| (None, id)).collect()
+            } else {
+                vec![]
+            }
+        }
+    }
+}
+
 impl<L, N, C, A> std::fmt::Display for ConditionalApplier<C, A, L, N> where
     L: Language,
     N: Analysis<L>,
@@ -468,12 +512,27 @@ impl<C, A, N, L> Applier<L, N> for ConditionalApplier<C, A, L, N>
         A: Applier<L, N>,
         N: Analysis<L>,
 {
+    // TODO: sort out an API for this
     fn apply_one(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> Vec<Id> {
-        if self.condition.check(egraph, eclass, subst) {
-            self.applier.apply_one(egraph, eclass, subst)
-        } else {
-            vec![]
+        unimplemented!("ConditionalApplier::apply_one is not implemented. Instead we use conditioned_apply_one");
+    }
+
+    fn apply_matches(&self, egraph: &mut EGraph<L, N>, matches: &[SearchMatches]) -> Vec<Id> {
+        let mut added = vec![];
+        for mat in matches {
+            for subst in &mat.substs {
+                let ids = self
+                    .conditioned_apply_one(egraph, mat.eclass, subst)
+                    .into_iter()
+                    .filter_map(|(opt_c, id)| {
+                        let (to, did_something) =
+                            egraph.opt_colored_union(opt_c, mat.eclass, id);
+                        did_something.then(|| to)
+                    });
+                added.extend(ids)
+            }
         }
+        added
     }
 
     fn vars(&self) -> Vec<Var> {
@@ -508,6 +567,17 @@ pub trait Condition<L, N>
     /// [`ConditionalApplier`]: struct.ConditionalApplier.html
     fn check(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> bool;
 
+    /// Check a condition and possibly add colored assumptions
+    ///
+    /// If the condition cannot be satisfied returns None. If the condition is satisfied in current
+    /// color, returns an empty vector. Otherwise, it will return a vector of all the sub-colors in
+    /// which the condition is satisfied (currently does not support sub-colors).
+    /// This additional complexity is necessary because we cannot make the searcher return matches
+    /// from all possible colors when it is not needed. Instead, the condition will check when it
+    /// can be satisfied.
+    /// TODO: add support for hierarchical colors in the future.
+    fn check_colored(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>>;
+
     /// Returns a list of variables that this Condition assumes are bound.
     ///
     /// `egg` will check that the corresponding `Searcher` binds those
@@ -522,47 +592,47 @@ pub trait Condition<L, N>
     fn describe(&self) -> String;
 }
 
-pub struct FunctionCondition<L, N> where
-    L: Language,
-    N: Analysis<L>,
-{
-    f: Rc<dyn Fn(&mut EGraph<L, N>, Id, &Subst) -> bool>,
-    description: String,
-    phantom_l: PhantomData<L>,
-    phantom_n: PhantomData<N>,
-}
-
-impl<L, N> Condition<L, N> for FunctionCondition<L, N>
-    where
-        L: Language,
-        N: Analysis<L>,
-{
-    fn check(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
-        (self.f)(egraph, eclass, subst)
-    }
-
-    fn describe(&self) -> String {
-        self.description.clone()
-    }
-}
-
-impl<L, N> FunctionCondition<L, N>
-    where
-        L: Language,
-        N: Analysis<L>,
-{
-    pub fn new<S>(f: Rc<dyn Fn(&mut EGraph<L, N>, Id, &Subst) -> bool>, description: S) -> Self
-        where
-            S: Into<String>,
-    {
-        FunctionCondition {
-            f,
-            description: description.into(),
-            phantom_l: PhantomData,
-            phantom_n: PhantomData,
-        }
-    }
-}
+// pub struct FunctionCondition<L, N> where
+//     L: Language,
+//     N: Analysis<L>,
+// {
+//     f: Rc<dyn Fn(&mut EGraph<L, N>, Id, &Subst) -> bool>,
+//     description: String,
+//     phantom_l: PhantomData<L>,
+//     phantom_n: PhantomData<N>,
+// }
+//
+// impl<L, N> Condition<L, N> for FunctionCondition<L, N>
+//     where
+//         L: Language,
+//         N: Analysis<L>,
+// {
+//     fn check(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
+//         (self.f)(egraph, eclass, subst)
+//     }
+//
+//     fn describe(&self) -> String {
+//         self.description.clone()
+//     }
+// }
+//
+// impl<L, N> FunctionCondition<L, N>
+//     where
+//         L: Language,
+//         N: Analysis<L>,
+// {
+//     pub fn new<S>(f: Rc<dyn Fn(&mut EGraph<L, N>, Id, &Subst) -> bool>, description: S) -> Self
+//         where
+//             S: Into<String>,
+//     {
+//         FunctionCondition {
+//             f,
+//             description: description.into(),
+//             phantom_l: PhantomData,
+//             phantom_n: PhantomData,
+//         }
+//     }
+// }
 
 /// A [`Condition`] that checks if two terms are equivalent.
 ///
@@ -594,7 +664,25 @@ impl<L, N, A1, A2> Condition<L, N> for ConditionEqual<A1, A2>
         let a2 = self.1.apply_one(egraph, eclass, subst);
         assert_eq!(a1.len(), 1);
         assert_eq!(a2.len(), 1);
-        a1[0] == a2[0]
+        egraph.opt_colored_find(subst.color(), a1[0]) == egraph.opt_colored_find(subst.color(), a2[0])
+    }
+
+    fn check_colored(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
+        if self.check(egraph, eclass, subst) {
+            return Some(vec![]);
+        } else if subst.color().is_some() {
+            // TODO: add support for hierarchical colors in the future.
+            return None;
+        }
+        let a1 = self.0.apply_one(egraph, eclass, subst)[0];
+        let a2 = self.1.apply_one(egraph, eclass, subst)[0];
+        let eqs = egraph.get_colored_equalities(a1);
+        eqs.map(|eqs| {
+            let res = eqs.iter()
+                .filter(|(c, id)| egraph.opt_colored_find(Some(*c), a2) == egraph.opt_colored_find(Some(*c), *id))
+                .map(|(c, _)| c).copied().collect_vec();
+            (!res.is_empty()).then(|| res)
+        }).flatten()
     }
 
     fn vars(&self) -> Vec<Var> {
@@ -625,6 +713,23 @@ pub trait ImmutableCondition<L, N>: ToCondRc<L, N> where
     N: Analysis<L>,
 {
     fn check_imm<'a>(&'a self, egraph: &'a EGraph<L, N>, eclass: Id, subst: &'a Subst) -> bool;
+
+    /// Check a condition and possibly add colored assumptions. See [`Condition::check_colored`].
+    ///
+    /// # Arguments
+    ///
+    /// * `egraph`:
+    /// * `eclass`:
+    /// * `subst`:
+    ///
+    /// returns: Option<Vec<ColorId, Global>>
+    ///
+    /// # Examples
+    ///
+    /// ```
+    ///
+    /// ```
+    fn colored_check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>>;
 
     /// Returns a list of variables that this Condition assumes are bound.
     ///
@@ -658,43 +763,43 @@ pub trait ImmutableCondition<L, N>: ToCondRc<L, N> where
 
 pub type RcImmutableCondition<L, N> = Rc<dyn ImmutableCondition<L, N>>;
 
-pub struct ImmutableFunctionCondition<L, N> where
-    L: Language,
-    N: Analysis<L>,
-{
-    f: Rc<dyn Fn(&EGraph<L, N>, Id, &Subst) -> bool>,
-    description: String,
-    phantom_l: PhantomData<L>,
-    phantom_n: PhantomData<N>,
-}
+// pub struct ImmutableFunctionCondition<L, N> where
+//     L: Language,
+//     N: Analysis<L>,
+// {
+//     f: Rc<dyn Fn(&EGraph<L, N>, Id, &Subst) -> bool>,
+//     description: String,
+//     phantom_l: PhantomData<L>,
+//     phantom_n: PhantomData<N>,
+// }
+//
+// impl<L, N> ImmutableFunctionCondition<L, N>
+//     where
+//         L: Language,
+//         N: Analysis<L>,
+// {
+//     pub fn new(f: Rc<dyn Fn(&EGraph<L, N>, Id, &Subst) -> bool>, desc: String) -> Self {
+//         Self {
+//             f, description: desc, phantom_l: Default::default(), phantom_n: Default::default(),
+//         }
+//     }
+// }
 
-impl<L, N> ImmutableFunctionCondition<L, N>
-    where
-        L: Language,
-        N: Analysis<L>,
-{
-    pub fn new(f: Rc<dyn Fn(&EGraph<L, N>, Id, &Subst) -> bool>, desc: String) -> Self {
-        Self {
-            f, description: desc, phantom_l: Default::default(), phantom_n: Default::default(),
-        }
-    }
-}
+// impl<L, N> ToCondRc<L, N> for ImmutableFunctionCondition<L, N> where L: Language, N: Analysis<L> {}
 
-impl<L, N> ToCondRc<L, N> for ImmutableFunctionCondition<L, N> where L: Language, N: Analysis<L> {}
-
-impl<L, N> ImmutableCondition<L, N> for ImmutableFunctionCondition<L, N>
-    where
-        L: Language,
-        N: Analysis<L>,
-{
-    fn check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
-        (self.f)(egraph, eclass, subst)
-    }
-
-    fn describe(&self) -> String {
-        self.description.clone()
-    }
-}
+// impl<L, N> ImmutableCondition<L, N> for ImmutableFunctionCondition<L, N>
+//     where
+//         L: Language,
+//         N: Analysis<L>,
+// {
+//     fn check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
+//         (self.f)(egraph, eclass, subst)
+//     }
+//
+//     fn describe(&self) -> String {
+//         self.description.clone()
+//     }
+// }
 
 impl<L, N> ToCondRc<L, N> for RcImmutableCondition<L, N> where L: Language, N: Analysis<L> {}
 
@@ -704,6 +809,10 @@ impl<L, N> ImmutableCondition<L, N> for RcImmutableCondition<L, N> where
 {
     fn check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
         self.deref().check_imm(egraph, eclass, subst)
+    }
+
+    fn colored_check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
+        self.deref().colored_check_imm(egraph, eclass, subst)
     }
 
     fn vars(&self) -> Vec<Var> {
@@ -724,6 +833,10 @@ impl<L, N> Condition<L, N> for dyn ImmutableCondition<L, N>
         self.check_imm(egraph, eclass, subst)
     }
 
+    fn check_colored(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
+        self.colored_check_imm(egraph, eclass, subst)
+    }
+
     fn vars(&self) -> Vec<Var> {
         self.vars()
     }
@@ -739,7 +852,8 @@ mod tests {
     use std::str::FromStr;
     use std::fmt::Formatter;
     use std::rc::Rc;
-    use crate::rewrite::{ImmutableCondition, ImmutableFunctionCondition, RcImmutableCondition};
+    // use crate::rewrite::{ImmutableCondition, ImmutableFunctionCondition, RcImmutableCondition};
+    use crate::rewrite::{ImmutableCondition, RcImmutableCondition};
 
     type EGraph = crate::EGraph<S, ()>;
 
@@ -819,12 +933,12 @@ mod tests {
         assert_eq!(egraph.equivs(&start, &goal), vec![egraph.find(root)]);
     }
 
-    #[test]
-    fn rc_imm_condition_not_infinite_rec() {
-        crate::init_logger();
-        let cond: RcImmutableCondition<SymbolLang, ()> = Rc::new(ImmutableFunctionCondition::<SymbolLang, ()>::new(Rc::new(|graph: &EGraph, id: Id, s: &Subst| {
-            true
-        }), "true".to_string()));
-        assert!(cond.vars().is_empty())
-    }
+    // #[test]
+    // fn rc_imm_condition_not_infinite_rec() {
+    //     crate::init_logger();
+    //     let cond: RcImmutableCondition<SymbolLang, ()> = Rc::new(ImmutableFunctionCondition::<SymbolLang, ()>::new(Rc::new(|graph: &EGraph, id: Id, s: &Subst| {
+    //         true
+    //     }), "true".to_string()));
+    //     assert!(cond.vars().is_empty())
+    // }
 }

@@ -240,7 +240,7 @@ pub struct SearchMatches {
 
 impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
     fn search(&self, egraph: &EGraph<L, A>) -> Vec<SearchMatches> {
-        match self.ast.as_ref().last().unwrap() {
+        let res = match self.ast.as_ref().last().unwrap() {
             ENodeOrVar::ENode(e, _) => {
                 let key = e.op_id();
                 match egraph.classes_by_op.get(&key) {
@@ -255,7 +255,12 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
                 .classes()
                 .filter_map(|e| self.search_eclass(egraph, e.id))
                 .collect(),
+        };
+        if self.pretty(500) == "(= ?x ?x)" && res.iter().any(|m| m.substs.iter().any(|s| s.color().is_some())) {
+            warn!("Found colored matches for {}", self.pretty(500));
+            warn!("{:?}", res);
         }
+        res
     }
 
     fn search_eclass(&self, egraph: &EGraph<L, A>, eclass: Id) -> Option<SearchMatches> {
@@ -446,5 +451,25 @@ mod tests {
         assert_eq!(s[Var::from_str("?x").unwrap()], x);
         assert_eq!(s[Var::from_str("?y").unwrap()], y);
         assert_eq!(s[Var::from_str("?root").unwrap()], plus);
+    }
+
+    #[test]
+    fn colored_eq_x_x() {
+        crate::init_logger();
+        let mut egraph = EGraph::default();
+        let x = egraph.add(S::leaf("x"));
+        let z = egraph.add(S::leaf("z"));
+        let y = egraph.add(S::leaf("y"));
+        let equ = egraph.add(S::new("=", vec![z, y]));
+        let c = egraph.create_color();
+        egraph.colored_union(c, x, y);
+        egraph.colored_union(c, x, z);
+        egraph.rebuild();
+        let p = Pattern::from_str("(= ?x ?x)").unwrap();
+        let matches = p.search(&egraph);
+        assert_eq!(matches.len(), 1);
+        let m = &matches[0];
+        assert_eq!(m.eclass, equ);
+        assert_eq!(m.substs.len(), 1);
     }
 }

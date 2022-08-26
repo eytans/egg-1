@@ -103,12 +103,49 @@ fn var(s: &str) -> Var {
     s.parse().unwrap()
 }
 
-fn is_not_same_var(v1: Var, v2: Var) -> FunctionCondition<Lambda, LambdaAnalysis> {
-    FunctionCondition::new(Rc::new(move |egraph, _, subst| egraph.find(subst[v1]) != egraph.find(subst[v2])), "is_not_same_var".to_string())
+struct IsNotSameVarCondition {
+    v1: Var,
+    v2: Var,
 }
 
-fn is_const(v: Var) -> FunctionCondition<Lambda, LambdaAnalysis> {
-    FunctionCondition::new(Rc::new(move |egraph, _, subst| egraph[subst[v]].data.constant.is_some()), "is_const".to_string())
+impl Condition<Lambda, LambdaAnalysis> for IsNotSameVarCondition {
+    fn check(&self, egraph: &mut egg::EGraph<Lambda, LambdaAnalysis>, eclass: Id, subst: &Subst) -> bool {
+        egraph.find(subst[self.v1]) != egraph.find(subst[self.v2])
+    }
+
+    fn check_colored(&self, egraph: &mut egg::EGraph<Lambda, LambdaAnalysis>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
+        self.check(egraph, eclass, subst).then(|| vec![])
+    }
+
+    fn describe(&self) -> String {
+        "is_not_same_var".to_string()
+    }
+}
+
+fn is_not_same_var(v1: Var, v2: Var) -> impl Condition<Lambda, LambdaAnalysis> {
+    IsNotSameVarCondition { v1, v2 }
+}
+
+struct IsConstCondition {
+    v: Var,
+}
+
+impl Condition<Lambda, LambdaAnalysis> for IsConstCondition {
+    fn check(&self, egraph: &mut egg::EGraph<Lambda, LambdaAnalysis>, eclass: Id, subst: &Subst) -> bool {
+        egraph[subst[self.v]].data.constant.is_some()
+    }
+
+    fn check_colored(&self, egraph: &mut egg::EGraph<Lambda, LambdaAnalysis>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
+        egraph[subst[self.v]].data.constant.as_ref().map(|_| vec![])
+    }
+
+    fn describe(&self) -> String {
+        "is_const".to_string()
+    }
+}
+
+fn is_const(v: Var) -> IsConstCondition {
+    IsConstCondition { v }
 }
 
 fn rules() -> Vec<Rewrite<Lambda, LambdaAnalysis>> {

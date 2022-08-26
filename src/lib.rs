@@ -114,10 +114,12 @@ pub use {
     extract::*,
     language::*,
     pattern::{ENodeOrVar, Pattern, PatternAst, SearchMatches},
-    rewrite::{Applier, ImmutableCondition, FunctionCondition, ImmutableFunctionCondition, Condition, ConditionEqual, ConditionalApplier, Rewrite, Searcher, RcImmutableCondition, ToCondRc},
+    rewrite::{Applier, ImmutableCondition, Condition, ConditionEqual, ConditionalApplier, Rewrite, Searcher, RcImmutableCondition, ToCondRc},
+    // rewrite::{Applier, ImmutableCondition, ImmutableFunctionCondition, Condition, ConditionEqual, ConditionalApplier, Rewrite, Searcher, RcImmutableCondition, ToCondRc},
     run::*,
     subst::{Subst, Var},
     util::*,
+    eggstentions::*,
 };
 
 #[cfg(test)]
@@ -129,4 +131,6 @@ fn init_logger() {
 pub mod test;
 mod expression_ops;
 mod colors;
+mod eggstentions;
+mod tools;
 

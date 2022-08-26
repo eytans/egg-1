@@ -89,42 +89,109 @@ impl Analysis<Math> for ConstantFold {
     }
 }
 
-fn is_const_or_distinct_var(v: &str, w: &str) -> FunctionCondition<Math, ConstantFold> {
-    let v = v.parse().unwrap();
-    let w = w.parse().unwrap();
-    FunctionCondition::new(Rc::new(move |egraph, _, subst| {
-        egraph.find(subst[v]) != egraph.find(subst[w])
-            && egraph[subst[v]]
+struct IsConstOrDistinctCondition {
+    v: Var,
+    w: Var,
+}
+
+impl Condition<Math, ConstantFold> for IsConstOrDistinctCondition {
+    fn check(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, eclass: Id, subst: &Subst) -> bool {
+        egraph.find(subst[self.v]) != egraph.find(subst[self.w])
+            && egraph[subst[self.v]]
             .nodes
             .iter()
             .any(|n| matches!(n, Math::Constant(..) | Math::Symbol(..)))
-    }), "is_const_or_distinct_var")
+    }
+
+    fn check_colored(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
+        todo!()
+    }
+
+    fn describe(&self) -> String {
+        "is_const_or_distinct".to_string()
+    }
 }
 
-fn is_const(var: &str) -> FunctionCondition<Math, ConstantFold> {
-    let var = var.parse().unwrap();
-    FunctionCondition::new(Rc::new(move |egraph, _, subst| {
-        egraph[subst[var]]
+fn is_const_or_distinct_var(v: &str, w: &str) -> impl Condition<Math, ConstantFold> {
+    let v = v.parse().unwrap();
+    let w = w.parse().unwrap();
+    IsConstOrDistinctCondition { v, w }
+}
+
+struct IsConstCondition {
+    v: Var,
+}
+
+impl Condition<Math, ConstantFold> for IsConstCondition {
+    fn check(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, eclass: Id, subst: &Subst) -> bool {
+        egraph[subst[self.v]]
             .nodes
             .iter()
             .any(|n| matches!(n, Math::Constant(..)))
-    }), "is_const")
+    }
+
+    fn check_colored(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
+        self.check(egraph, eclass, subst).then(|| vec![])
+    }
+
+    fn describe(&self) -> String {
+        "is_const".to_string()
+    }
 }
 
-fn is_sym(var: &str) -> FunctionCondition<Math, ConstantFold> {
+fn is_const(var: &str) -> impl Condition<Math, ConstantFold> {
     let var = var.parse().unwrap();
-    FunctionCondition::new(Rc::new(move |egraph, _, subst| {
-        egraph[subst[var]]
+    IsConstCondition { v: var }
+}
+
+struct IsSymCondition {
+    v: Var,
+}
+
+impl Condition<Math, ConstantFold> for IsSymCondition {
+    fn check(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, eclass: Id, subst: &Subst) -> bool {
+        egraph[subst[self.v]]
             .nodes
             .iter()
             .any(|n| matches!(n, Math::Symbol(..)))
-    }), "is_sym")
+    }
+
+    fn check_colored(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
+        self.check(egraph, eclass, subst).then(|| vec![])
+    }
+
+    fn describe(&self) -> String {
+        "is_sym".to_string()
+    }
 }
 
-fn is_not_zero(var: &str) -> FunctionCondition<Math, ConstantFold> {
+fn is_sym(var: &str) -> impl Condition<Math, ConstantFold> {
     let var = var.parse().unwrap();
-    let zero = Math::Constant(0.0.into());
-    FunctionCondition::new(Rc::new(move |egraph, _, subst| !egraph[subst[var]].nodes.contains(&zero)), "is_not_zero".to_string())
+    IsSymCondition { v: var }
+}
+
+struct IsNotZeroCondition {
+    v: Var,
+}
+
+impl Condition<Math, ConstantFold> for IsNotZeroCondition {
+    fn check(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, eclass: Id, subst: &Subst) -> bool {
+        let zero = Math::Constant(0.0.into());
+        !egraph[subst[self.v]].nodes.contains(&zero)
+    }
+
+    fn check_colored(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
+        self.check(egraph, eclass, subst).then(|| vec![])
+    }
+
+    fn describe(&self) -> String {
+        "is_not_zero".to_string()
+    }
+}
+
+fn is_not_zero(var: &str) -> impl Condition<Math, ConstantFold> {
+    let var = var.parse().unwrap();
+    IsNotZeroCondition { v: var }
 }
 
 #[rustfmt::skip]

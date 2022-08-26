@@ -1323,8 +1323,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         self.colors[usize::from(color)].as_mut()
     }
 
-    pub fn get_colored_equalities(&self, id: Id) -> &IndexSet<(ColorId, Id)> {
-        &self.colored_equivalences[&id]
+    pub fn get_colored_equalities(&self, id: Id) -> Option<&IndexSet<(ColorId, Id)>> {
+        self.colored_equivalences.get(&id)
     }
 
     pub fn detect_vacuity(&self, disjoints: &[OpId]) -> Vec<ColorId> {
