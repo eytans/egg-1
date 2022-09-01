@@ -104,7 +104,7 @@ impl Condition<Math, ConstantFold> for IsConstOrDistinctCondition {
     }
 
     fn check_colored(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
-        todo!()
+        self.check(egraph, eclass, subst).then(|| vec![])
     }
 
     fn describe(&self) -> String {
@@ -194,6 +194,8 @@ fn is_not_zero(var: &str) -> impl Condition<Math, ConstantFold> {
     IsNotZeroCondition { v: var }
 }
 
+use egg::conditions::AndCondition;
+
 #[rustfmt::skip]
 pub fn rules() -> Vec<Rewrite> { vec![
     rw!("comm-add";  "(+ ?a ?b)"        => "(+ ?b ?a)"),
@@ -229,7 +231,7 @@ pub fn rules() -> Vec<Rewrite> { vec![
     rw!("recip-mul-div"; "(* ?x (/ 1 ?x))" => "1" if is_not_zero("?x")),
 
     rw!("d-variable"; "(d ?x ?x)" => "1" if is_sym("?x")),
-    rw!("d-constant"; "(d ?x ?c)" => "0" if is_sym("?x") if is_const_or_distinct_var("?c", "?x")),
+    rw!("d-constant"; "(d ?x ?c)" => "0" if {crate::conditions::MutAndCondition::new(vec![Box::new(is_sym("?x")), Box::new(is_const_or_distinct_var("?c", "?x"))])}),
 
     rw!("d-add"; "(d ?x (+ ?a ?b))" => "(+ (d ?x ?a) (d ?x ?b))"),
     rw!("d-mul"; "(d ?x (* ?a ?b))" => "(+ (* ?a (d ?x ?b)) (* ?b (d ?x ?a)))"),
@@ -246,8 +248,7 @@ pub fn rules() -> Vec<Rewrite> { vec![
                   (/ ?g ?f))
                (* (d ?x ?g)
                   (ln ?f))))"
-        if is_not_zero("?f")
-        if is_not_zero("?g")
+        if { egg::conditions::MutAndCondition::new(vec![Box::new(is_not_zero("?f")), Box::new(is_not_zero("?g"))])}
     ),
 
     rw!("i-one"; "(i 1 ?x)" => "?x"),
