@@ -108,6 +108,7 @@ use log::LevelFilter;
 pub(crate) use unionfind::UnionFind;
 
 pub use {
+    crate::eggstentions::expression_ops::*,
     dot::Dot,
     eclass::{EClass},
     egraph::EGraph,
@@ -119,7 +120,7 @@ pub use {
     run::*,
     subst::{Subst, Var},
     util::*,
-    eggstentions::*,
+    eggstentions::*
 };
 
 #[cfg(test)]
@@ -129,8 +130,7 @@ fn init_logger() {
 
 #[doc(hidden)]
 pub mod test;
-mod expression_ops;
 mod colors;
 mod eggstentions;
-mod tools;
+pub mod tools;
 

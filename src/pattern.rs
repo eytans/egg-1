@@ -7,7 +7,7 @@ use std::fmt::Formatter;
 use std::str::FromStr;
 use indexmap::IndexSet;
 use itertools::Itertools;
-use crate::expression_ops::{RecExpSlice, Tree};
+use crate::eggstentions::expression_ops::{RecExpSlice, Tree};
 
 /// A pattern that can function as either a [`Searcher`] or [`Applier`].
 ///
