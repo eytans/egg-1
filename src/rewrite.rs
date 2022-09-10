@@ -753,8 +753,19 @@ pub trait ImmutableCondition<L, N>: ToCondRc<L, N> where
             let eclass = sm.eclass;
             let mut substs = std::mem::take(&mut sm.substs);
             sm.substs = substs.into_iter()
-                .filter(|s| {
-                    self.check_imm(egraph, eclass, s)
+                .filter_map(|s| {
+                    self.colored_check_imm(egraph, eclass, &s).map(|x| (s, x)) })
+                .flat_map(|(s, colors)| {
+                    if colors.is_empty() {
+                        vec![s]
+                    } else {
+                        colors.into_iter().map(|c| {
+                            let mut s = s.clone();
+                            s.color = Some(c);
+                            s.vec.iter_mut().for_each(|(_, id)| *id = egraph.colored_find(c, *id));
+                            s
+                        }).collect_vec()
+                    }
                 }).collect_vec();
             if sm.substs.is_empty() {
                 None
