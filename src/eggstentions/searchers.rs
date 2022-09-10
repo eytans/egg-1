@@ -779,10 +779,11 @@ impl<L: Language, N: Analysis<L>> Searcher<L, N> for PointerSearcher<L, N> {
 mod tests {
     use std::str::FromStr;
 
-    use crate::{EGraph, RecExpr, Searcher, SymbolLang, Pattern};
+    use crate::{EGraph, RecExpr, Searcher, SymbolLang, Pattern, Var, ImmutableCondition, ToCondRc};
     use crate::eggstentions::conditions::AndCondition;
 
     use crate::eggstentions::searchers::{MultiDiffSearcher, FilteringSearcher, ToDyn, Matcher, PatternMatcher};
+    use crate::searchers::{MatcherContainsCondition, ToRc, VarMatcher};
     // use crate::system_case_splits;
 
     #[test]
@@ -848,6 +849,53 @@ mod tests {
                 assert_eq!(m.match_(&graph, &sb).contains(&eclass), true);
             }
         }
+    }
+
+    #[test]
+    fn filtering_searcher_finds_color() {
+        // This is a very specific case, similar to conditional applier test in rewrite.rs.
+        // It should be a case where the filtering searcher can not find a black result because the
+        // condition doesn't hold for black. Then, we should add a color to the graph, and show the
+        // condition holds, but only under the new color.
+        crate::init_logger();
+        let mut egraph: EGraph<SymbolLang, ()> = EGraph::default();
+
+        let matcher:VarMatcher<SymbolLang, ()> = VarMatcher::new(Var::from_str("?a").unwrap());
+        // add x + y expression
+        let x = egraph.add(SymbolLang::leaf("x"));
+        let y = egraph.add(SymbolLang::leaf("y"));
+        let add = egraph.add(SymbolLang::new("+", vec![x, y]));
+        egraph.rebuild();
+        // ?x + ?y pattern
+        let pat = Pattern::from_str("(+ ?a ?b)").unwrap();
+        let mut sms = pat.search(&egraph);
+        assert_eq!(sms.len(), 1);
+        let sm = sms.first().unwrap().clone();
+        assert_eq!(sm.substs.len(), 1);
+        let subst = sm.substs[0].clone();
+        // Check matcher condition doesn't hold
+        let condition = MatcherContainsCondition::new(matcher.into_rc()).into_rc();
+        assert!(!condition.check_imm(&mut egraph, add, &subst));
+        assert!(condition.colored_check_imm(&mut egraph, add, &subst).is_none());
+        let searcher = FilteringSearcher::new(pat.into_rc_dyn(), condition.clone());
+        assert_eq!(searcher.search(&egraph).len(), 0);
+        // Add color, and merge add and x
+        let color = egraph.create_color();
+        egraph.colored_union(color, add, x);
+        egraph.rebuild();
+        // Check matcher colored condition holds, and only contains the color
+        let cond_res = condition.colored_check_imm(&mut egraph, add, &subst);
+        assert!(cond_res.is_some());
+        assert_eq!(cond_res.unwrap()[0], color);
+
+        // Check that the searcher now finds the match
+        let results = searcher.search(&egraph);
+        assert_eq!(results.len(), 1);
+        let sm = results.first().unwrap().clone();
+        assert_eq!(sm.substs.len(), 1);
+        let subst = sm.substs[0].clone();
+        assert!(subst.color().is_some());
+        assert_eq!(subst.color().unwrap(), color);
     }
 
     // #[cfg(feature = "split_colored")]
