@@ -479,6 +479,8 @@ impl<L, N, C, A> ConditionalApplier<C, A, L, N> where
                     let mut colored_subst = subst.clone();
                     for c in v {
                         colored_subst.color = Some(c);
+                        colored_subst.vec.iter_mut()
+                            .for_each(|(_, id)| *id = egraph.colored_find(c, *id));
                         let ids = self.applier
                             .apply_one(egraph, eclass, &colored_subst)
                             .into_iter().map(|id| (Some(c), id));
