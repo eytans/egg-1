@@ -616,6 +616,20 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> ImmutableCondition<L, N> f
     }
 }
 
+impl<L: Language + 'static, N: Analysis<L> + 'static> Condition<L, N> for MatcherContainsCondition<L, N> {
+    fn check(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
+        self.check_imm(egraph, eclass, subst)
+    }
+
+    fn check_colored(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
+        self.colored_check_imm(egraph, eclass, subst)
+    }
+
+    fn describe(&self) -> String {
+        self.matcher.describe()
+    }
+}
+
 #[derive(Clone)]
 pub struct FilteringSearcher<L: Language, N: Analysis<L>> {
     searcher: Rc<dyn Searcher<L, N>>,

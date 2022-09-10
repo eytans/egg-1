@@ -598,6 +598,27 @@ pub trait Condition<L, N>
     fn describe(&self) -> String;
 }
 
+impl<L, N> Condition<L, N> for Box<dyn Condition<L, N>> where
+    L: Language,
+    N: Analysis<L>,
+{
+    fn check(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
+        self.as_ref().check(egraph, eclass, subst)
+    }
+
+    fn check_colored(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
+        self.as_ref().check_colored(egraph, eclass, subst)
+    }
+
+    fn vars(&self) -> Vec<Var> {
+        self.as_ref().vars()
+    }
+
+    fn describe(&self) -> String {
+        self.as_ref().describe()
+    }
+}
+
 // pub struct FunctionCondition<L, N> where
 //     L: Language,
 //     N: Analysis<L>,
@@ -871,6 +892,7 @@ mod tests {
     use std::rc::Rc;
     // use crate::rewrite::{ImmutableCondition, ImmutableFunctionCondition, RcImmutableCondition};
     use crate::rewrite::{ImmutableCondition, RcImmutableCondition};
+    use crate::searchers::{MatcherContainsCondition, ToRc, VarMatcher};
 
     type EGraph = crate::EGraph<S, ()>;
 
@@ -950,12 +972,62 @@ mod tests {
         assert_eq!(egraph.equivs(&start, &goal), vec![egraph.find(root)]);
     }
 
-    // #[test]
-    // fn rc_imm_condition_not_infinite_rec() {
-    //     crate::init_logger();
-    //     let cond: RcImmutableCondition<SymbolLang, ()> = Rc::new(ImmutableFunctionCondition::<SymbolLang, ()>::new(Rc::new(|graph: &EGraph, id: Id, s: &Subst| {
-    //         true
-    //     }), "true".to_string()));
-    //     assert!(cond.vars().is_empty())
-    // }
+    #[test]
+    fn conditional_applier_respects_colors() {
+        // This is a very specific case. It should be a case where the applier can be applied on a
+        // black result, but the condition doesn't hold for black.
+        // Then, we should add a color to the graph, and show the condition holds but only under
+        // the new color.
+        // Finally, we want to see that the application is done under the new color (create a new
+        // colored class, and colored union classes).
+        crate::init_logger();
+        let mut egraph = EGraph::default();
+
+        let matcher = VarMatcher::new(Var::from_str("?a").unwrap());
+        // add x + y expression
+        let x = egraph.add(S::leaf("x"));
+        let y = egraph.add(S::leaf("y"));
+        let add = egraph.add(S::new("+", vec![x, y]));
+        egraph.rebuild();
+        // ?x + ?y pattern
+        let pat = Pattern::from_str("(+ ?a ?b)").unwrap();
+        let mut sms = pat.search(&egraph);
+        assert_eq!(sms.len(), 1);
+        let sm = sms.first().unwrap().clone();
+        assert_eq!(sm.substs.len(), 1);
+        let subst = sm.substs[0].clone();
+        // Check matcher condition doesn't hold
+        let condition = MatcherContainsCondition::new(matcher.into_rc());
+        assert!(!condition.check_imm(&mut egraph, add, &subst));
+        assert!(condition.colored_check_imm(&mut egraph, add, &subst).is_none());
+        // Add color, and merge add and x
+        let color = egraph.create_color();
+        egraph.colored_union(color, add, x);
+        egraph.rebuild();
+        // Check matcher colored condition holds, and only contains the color
+        let cond_res = condition.colored_check_imm(&mut egraph, add, &subst);
+        assert!(cond_res.is_some());
+        assert_eq!(cond_res.unwrap()[0], color);
+
+        // Create an applier for this condition and see that the application will merge the colored
+        // classes.
+        egraph.rebuild();
+        let applier = rewrite!("applier"; "(+ ?a ?b)" => "(+ ?b ?a)" if {Box::new(condition) as Box<dyn Condition<SymbolLang, ()>>});
+        let class_count = egraph.classes().count();
+        let mut egraph = Runner::default()
+            .with_egraph(egraph)
+            .with_iter_limit(1)
+            .run(vec![&applier]).egraph;
+        let z = egraph.add(S::leaf("z"));
+        egraph.rebuild();
+        assert_ne!(egraph.find(add), egraph.find(z));
+        let new_class_count = egraph.classes().count();
+        let yx = egraph.colored_add(color, S::new("+", vec![y, x]));
+        assert_eq!(new_class_count, egraph.classes().count());
+        assert_ne!(egraph.find(yx), egraph.find(add));
+        assert_eq!(egraph.colored_find(color, yx), egraph.colored_find(color, add));
+        // Added z and yx
+        assert_eq!(egraph.classes().count(), class_count + 2);
+        assert_eq!(egraph[egraph.find(yx)].color().unwrap(), color);
+    }
 }
