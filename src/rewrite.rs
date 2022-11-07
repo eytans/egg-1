@@ -581,6 +581,12 @@ pub trait Condition<L, N>
     /// This additional complexity is necessary because we cannot make the searcher return matches
     /// from all possible colors when it is not needed. Instead, the condition will check when it
     /// can be satisfied.
+    ///
+    /// Consider the following query that looks for a node that is false with the additional
+    /// condition that it is the result of the function f: `false if match_root ~= (f ?a ?b)`.
+    /// We will get the resulting Subst: `Subst { no_holes, color: None }`, but the condition check
+    /// will fail. We need to be able to query the condition on additional colored conditions that
+    /// might have been ignored by the pattern, but are necessary for the condition to be true.
     /// TODO: add support for hierarchical colors in the future.
     fn check_colored(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>>;
 
@@ -741,7 +747,8 @@ pub trait ImmutableCondition<L, N>: ToCondRc<L, N> where
 {
     fn check_imm<'a>(&'a self, egraph: &'a EGraph<L, N>, eclass: Id, subst: &'a Subst) -> bool;
 
-    /// Check a condition and possibly add colored assumptions. See [`Condition::check_colored`].
+    /// Check a condition and possibly add colored assumptions. For more information and a useful
+    /// example see [`Condition::check_colored`].
     ///
     /// # Arguments
     ///
