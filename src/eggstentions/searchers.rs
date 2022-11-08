@@ -676,9 +676,17 @@ impl<'a, L: Language + 'static, N: Analysis<L> + 'static> FilteringSearcher<L, N
 
 impl FilteringSearcher<SymbolLang, ()> {
     pub fn searcher_is_true<S: Searcher<SymbolLang, ()> + 'static>(s: S) -> Self {
+        Self::searcher_is_pattern(s, "true".parse().unwrap())
+    }
+
+    pub fn searcher_is_false<S: Searcher<SymbolLang, ()> + 'static>(s: S) -> Self {
+        Self::searcher_is_pattern(s, "false".parse().unwrap())
+    }
+
+    pub fn searcher_is_pattern<S: Searcher<SymbolLang, ()> + 'static>(s: S, p: Pattern<SymbolLang>) -> Self {
         FilteringSearcher::new(
             Rc::new(s),
-            MatcherContainsCondition::new(PatternMatcher::new("true".parse().unwrap()).into_rc()).into_rc()
+            MatcherContainsCondition::new(PatternMatcher::new(p).into_rc()).into_rc()
         )
     }
 }
