@@ -1,8 +1,10 @@
+use std::cmp::Ordering;
+use std::cmp::Ordering::{Equal, Greater, Less};
 use std::fmt::{Display, Formatter};
 use std::rc::Rc;
 
 use crate::{EGraph, Id, SymbolLang};
-use itertools::Itertools;
+use itertools::{Itertools, max};
 use symbolic_expressions::Sexp;
 
 macro_rules! bail {
@@ -14,12 +16,13 @@ macro_rules! bail {
     };
 }
 
+type ROption<T> = Rc<Option<T>>;
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct Tree {
     pub root: String,
-    pub subtrees: Vec<Rc<Tree>>,
-    pub typ: Rc<Option<Tree>>,
+    pub subtrees: Vec<Tree>,
+    pub typ: ROption<Tree>,
 }
 
 impl Tree {
@@ -27,12 +30,20 @@ impl Tree {
         Tree { root: op, subtrees: Vec::new(), typ: Rc::new(None) }
     }
 
-    pub fn tleaf(op: String, typ: Rc<Option<Tree>>) -> Tree {
-        Tree { root: op, subtrees: Vec::new(), typ }
+    pub fn tleaf(op: String, typ: Option<Tree>) -> Tree {
+        Tree { root: op, subtrees: Vec::new(), typ: Rc::new(typ) }
     }
 
-    pub fn branch(op: String, subtrees: Vec<Rc<Tree>>) -> Tree {
+    pub fn branch(op: String, subtrees: Vec<Tree>) -> Tree {
         Tree { root: op, subtrees, typ: Rc::new(None) }
+    }
+
+    pub fn depth(&self) -> usize {
+        return max(self.subtrees.iter().map(|x| x.depth())).unwrap_or(0) + 1
+    }
+
+    pub fn size(&self) -> usize {
+        return self.subtrees.iter().map(|x| x.size()).sum::<usize>() + 1
     }
 
     // pub fn to_rec_expr(&self, op_res: Option<RecExpr<SymbolLang>>) -> (Id, RecExpr<SymbolLang>) {
@@ -69,6 +80,41 @@ impl Tree {
             format!("({} {})", self.root.clone(), self.subtrees.iter().map(|t| t.to_string()).intersperse(" ".parse().unwrap()).collect::<String>())
         }
     }
+
+    pub fn tree_lexicographic_ordering(t1: &Tree, t2: &Tree) -> Ordering {
+        match t1.root.cmp(&t2.root ) {
+            Less => Less,
+            Equal => {
+                t1.subtrees.iter().zip_longest(&t2.subtrees).find_map(|x| {
+                    if !x.has_left() {
+                        Some(Less)
+                    } else if !x.has_right() {
+                        Some(Greater)
+                    } else {
+                        let l = *x.as_ref().left().unwrap();
+                        let r = *x.as_ref().right().unwrap();
+                        let rec_res = Self::tree_lexicographic_ordering(l, r);
+                        rec_res.is_eq().then(|| rec_res)
+                    }
+                }).unwrap_or(Equal)
+            },
+            Greater => Greater
+        }
+    }
+
+    pub fn tree_size_ordering(t1: &Tree, t2: &Tree) -> Ordering {
+        match t1.depth().cmp(&t2.depth()) {
+            Less => Less,
+            Equal => match t1.size().cmp(&t2.size()) {
+                Less => Less,
+                // Oh the horror of string semantics (but I am not going to implement a full recursive
+                // check here)
+                Equal => Self::tree_lexicographic_ordering(t1, t2),
+                Greater => Greater
+            },
+            Greater => Greater
+        }
+    }
 }
 
 impl Display for Tree {
@@ -98,7 +144,7 @@ impl std::str::FromStr for Tree {
                     //     Ok(tree)
                     // }
                     Sexp::String(op) => {
-                        let arg_ids = list[1..].iter().map(|s| Rc::new(parse_sexp_tree(s).expect("Parsing should succeed"))).collect::<Vec<Rc<Tree>>>();
+                        let arg_ids = list[1..].iter().map(|s| parse_sexp_tree(s).expect("Parsing should succeed")).collect::<Vec<Tree>>();
                         let node = Tree::branch(op.clone(), arg_ids);
                         Ok(node)
                     }
