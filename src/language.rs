@@ -1,8 +1,8 @@
-use std::any::Any;
+
 use std::convert::TryFrom;
 use std::fmt::{self, Debug, Display};
 use std::hash::Hash;
-use log::warn;
+
 
 use crate::{EGraph, Id, Symbol};
 

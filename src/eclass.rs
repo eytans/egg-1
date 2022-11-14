@@ -1,4 +1,3 @@
-use std::alloc::GlobalAlloc;
 use std::fmt::Debug;
 use std::iter::ExactSizeIterator;
 use indexmap::IndexMap;

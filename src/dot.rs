@@ -13,10 +13,8 @@ use std::ffi::OsStr;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::io::{Error, ErrorKind, Result, Write};
 use std::path::Path;
-use std::str::FromStr;
-use itertools::Itertools;
 
-use crate::{egraph::EGraph, Analysis, Language, RecExpr, SymbolLang, EClass, ColorId};
+use crate::{egraph::EGraph, Analysis, Language, EClass, ColorId};
 
 /**
 A wrapper for an [`EGraph`] that can output [GraphViz] for

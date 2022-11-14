@@ -1,11 +1,9 @@
 use crate::{Analysis, EClass, EGraph, ENodeOrVar, Id, Language, PatternAst, Subst, Var};
 use std::cmp::Ordering;
 use indexmap::IndexSet;
-use log::warn;
-use smallvec::SmallVec;
 use crate::ColorId;
 use crate::colors::Color;
-use itertools::Itertools;
+
 
 lazy_static!{
     static ref EMPTY_SET: IndexSet<(ColorId, Id)> = IndexSet::new();
