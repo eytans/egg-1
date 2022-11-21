@@ -48,11 +48,11 @@ mod util;
 
 /// A key to identify [`EClass`](struct.EClass.html)es within an
 /// [`EGraph`](struct.EGraph.html).
-#[derive(Clone, Copy, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Default, Ord, PartialOrd, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Id(u32);
 
 
-#[derive(Clone, Copy, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Default, Ord, PartialOrd, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ColorId(usize);
 
 
