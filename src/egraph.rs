@@ -14,6 +14,7 @@ use crate::{Analysis, AstSize, Dot, EClass, Extractor, Id, Language, Pattern, Re
 
 pub use crate::colors::{Color, ColorParents, ColorId};
 use itertools::{Itertools};
+use serde::{Deserialize, Serialize};
 
 
 /** A data structure to keep track of equalities between expressions.
@@ -133,7 +134,7 @@ same eclass.
 [extract]: struct.Extractor.html
 [sound]: https://itinerarium.github.io/phoneme-synthesis/?w=/'igraf/
  **/
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct EGraph<L: Language, N: Analysis<L>> {
     /// The `Analysis` given when creating this `EGraph`.
     pub analysis: N,

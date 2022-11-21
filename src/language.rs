@@ -2,6 +2,7 @@
 use std::convert::TryFrom;
 use std::fmt::{self, Debug, Display};
 use std::hash::Hash;
+use serde::{Deserialize, Serialize};
 
 
 use crate::{EGraph, Id, Symbol};
@@ -481,7 +482,7 @@ assert_eq!(runner.egraph.find(runner.roots[0]), runner.egraph.find(just_foo));
 
 pub trait Analysis<L: Language>: Sized {
     /// The per-[`EClass`](struct.EClass.html) data for this analysis.
-    type Data: Debug;
+    type Data: Debug + Serialize + for<'a> Deserialize<'a>;
 
     /// Makes a new [`Analysis`] for a given enode
     /// [`Analysis`].
@@ -534,7 +535,7 @@ impl<L: Language> Analysis<L> for () {
 }
 
 /// A simple language used for testing.
-#[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct SymbolLang {
     /// The operator for an enode
     pub op: Symbol,

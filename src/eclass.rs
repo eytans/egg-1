@@ -6,7 +6,7 @@ use crate::{ColorId, Id, Language};
 
 /// An equivalence class of enodes.
 #[non_exhaustive]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EClass<L, D> {
     /// This eclass's id.
     pub id: Id,

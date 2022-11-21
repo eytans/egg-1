@@ -1,6 +1,7 @@
 use indexmap::{IndexMap, IndexSet};
 use instant::{Duration, Instant};
 use log::*;
+use serde::Serialize;
 
 use crate::{Analysis, EGraph, Id, Language, RecExpr, Rewrite, SearchMatches};
 
@@ -181,8 +182,7 @@ where
 /// Error returned by [`Runner`] when it stops.
 ///
 /// [`Runner`]: struct.Runner.html
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde-1", derive(serde::Serialize))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum StopReason {
     /// The egraph saturated, i.e., there was an iteration where we
     /// didn't learn anything new from applying the rules.
@@ -205,8 +205,7 @@ pub enum StopReason {
 ///
 /// [`Runner`]: struct.Runner.html
 /// [ser]: https://docs.rs/serde/latest/serde/trait.Serialize.html
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde-1", derive(serde::Serialize))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Iteration<IterData> {
     /// The number of enodes in the egraph at the start of this

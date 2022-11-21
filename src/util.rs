@@ -2,13 +2,16 @@ use std::fmt;
 use std::str::FromStr;
 use std::sync::Mutex;
 
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 use once_cell::sync::Lazy;
 use std::fmt::Formatter;
 use std::iter::FromIterator;
 use itertools::Itertools;
+use serde::de::Error;
+use serde::Deserializer;
+use serde::ser::{SerializeMap, SerializeTuple};
 
-static STRINGS: Lazy<Mutex<IndexSet<&'static str>>> = Lazy::new(Default::default);
+static STRINGS: Lazy<Mutex<IndexMap<u32, &'static str>>> = Lazy::new(Default::default);
 
 /// An interned string.
 ///
@@ -52,7 +55,54 @@ impl Symbol {
         let strings = STRINGS
             .lock()
             .unwrap_or_else(|err| panic!("Failed to acquire egg's global string cache: {}", err));
-        strings.get_index(i).unwrap()
+        strings.get(&(i as u32)).unwrap()
+    }
+}
+
+impl serde::Serialize for Symbol {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // Oh this sucks. I am doing stupid but easy
+        let name = self.as_str();
+        let index = self.0;
+        serializer.serialize_str(&format!("{}#{}", index, name))
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Symbol {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+        struct SymbolVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for SymbolVisitor {
+            type Value = Symbol;
+
+            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                formatter.write_str("A string representing a symbol and it's index")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+                where E: serde::de::Error {
+                // split value by first #
+                let mut split = value.splitn(2, '#').collect_vec();
+                assert_eq!(split.len(), 2);
+                let index = split[0].parse().unwrap();
+                let name = split[1];
+                let mut strings = STRINGS
+                    .lock()
+                    .unwrap_or_else(|err| panic!("Failed to acquire egg's global string cache: {}", err));
+                if let Some(existing) = strings.get(&(index as u32)) {
+                    assert_eq!(*existing, name);
+                } else {
+                    assert!(strings.values().find(|&&v| v == name).is_none());
+                    strings.insert(index as u32, Box::leak(name.to_string().into_boxed_str()));
+                }
+                Ok(Symbol(index))
+            }
+        }
+
+        deserializer.deserialize_str(SymbolVisitor)
     }
 }
 
@@ -64,9 +114,13 @@ fn intern(s: &str) -> Symbol {
     let mut strings = STRINGS
         .lock()
         .unwrap_or_else(|err| panic!("Failed to acquire egg's global string cache: {}", err));
-    let i = match strings.get_full(s) {
+    let i = match strings.iter().find_position(|(_, n)| **n == s) {
         Some((i, _)) => i,
-        None => strings.insert_full(leak(s)).0,
+        None => {
+            let i = strings.len();
+            strings.insert(i as u32, leak(s));
+            i
+        },
     };
     Symbol(i as u32)
 }
