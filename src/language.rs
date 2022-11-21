@@ -570,12 +570,12 @@ impl Language for SymbolLang {
         &mut self.children
     }
 
-    fn display_op(&self) -> &dyn Display {
-        &self.op
-    }
-
     fn matches(&self, other: &Self) -> bool {
         self.op == other.op && self.children.len() == other.children.len()
+    }
+
+    fn display_op(&self) -> &dyn Display {
+        &self.op
     }
 
     fn from_op_str(op_str: &str, children: Vec<Id>) -> Result<Self, String> {
