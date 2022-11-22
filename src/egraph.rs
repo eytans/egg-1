@@ -145,11 +145,11 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     repairs_since_rebuild: usize,
     pub(crate) classes_by_op: IndexMap<OpId, IndexSet<Id>>,
 
-    #[cfg(feature = "colored")]
     /// To be used as a mechanism for case splitting.
     /// Need to rebuild these, but can probably use original memo for that purpose.
     /// For each inner vector of union finds, if there is a union common to all of them then it will
     /// be applied on the main union find (case split mechanism). Not true for UnionFinds of size 1.
+    #[cfg(feature = "colored")]
     colors: Vec<Option<Color>>,
     #[cfg(feature = "colored")]
     pub(crate) colored_memo: IndexMap<L, IndexMap<ColorId, Id>>,
@@ -1312,7 +1312,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         dassert!({
             let empty = vec![];
             dis_classes.iter().flat_map(|x| x.get(&None).unwrap_or(&empty)).unique().count() ==
-            dis_classes.iter().map(|x| x.get(&None).map_or(0, |x| x.len())).sum()
+            dis_classes.iter().map(|x| x.get(&None).map_or(0, |x| x.len())).sum::<usize>()
         });
         self.colors().filter(|c| {
             let canonized = dis_classes.iter().map(|map|

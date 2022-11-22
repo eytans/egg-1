@@ -7,11 +7,22 @@ use once_cell::sync::Lazy;
 use std::fmt::Formatter;
 use std::iter::FromIterator;
 use itertools::Itertools;
-use serde::de::Error;
+use serde::de::{Error, MapAccess};
 use serde::Deserializer;
 use serde::ser::{SerializeMap, SerializeTuple};
 
 static STRINGS: Lazy<Mutex<IndexMap<u32, &'static str>>> = Lazy::new(Default::default);
+// If in test mode create function to get the strings
+#[cfg(test)]
+pub fn get_strings() -> &'static Mutex<IndexMap<u32, &'static str>> {
+    &STRINGS
+}
+
+// If in test mode create function to clear the strings
+#[cfg(test)]
+pub fn clear_strings() {
+    STRINGS.lock().unwrap().clear();
+}
 
 /// An interned string.
 ///
@@ -64,10 +75,12 @@ impl serde::Serialize for Symbol {
     where
         S: serde::Serializer,
     {
-        // Oh this sucks. I am doing stupid but easy
-        let name = self.as_str();
-        let index = self.0;
-        serializer.serialize_str(&format!("{}#{}", index, name))
+        let name = self.as_str().to_string();
+        let index = self.0.to_string();
+        let mut map = serializer.serialize_map(Some(2))?;
+        map.serialize_entry("name", &name)?;
+        map.serialize_entry("index", &index)?;
+        map.end()
     }
 }
 
@@ -80,6 +93,43 @@ impl<'de> serde::Deserialize<'de> for Symbol {
 
             fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
                 formatter.write_str("A string representing a symbol and it's index")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error> where A: MapAccess<'de> {
+                // deserialize name from map
+                let mut name: Option<String> = None;
+                let mut str_index: Option<String> = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "name" => {
+                            if name.is_some() {
+                                return Err(A::Error::duplicate_field("name"));
+                            }
+                            name = Some(map.next_value()?);
+                        }
+                        "index" => {
+                            if str_index.is_some() {
+                                return Err(A::Error::duplicate_field("index"));
+                            }
+                            str_index = Some(map.next_value()?);
+                        }
+                        _ => {
+                            return Err(A::Error::unknown_field(&key, &["name", "index"]));
+                        }
+                    }
+                }
+                let index: u32 = str_index.unwrap().parse().unwrap();
+                let name = Box::leak(name.unwrap().into_boxed_str());
+                let mut strings = STRINGS
+                    .lock()
+                    .unwrap_or_else(|err| panic!("Failed to acquire egg's global string cache: {}", err));
+                if let Some(existing) = strings.get(&index) {
+                    assert_eq!(*existing, name);
+                } else {
+                    assert!(strings.values().find(|&&v| v == name).is_none());
+                    strings.insert(index, name);
+                }
+                Ok(Symbol(index))
             }
 
             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
