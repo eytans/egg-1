@@ -127,32 +127,14 @@ impl<'de> serde::Deserialize<'de> for Symbol {
                     assert_eq!(*existing, name);
                 } else {
                     assert!(strings.values().find(|&&v| v == name).is_none());
+                    assert!(!strings.contains_key(&index));
                     strings.insert(index, name);
-                }
-                Ok(Symbol(index))
-            }
-
-            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-                where E: serde::de::Error {
-                // split value by first #
-                let mut split = value.splitn(2, '#').collect_vec();
-                assert_eq!(split.len(), 2);
-                let index = split[0].parse().unwrap();
-                let name = split[1];
-                let mut strings = STRINGS
-                    .lock()
-                    .unwrap_or_else(|err| panic!("Failed to acquire egg's global string cache: {}", err));
-                if let Some(existing) = strings.get(&(index as u32)) {
-                    assert_eq!(*existing, name);
-                } else {
-                    assert!(strings.values().find(|&&v| v == name).is_none());
-                    strings.insert(index as u32, Box::leak(name.to_string().into_boxed_str()));
                 }
                 Ok(Symbol(index))
             }
         }
 
-        deserializer.deserialize_str(SymbolVisitor)
+        deserializer.deserialize_map(SymbolVisitor)
     }
 }
 
@@ -164,15 +146,18 @@ fn intern(s: &str) -> Symbol {
     let mut strings = STRINGS
         .lock()
         .unwrap_or_else(|err| panic!("Failed to acquire egg's global string cache: {}", err));
-    let i = match strings.iter().find_position(|(_, n)| **n == s) {
-        Some((i, _)) => i,
+    let i = match strings.iter().find(|(_, n)| **n == s) {
+        Some((i, _)) => {
+            *i
+        },
         None => {
-            let i = strings.len();
-            strings.insert(i as u32, leak(s));
-            i
+            let i = (0..strings.len()+1).find(|i| !strings.contains_key(&(*i as u32))).unwrap();
+            let old = strings.insert(i as u32, leak(s));
+            assert!(old.is_none());
+            i as u32
         },
     };
-    Symbol(i as u32)
+    Symbol(i)
 }
 
 impl<S: AsRef<str>> From<S> for Symbol {
