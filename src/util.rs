@@ -13,7 +13,6 @@ use serde::ser::{SerializeMap, SerializeTuple};
 
 static STRINGS: Lazy<Mutex<IndexMap<u32, &'static str>>> = Lazy::new(Default::default);
 // If in test mode create function to get the strings
-#[cfg(test)]
 pub fn get_strings() -> &'static Mutex<IndexMap<u32, &'static str>> {
     &STRINGS
 }

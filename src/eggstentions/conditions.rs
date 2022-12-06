@@ -7,12 +7,16 @@ use log::{debug, info, trace};
 use crate::tools::tools::Grouped;
 
 pub struct AndCondition<L: Language, N: Analysis<L>> {
-    conditions: Vec<RcImmutableCondition<L, N>>
+    conditions: Vec<RcImmutableCondition<L, N>>,
+    #[cfg(debug_assertions)]
+    names: Vec<String>,
 }
 
 impl<L: Language, N: Analysis<L>> AndCondition<L, N> {
     pub fn new(conditions: Vec<RcImmutableCondition<L, N>>) -> AndCondition<L, N> {
-        AndCondition {conditions}
+        #[cfg(debug_assertions)]
+        let names = conditions.iter().map(|c| c.describe()).collect();
+        AndCondition {conditions, #[cfg(debug_assertions)] names}
     }
 }
 
@@ -25,7 +29,8 @@ impl<L: Language, N: Analysis<L>> ImmutableCondition<L, N> for AndCondition<L, N
 
     fn colored_check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
         self.conditions.iter()
-            .map(|c| c.colored_check_imm(egraph, eclass, subst))
+            .map(|c|
+                c.colored_check_imm(egraph, eclass, subst))
             .fold1(|a, b| a.and_then(|x|
                 b.and_then(|y| {
                     // If either is empty return the other. Otherwise, return the intersection.
@@ -120,7 +125,7 @@ impl<L: Language, N: Analysis<L>> ImmutableCondition<L, N> for OrCondition<L, N>
         for r in self.conditions.iter().map(|c|
             c.colored_check_imm(egraph, eclass, subst)) {
             if let Some(v) = r {
-                if (v.is_empty()) {
+                if v.is_empty() {
                     return Some(vec![]);
                 }
                 collected.extend(v);

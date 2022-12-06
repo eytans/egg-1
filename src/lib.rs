@@ -120,7 +120,7 @@ pub use {
     run::*,
     subst::{Subst, Var},
     util::*,
-    eggstentions::*
+    eggstentions::*,
 };
 
 #[cfg(test)]

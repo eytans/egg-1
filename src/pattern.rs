@@ -7,6 +7,7 @@ use std::fmt::Formatter;
 use std::str::FromStr;
 use indexmap::IndexSet;
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 use crate::eggstentions::expression_ops::{RecExpSlice, Tree};
 
 /// A pattern that can function as either a [`Searcher`] or [`Applier`].
@@ -230,7 +231,7 @@ impl<L: Language> fmt::Display for Pattern<L> {
 ///
 /// [`SearchMatches`]: struct.SearchMatches.html
 /// [`Searcher`]: trait.Searcher.html
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SearchMatches {
     /// The eclass id that these matches were found in.
     pub eclass: Id,
