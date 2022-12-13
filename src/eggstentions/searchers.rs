@@ -8,6 +8,7 @@ use itertools::{Itertools, Either};
 use crate::tools::tools::Grouped;
 use crate::eggstentions::pretty_string::PrettyString;
 use std::fmt::{Debug, Display};
+use std::fs::File;
 use std::io::Read;
 use smallvec::alloc::fmt::Formatter;
 use std::marker::PhantomData;

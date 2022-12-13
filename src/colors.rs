@@ -87,7 +87,7 @@ impl Color {
         if to != from {
             for colored_from in self.black_colored_classes.remove(&from) {
                 let old_to = self.black_colored_classes.insert(to, colored_from);
-                for colored_to in old_to {
+                if let Some(colored_to) = old_to {
                     g_todo = Some((colored_to, colored_from));
                 }
             }
