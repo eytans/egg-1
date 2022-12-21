@@ -592,6 +592,7 @@ mod test {
     use crate::util;
 
     #[test]
+    #[ignore]
     fn test_symbolang_serial() {
         use super::*;
         use serde_cbor;

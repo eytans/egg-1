@@ -5,6 +5,7 @@ use crate::util::JoinDisp;
 use itertools::Itertools;
 use std::fmt::Formatter;
 use indexmap::{IndexMap, IndexSet};
+use invariants::dassert;
 use log::{error, info, trace, warn};
 
 pub type ColorParents = smallvec::SmallVec<[ColorId; 3]>;
@@ -48,6 +49,8 @@ impl Color {
     pub fn find(&self, id: Id) -> Id {
         self.union_find.find(id)
     }
+
+    pub fn is_dirty(&self) -> bool { !self.dirty_unions.is_empty() }
 
     /// Keep black ids up with current version of colored and black uf.
     /// `id1` Should be the id of "to" (after running find in black)

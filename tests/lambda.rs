@@ -2,8 +2,10 @@ use egg::{rewrite as rw, *};
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 use std::rc::Rc;
+use serde::{Deserialize, Serialize};
 
 define_language! {
+    #[derive(Serialize, Deserialize)]
     enum Lambda {
         Bool(bool),
         Num(i32),
@@ -38,7 +40,7 @@ type EGraph = egg::EGraph<Lambda, LambdaAnalysis>;
 #[derive(Default)]
 struct LambdaAnalysis;
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 struct Data {
     free: HashSet<Id>,
     constant: Option<Lambda>,
