@@ -7,7 +7,7 @@ use indexmap::{IndexMap, IndexSet};
 // instantiate UnionFind in one place (EGraph), so this type bound
 // isn't intrusive
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct UnionFind {
     parents: Vec<Cell<Id>>,
 }

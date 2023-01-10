@@ -2,7 +2,7 @@ use std::iter::FromIterator;
 use std::str::FromStr;
 
 // use crate::{EGraph, Id, Pattern, Searcher, SearchMatches, Subst, SymbolLang, Var, Language, Analysis, Condition, ImmutableCondition, ENodeOrVar, ImmutableFunctionCondition, RcImmutableCondition, ToCondRc, ColorId};
-use crate::{EGraph, Id, Pattern, Searcher, SearchMatches, Subst, SymbolLang, Var, Language, Analysis, Condition, ImmutableCondition, ENodeOrVar, RcImmutableCondition, ToCondRc, ColorId};
+use crate::{EGraph, Id, Pattern, Searcher, SearchMatches, Subst, SymbolLang, Var, Language, Analysis, Condition, ImmutableCondition, RcImmutableCondition, ToCondRc, ColorId};
 use itertools::{Itertools, Either};
 
 use crate::tools::tools::Grouped;
@@ -12,13 +12,13 @@ use std::io::Read;
 use smallvec::alloc::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::Deref;
-use std::ptr::eq;
+
 use std::rc::Rc;
 use std::time::Instant;
 use indexmap::{IndexMap, IndexSet};
 use log::warn;
-use crate::eggstentions::expression_ops::{IntoTree, RecExpSlice, Tree};
-use crate::tools::tools;
+
+
 
 pub trait Matcher<L: Language + 'static, N: Analysis<L> + 'static>: ToRc<L, N> {
     /// Returns ids of all roots that match this matcher, considering egraph and subst.
@@ -676,9 +676,17 @@ impl<'a, L: Language + 'static, N: Analysis<L> + 'static> FilteringSearcher<L, N
 
 impl FilteringSearcher<SymbolLang, ()> {
     pub fn searcher_is_true<S: Searcher<SymbolLang, ()> + 'static>(s: S) -> Self {
+        Self::searcher_is_pattern(s, "true".parse().unwrap())
+    }
+
+    pub fn searcher_is_false<S: Searcher<SymbolLang, ()> + 'static>(s: S) -> Self {
+        Self::searcher_is_pattern(s, "false".parse().unwrap())
+    }
+
+    pub fn searcher_is_pattern<S: Searcher<SymbolLang, ()> + 'static>(s: S, p: Pattern<SymbolLang>) -> Self {
         FilteringSearcher::new(
             Rc::new(s),
-            MatcherContainsCondition::new(PatternMatcher::new("true".parse().unwrap()).into_rc()).into_rc()
+            MatcherContainsCondition::new(PatternMatcher::new(p).into_rc()).into_rc()
         )
     }
 }

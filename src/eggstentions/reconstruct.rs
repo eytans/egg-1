@@ -1,3 +1,6 @@
+use std::cmp::{min_by, Ordering};
+use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 use std::iter;
 use std::rc::Rc;
 
@@ -96,74 +99,66 @@ fn build_translation(graph: &EGraph<SymbolLang, ()>, color: Option<ColorId>, tra
     translations.insert(id, RecExpr::from(res));
 }
 
-pub fn reconstruct_all(graph: &EGraph<SymbolLang, ()>, max_depth: usize) -> IndexMap<Id, IndexSet<Rc<Tree>>> {
-    for c in graph.classes() {
-        let set = c.nodes.iter().collect::<IndexSet<&SymbolLang>>();
-        for c1 in graph.classes() {
-            for n in c1.nodes.iter() {
-                assert!(!set.contains(&n) || c.id == c1.id)
-            }
-        }
-    }
-    let edges = graph.classes().filter(|c| graph.find(c.id) == c.id).flat_map(|c| iter::once(c.id).cycle().zip(c.nodes.iter())).collect_vec();
-    // let idToType = inputEdges.filter(_.edgeType.identifier == Language.typeId).map(e => (e.sources(0), Programs.reconstruct(inputEdges, e.sources(1)).head)).toMap
-    let mut known_terms: IndexMap<Id, IndexSet<Rc<Tree>>> = IndexMap::new();
-    let mut last_level: IndexSet<(Id, Rc<Tree>)> = edges.iter().filter_map(|(id, e)| {
-        if e.is_leaf() {
-            let tree = Rc::new(Tree::leaf(e.op.to_string()));
-            if !known_terms.contains_key(id) {
-                known_terms.insert(*id, IndexSet::new());
-            }
-            known_terms.get_mut(id).unwrap().insert(tree.clone());
-            Some((*id, tree))
-        } else {
-            None
-        }
-    }).collect();
-    let mut levels = vec![last_level];
+pub fn reconstruct_all(graph: &EGraph<SymbolLang, ()>, color: Option<ColorId>, max_depth: usize)
+    -> IndexMap<Id, Tree> {
+    let mut translations: IndexMap<Id, SymbolLang> = IndexMap::default();
+    let mut edge_in_need: HashMap<Id, Vec<(Id, SymbolLang)>> = HashMap::default();
 
-    // id to edges that might be available
-    // let edges_by_reqiurments = collection.mutable.HashMultiMap.empty[HyperTermId, (Int, HyperEdge[HyperTermId, HyperTermIdentifier])]
-    let mut edges_by_reqiurments = IndexMap::new();
-    for x in edges.iter() {
-        for (i, s) in x.1.children.iter().enumerate() {
-            assert_eq!(graph.find(*s), *s);
-            if !edges_by_reqiurments.contains_key(s) {
-                edges_by_reqiurments.insert(*s, IndexSet::new());
-            }
-            edges_by_reqiurments.get_mut(s).unwrap().insert((i, *x));
-        }
-    };
+    let mut todo = HashSet::new();
 
-    // The reconstruct itself.
-    for d in 0..max_depth {
-        info!("depth {}", d);
-        last_level = IndexSet::new();
-        for e in levels.last().unwrap() {
-            for v in edges_by_reqiurments.get(&e.0) {
-                for (i_to_fill, e_to_fill) in v {
-                    let params_to_fill = e_to_fill.1.children.iter().take(*i_to_fill).chain(&e_to_fill.1.children[i_to_fill + 1..]);
-                    let trees = params_to_fill.filter_map(|h_id| known_terms.get(h_id).map_or(None, |x| Some(x.iter().cloned()))).collect_vec();
-                    if trees.len() == e_to_fill.1.children.len() - 1 {
-                        for mut fillers in combinations(trees.into_iter()) {
-                            fillers.insert(*i_to_fill, e.1.clone());
-                            last_level.insert((e.0, Rc::new(Tree::branch(e_to_fill.1.op.to_string(), fillers))));
-                        }
-                    }
+    let mut layers = vec![vec![]];
+    // Initialize data structures (translations, and which edges might be "free" next)
+    for c in graph.classes()
+        .filter(|c| c.color().is_none() || c.color() == color) {
+        let fixed_id = graph.opt_colored_find(color, c.id);
+        for n in &c.nodes {
+            let fixed_n = if color.is_some() {
+                graph.colored_canonize(*color.as_ref().unwrap(), n)
+            } else {
+                n.clone()
+            };
+            if n.children().is_empty() {
+                todo.insert(fixed_id);
+                translations.insert(fixed_id, fixed_n);
+                layers.last_mut().unwrap().push(fixed_id);
+            } else {
+                for ch in fixed_n.children() {
+                    let fixed_child = graph.opt_colored_find(color, *ch);
+                    // this might be a bit expensive to do for each edge
+                    edge_in_need.entry(fixed_child).or_default().push((fixed_id, fixed_n.clone()));
                 }
             }
         }
-
-        for e in last_level.clone() {
-            if !known_terms.contains_key(&e.0) {
-                known_terms.insert(e.0, IndexSet::new());
-            }
-            known_terms.get_mut(&e.0).unwrap().insert(e.1);
-        }
-
-        levels.push(last_level);
+    }
+    let mut res = IndexMap::new();
+    for (id, n) in translations.iter() {
+        res.insert(*id, Tree::leaf(n.op.to_string()));
     }
 
-    known_terms
-    // known_terms.into_iter().flat_map(|x| iter::once(x.0).cycle().zip(x.1.into_iter())).collect::<IndexSet<(Id, Rc<Tree>)>>()
+    let empty = vec![];
+    // Build layers
+    for _ in 0..max_depth {
+        layers.push(vec![]);
+        let doing = std::mem::take(&mut todo);
+        for c in doing {
+            for (trg, n) in edge_in_need.get(&c).unwrap_or(&empty) {
+                if (!translations.contains_key(trg)) &&
+                    n.children().iter().all(|ch| translations.contains_key(ch)) {
+                    translations.insert(*trg, n.clone());
+                    todo.insert(*trg);
+                    layers.last_mut().unwrap().push(*trg);
+                }
+            }
+        }
+    }
+
+    // Build translations
+    for l in layers.iter().dropping(1) {
+        for id in l {
+            let n = &translations[id];
+            let new_tree = Tree::branch(n.op.to_string(), n.children().iter().map(|ch| res[ch].clone()).collect());
+            res.insert(*id, new_tree);
+        }
+    }
+    res
 }

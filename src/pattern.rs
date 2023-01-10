@@ -7,6 +7,7 @@ use std::fmt::Formatter;
 use std::str::FromStr;
 use indexmap::IndexSet;
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 use crate::eggstentions::expression_ops::{RecExpSlice, Tree};
 
 /// A pattern that can function as either a [`Searcher`] or [`Applier`].
@@ -230,7 +231,7 @@ impl<L: Language> fmt::Display for Pattern<L> {
 ///
 /// [`SearchMatches`]: struct.SearchMatches.html
 /// [`Searcher`]: trait.Searcher.html
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SearchMatches {
     /// The eclass id that these matches were found in.
     pub eclass: Id,
@@ -289,11 +290,11 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
         for id in todo {
             let substs = self.program.colored_run(egraph, id, Some(color));
             if !substs.is_empty() {
-                res.push(substs)
+                res.extend(substs)
             }
         }
-        let matches = SearchMatches { eclass: egraph.colored_find(color, eclass), substs: res.into_iter().flatten().unique().collect_vec() };
-        matches.substs.is_empty().then(|| matches)
+        let matches = SearchMatches { eclass: egraph.colored_find(color, eclass), substs: res.into_iter().unique().collect_vec() };
+        (!matches.substs.is_empty()).then(|| matches)
     }
 
     fn vars(&self) -> Vec<Var> {
@@ -471,5 +472,27 @@ mod tests {
         let m = &matches[0];
         assert_eq!(m.eclass, equ);
         assert_eq!(m.substs.len(), 1);
+    }
+
+    #[test]
+    fn colored_eclass_search_sanity() {
+        // Create an egraph with x and colored f(x) merged with black y
+        crate::init_logger();
+        let mut egraph = EGraph::default();
+        let x = egraph.add(S::leaf("x"));
+        let y = egraph.add(S::leaf("y"));
+        let c = egraph.create_color();
+        let fx = egraph.colored_add(c, S::new("f", vec![x]));
+        egraph.colored_union(c, fx, y);
+        egraph.rebuild();
+
+        // Search for f(?z) and find it!
+        let p_f_z = Pattern::from_str("(f ?z)").unwrap();
+        let matches = p_f_z.colored_search_eclass(&egraph, y, c);
+        assert!(matches.is_some());
+        let matches = matches.unwrap();
+        assert_eq!(matches.substs.len(), 1);
+        assert_eq!(matches.substs[0][Var::from_str("?z").unwrap()], x);
+        assert_eq!(egraph.colored_find(c, matches.eclass), egraph.colored_find(c, y));
     }
 }

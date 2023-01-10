@@ -1,8 +1,9 @@
-use std::any::Any;
+
 use std::convert::TryFrom;
 use std::fmt::{self, Debug, Display};
 use std::hash::Hash;
-use log::warn;
+use serde::{Deserialize, Serialize};
+
 
 use crate::{EGraph, Id, Symbol};
 
@@ -481,7 +482,7 @@ assert_eq!(runner.egraph.find(runner.roots[0]), runner.egraph.find(just_foo));
 
 pub trait Analysis<L: Language>: Sized {
     /// The per-[`EClass`](struct.EClass.html) data for this analysis.
-    type Data: Debug;
+    type Data: Debug + Serialize + for<'a> Deserialize<'a>;
 
     /// Makes a new [`Analysis`] for a given enode
     /// [`Analysis`].
@@ -534,7 +535,7 @@ impl<L: Language> Analysis<L> for () {
 }
 
 /// A simple language used for testing.
-#[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct SymbolLang {
     /// The operator for an enode
     pub op: Symbol,
@@ -569,12 +570,12 @@ impl Language for SymbolLang {
         &mut self.children
     }
 
-    fn display_op(&self) -> &dyn Display {
-        &self.op
-    }
-
     fn matches(&self, other: &Self) -> bool {
         self.op == other.op && self.children.len() == other.children.len()
+    }
+
+    fn display_op(&self) -> &dyn Display {
+        &self.op
     }
 
     fn from_op_str(op_str: &str, children: Vec<Id>) -> Result<Self, String> {
@@ -582,5 +583,71 @@ impl Language for SymbolLang {
             op: op_str.into(),
             children,
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use itertools::Itertools;
+    use crate::util;
+
+    #[test]
+    fn test_symbolang_serial() {
+        use super::*;
+        use serde_cbor;
+
+        let mut egraph = EGraph::<SymbolLang, ()>::default();
+        let serialized = serde_cbor::to_vec(&egraph).unwrap();
+
+        let l = SymbolLang::leaf("a");
+        let x = serde_cbor::to_vec(&l).unwrap();
+        let a = egraph.add(l);
+        let res = serde_cbor::to_vec(&egraph.memo).unwrap();
+        egraph.rebuild();
+        let temp = serde_cbor::to_vec(&egraph.colors().cloned().collect_vec()).unwrap();
+        let serialized = serde_cbor::to_vec(&egraph).unwrap();
+        let b = egraph.add(SymbolLang::leaf("b"));
+        let c = egraph.add(SymbolLang::leaf("c"));
+        let d = egraph.add(SymbolLang::leaf("d"));
+        let e = egraph.add(SymbolLang::leaf("e"));
+        let f = egraph.add(SymbolLang::leaf("f"));
+        let g = egraph.add(SymbolLang::leaf("g"));
+        let h = egraph.add(SymbolLang::leaf("h"));
+        let i = egraph.add(SymbolLang::leaf("i"));
+        let j = egraph.add(SymbolLang::leaf("j"));
+        let k = egraph.add(SymbolLang::leaf("k"));
+        let l = egraph.add(SymbolLang::leaf("l"));
+        let m = egraph.add(SymbolLang::leaf("m"));
+        let n = egraph.add(SymbolLang::leaf("n"));
+        let o = egraph.add(SymbolLang::leaf("o"));
+        let p = egraph.add(SymbolLang::leaf("p"));
+        let q = egraph.add(SymbolLang::leaf("q"));
+        let r = egraph.add(SymbolLang::leaf("r"));
+        let s = egraph.add(SymbolLang::leaf("s"));
+        let t = egraph.add(SymbolLang::leaf("t"));
+        let u = egraph.add(SymbolLang::leaf("u"));
+        let v = egraph.add(SymbolLang::leaf("v"));
+        let w = egraph.add(SymbolLang::leaf("w"));
+        let x = egraph.add(SymbolLang::leaf("x"));
+        let y = egraph.add(SymbolLang::leaf("y"));
+        let z = egraph.add(SymbolLang::leaf("z"));
+
+        let ab = egraph.add(SymbolLang::new("+", vec![a, b]));
+        let cd = egraph.add(SymbolLang::new("+", vec![c, d]));
+        let ef = egraph.add(SymbolLang::new("+", vec![e, f]));
+        let gh = egraph.add(SymbolLang::new("+", vec![g, h]));
+        let ij = egraph.add(SymbolLang::new("+", vec![i, j]));
+
+        // Get a copy of strings
+        let strings = util::get_strings().lock().unwrap().clone();
+        // Serialize the egraph
+        let serialized = serde_cbor::to_vec(&egraph).unwrap();
+        // Deserialize the egraph
+        util::clear_strings();
+        let deserialized: EGraph<SymbolLang, ()> = serde_cbor::from_slice(&serialized).unwrap();
+        // Get the strings again
+        let strings2 = util::get_strings().lock().unwrap().clone();
+        // Check that the strings are the same
+        assert_eq!(strings, strings2);
     }
 }

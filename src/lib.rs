@@ -49,11 +49,11 @@ mod util;
 
 /// A key to identify [`EClass`](struct.EClass.html)es within an
 /// [`EGraph`](struct.EGraph.html).
-#[derive(Clone, Copy, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Default, Ord, PartialOrd, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Id(u32);
 
 
-#[derive(Clone, Copy, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Default, Ord, PartialOrd, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ColorId(usize);
 
 
@@ -122,12 +122,12 @@ pub use {
     ser::{Serialization, Deserialization},
     subst::{Subst, Var},
     util::*,
-    eggstentions::*
+    eggstentions::*,
 };
 
 #[cfg(test)]
 fn init_logger() {
-    let _ = env_logger::builder().is_test(true).filter_level(LevelFilter::Warn).try_init();
+    let _ = env_logger::builder().is_test(true).filter_level(LevelFilter::Info).try_init();
 }
 
 #[doc(hidden)]
