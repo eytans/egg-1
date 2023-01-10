@@ -20,9 +20,14 @@ pub struct Color {
     pub(crate) dirty_unions: Vec<Id>,
     /// Maintain which classes in black are represented in colored class (including rep)
     pub(crate) union_map: IndexMap<Id, IndexSet<Id>>,
+    /// Used to determine for each a colored equality class what is the black colored class.
+    /// Relevant when a colored edge was added.
     pub(crate) black_colored_classes: IndexMap<Id, Id>,
     pub(crate) children: Vec<ColorId>,
     pub(crate) parents: Vec<ColorId>,
+    /// Translation for each parent color, from black_colored_class here to parents one. Useful for
+    /// implementing case split logic and the like.
+    pub(crate) parents_classes: Vec<IndexMap<Id, Id>>,
 }
 
 impl Color {
@@ -34,7 +39,8 @@ impl Color {
             union_map: Default::default(),
             black_colored_classes: Default::default(),
             children: vec![],
-            parents: vec![]
+            parents: vec![],
+            parents_classes: vec![],
         }
     }
 
@@ -108,8 +114,8 @@ impl Color {
     /// `id2` Should be the id of "from" (after running find in black)
     pub fn black_union<L: Language, N: Analysis<L>>(&mut self, graph: &mut EGraph<L, N>, id1: Id, id2: Id) -> (Id, bool) {
         let (to, changed, to_union) = self.inner_black_union(id1, id2);
-        if let Some((id1, id2)) = to_union {
-            graph.union(id1, id2);
+        if let Some((id1, id2)) = &to_union {
+            graph.union(*id1, *id2);
         }
         (to, changed)
     }
@@ -149,6 +155,15 @@ impl Color {
 
     pub fn parents(&self) -> &Vec<ColorId> {
         &self.parents
+    }
+
+    pub fn translate_from_base(&self, id: Id) -> Id {
+        for cls_map in &self.parents_classes {
+            if let Some(id) = cls_map.get(&id) {
+                return *id;
+            }
+        }
+        return id;
     }
 
     pub fn assert_black_ids<L, N>(&self, egraph: &EGraph<L, N>)

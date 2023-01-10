@@ -434,7 +434,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
     pub fn colored_add(&mut self, color: ColorId, mut enode: L) -> Id {
         if let Some(id) = self.colored_lookup(color, &mut enode) {
-            id
+            return id;
         } else {
             let id = self.inner_create_class(&mut enode, Some(color));
             self.get_color_mut(color).unwrap().black_colored_classes.insert(id, id);
@@ -445,7 +445,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             let color_map = self.colored_memo.entry(enode).or_default();
             assert!(color_map.insert(color, id).is_none());
             N::modify(self, id);
-            id
+            return id;
         }
     }
 
@@ -548,6 +548,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         tassert!(to == self.find(id2));
         if changed {
             if let Some(c) = self[to].color {
+                iassert!(self[from].color == self[to].color);
                 iassert!(self.colored_find(c, to) == self.colored_find(c, from));
                 let colored_to = self.colored_find(c ,to);
                 self.get_color_mut(c).unwrap().black_colored_classes.insert(colored_to, to);
@@ -657,7 +658,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             // TODO this is the slow version, could take advantage of sortedness
             // maybe
             let mut add = |n: &L| {
-                    classes_by_op
+                classes_by_op
                     .entry(n.op_id())
                     .or_default()
                     .insert(class.id)
@@ -871,11 +872,12 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         // Verify colors on nodes and in memo only differ by dirty colors
         self.memo_classes_agree();
 
-        let merged = self.process_unions();
+        while self.colors().any(|c| c.is_dirty()) || !self.dirty_unions.is_empty()  {
+            let merged = self.process_unions();
+            self.memo_black_canonized();
+            self.process_colored_unions();
+        }
 
-        self.memo_black_canonized();
-
-        self.process_colored_unions();
         let n_unions = std::mem::take(&mut self.repairs_since_rebuild);
         let trimmed_nodes = self.rebuild_classes();
         self.memo_black_canonized();
@@ -896,6 +898,10 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             n_unions,
             trimmed_nodes,
         );
+
+        dassert!(self.no_two_colored_classes_in_ec());
+        assert!(self.dirty_unions.is_empty());
+        iassert!(self.colors().all(|c| !c.is_dirty()));
 
         // debug_assert!(self.check_memo());
         n_unions
@@ -1078,6 +1084,22 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 self[self.find(*id)].color == Some(*c))));
     }
 
+    pub fn no_two_colored_classes_in_ec(&self) -> bool {
+        dassert!({
+                for c in self.colors() {
+                    for res in self.classes().map(|e| e.id) {
+                        c.union_map.get(&res).iter().for_each(|ids|
+                            dassert!(ids.iter().map(|id|
+                            if self[*id].color.is_some() && !self[*id].nodes.is_empty() {1}
+                            else {0}).sum::<usize>() <= 1, "Color: {}, Ids: {}", c, c.union_map[&res].iter().join(", ")));
+                    }
+                }
+                true
+            }
+        );
+        true
+    }
+
     #[inline(never)]
     fn propagate_metadata(&mut self, parents: &[(L, Id)]) {
         for (n, e) in parents {
@@ -1112,6 +1134,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     fn process_colored_unions(&mut self) {
         for i in 0..self.colors.len() {
             self.colored_cong_closure(ColorId(i));
+            assert!(!self.colors[i].as_ref().unwrap().is_dirty());
         }
         self.memo_all_canonized();
     }
@@ -1154,14 +1177,27 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
     pub fn colored_union(&mut self, color: ColorId, id1: Id, id2: Id) -> (Id, bool) {
         let (to, changed, todo) = self.get_color_mut(color).unwrap().inner_colored_union(id1, id2);
+        dassert!({
+            let fixed = self.colored_find(color, id1);
+            self[fixed].color.is_none() || self[fixed].color().unwrap() == color
+        });
+        dassert!({
+            let fixed = self.colored_find(color, id2);
+            self[fixed].color.is_none() || self[fixed].color().unwrap() == color
+        });
         if let Some((id1, id2)) = todo {
+            wassert!(self[id1].color().unwrap() == color);
+            wassert!(self[id1].color().unwrap() == self[id2].color().unwrap(),
+                "Todo returned from colored union should be two colored 'black' classes");
             self.union(id1, id2);
         }
-        if changed {
-            for child in self.get_color(color).unwrap().children().iter().copied().collect_vec() {
-                self.colored_union(child, id1, id2);
-            }
-        }
+        // if changed {
+        //     for child in self.get_color(color).unwrap().children().iter().copied().collect_vec() {
+        //         // TODO: fix this. id1 and id2 might need to be translated
+        //         let child_c = self.get_color(child).unwrap();
+        //         self.colored_union(child, child_c.translate_from_base(id1), child_c.translate_from_base(id2));
+        //     }
+        // }
         tassert!(AssertConfig::new(AssertLevel::Trace); self.classes().filter(|x| x.color().is_some())
             .group_by(|x| (self.opt_colored_find(x.color(),  x.id), x.color().unwrap()))
             .into_iter().all(|(c, classes)| classes.count() == 1), "A color has two colored classes for a single Id");
@@ -1253,13 +1289,14 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             }
             for (root, ids) in &union_map {
                 for id in ids {
-                    todo.push((*root, *id));
+                    todo.push((*id_changer.get(root).unwrap_or(root), *id_changer.get(id).unwrap_or(id)));
                 }
-                let colored_class = ids.iter().find(|e| self[**e].color().is_some());
+                let colored_class = self.get_color(c).unwrap().black_colored_classes.get(root);
+                dassert!(ids.iter().filter(|e| self[**e].color().is_some()).count() <= 1);
                 // Can't have two colored eclasses for the id because I did not merge anything yet
                 if let Some(new_class_id) = colored_class.map(|e| id_changer.get(e)).flatten() {
-                    self.get_color_mut(new_c_id).unwrap()
-                        .black_colored_classes.insert(*new_class_id, *new_class_id);
+                    assert_eq!(None, self.get_color_mut(new_c_id).unwrap()
+                        .black_colored_classes.insert(*new_class_id, *new_class_id));
                 }
             }
             by_color.push((new_classes, id_changer, union_map));
@@ -1272,11 +1309,14 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             //     }
             // }
 
+            // Assert id changer points to correct colors
+            iassert!(id_changer.iter().all(|(k, v)| self[*k].color().unwrap() == *c && self[*v].color().unwrap() == new_c_id));
             // Now fix nodes, and create data, and put in the parents with id_translation.
             for id in new_classes {
                 let mut parents_to_add = vec![];
                 for n in self[id].iter() {
                     for ch in n.children() {
+                        iassert!(self[*ch].color().is_none() || self[*ch].color().unwrap() == new_c_id);
                         parents_to_add.push((*ch, n.clone(), id));
                     }
                 }
@@ -1287,15 +1327,16 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             }
 
             self.get_color_mut(*c).unwrap().children.push(new_c_id);
-            let old_parents = self.get_color(*c).unwrap().parents.clone();
             self.get_color_mut(new_c_id).unwrap().parents.push(*c);
-            self.get_color_mut(new_c_id).unwrap().parents.extend(old_parents);
+            self.get_color_mut(new_c_id).unwrap().parents_classes.push(id_changer);
         }
+
         for (id1, id2) in todo {
             self.colored_union(new_c_id, id1, id2);
         }
         // TODO: Is it necessary or can it wait for other colors? It probably doesnt matter.
         self.rebuild();
+        self.no_two_colored_classes_in_ec();
         new_c_id
     }
 

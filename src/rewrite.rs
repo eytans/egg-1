@@ -8,6 +8,7 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use itertools::Itertools;
 use log::{info, trace, warn};
+use invariants::iassert;
 
 /// A rewrite that searches for the lefthand side and applies the righthand side.
 ///
@@ -374,13 +375,11 @@ pub trait Applier<L, N>: std::fmt::Display
                     .apply_one(egraph, mat.eclass, subst)
                     .into_iter()
                     .filter_map(|id| {
+                        if !cfg!(feature = "colored") {
+                            iassert!(subst.color().is_none());
+                        }
                         let (to, did_something) =
-                            if (!cfg!(feature = "colored")) || subst.color.is_none() {
-                                egraph.union(id, mat.eclass)
-                            } else {
-                                trace!("Rewrite ({}) found colored ({}) match: {} -> {} ({:?})", self.to_string(), subst.color.as_ref().unwrap(), id, mat.eclass, subst);
-                                egraph.colored_union(*subst.color.as_ref().unwrap(), id, mat.eclass)
-                            };
+                            egraph.opt_colored_union(subst.color(), id, mat.eclass);
                         if did_something {
                             Some(to)
                         } else {

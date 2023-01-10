@@ -331,6 +331,11 @@ impl<L: Language> Program<L> {
         machine.reg.push(eclass);
         if let Some(c) = egraph[eclass].color {
             machine.color = Some(c);
+            if let Some(c1) = color.as_ref() {
+                if c != *c1 {
+                    return vec![];
+                }
+            }
             color.as_ref().map(|c1| assert_eq!(c1, &c));
         }
         if let Some(c) = color {
