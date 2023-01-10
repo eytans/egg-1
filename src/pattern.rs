@@ -231,7 +231,7 @@ impl<L: Language> fmt::Display for Pattern<L> {
 ///
 /// [`SearchMatches`]: struct.SearchMatches.html
 /// [`Searcher`]: trait.Searcher.html
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SearchMatches {
     /// The eclass id that these matches were found in.
     pub eclass: Id,

@@ -5,6 +5,7 @@ use crate::util::JoinDisp;
 use itertools::Itertools;
 use std::fmt::Formatter;
 use indexmap::{IndexMap, IndexSet};
+use invariants::dassert;
 use log::{error, info, trace, warn};
 
 pub type ColorParents = smallvec::SmallVec<[ColorId; 3]>;
@@ -49,6 +50,8 @@ impl Color {
         self.union_find.find(id)
     }
 
+    pub fn is_dirty(&self) -> bool { !self.dirty_unions.is_empty() }
+
     /// Keep black ids up with current version of colored and black uf.
     /// `id1` Should be the id of "to" (after running find in black)
     /// `id2` Should be the id of "from" (after running find in black)
@@ -87,7 +90,7 @@ impl Color {
         if to != from {
             for colored_from in self.black_colored_classes.remove(&from) {
                 let old_to = self.black_colored_classes.insert(to, colored_from);
-                for colored_to in old_to {
+                if let Some(colored_to) = old_to {
                     g_todo = Some((colored_to, colored_from));
                 }
             }

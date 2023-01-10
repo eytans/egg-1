@@ -2,6 +2,8 @@ use std::collections::HashSet;
 use crate::{ImmutableCondition, Condition, EGraph, Var, Subst, Id, Language, Analysis, RcImmutableCondition, ToCondRc, ColorId};
 use itertools::Itertools;
 use std::fmt::Formatter;
+use std::io;
+use std::io::Write;
 use std::rc::Rc;
 use log::{debug, info, trace};
 use crate::tools::tools::Grouped;
@@ -131,7 +133,8 @@ impl<L: Language, N: Analysis<L>> ImmutableCondition<L, N> for OrCondition<L, N>
                 collected.extend(v);
             }
         }
-        (!collected.is_empty()).then(|| collected.into_iter().collect_vec())
+        let res = (!collected.is_empty()).then(|| collected.into_iter().collect_vec());
+        res
     }
 
     fn vars(&self) -> Vec<Var> {

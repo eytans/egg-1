@@ -1,6 +1,7 @@
 use std::rc::Rc;
 use egg::{rewrite as rw, *};
 use ordered_float::NotNan;
+use serde::{Deserialize, Serialize};
 
 pub type EGraph = egg::EGraph<Math, ConstantFold>;
 pub type Rewrite = egg::Rewrite<Math, ConstantFold>;
@@ -46,7 +47,7 @@ impl egg::CostFunction<Math> for MathCostFn {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Serialize, Deserialize)]
 pub struct ConstantFold;
 impl Analysis<Math> for ConstantFold {
     type Data = Option<Constant>;

@@ -26,10 +26,10 @@ itertools = "0.9.0"
 global_counter = "0.2.1"
 bimap = "0.5.3"
 bitvec = "1.0.0"
-invariants = "0.1.1"
+invariants = "0.1.2"
 # for very silly reasons
 num-traits = "0.2.15"
-ordered-float = "1"
+ordered-float = { version = "1", features = ["serde"] }
 lazy_static = "1.4.0"
 
 [dev-dependencies]
