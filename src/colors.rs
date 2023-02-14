@@ -4,6 +4,7 @@ use crate::{Singleton, UnionFind};
 use crate::util::JoinDisp;
 use itertools::Itertools;
 use std::fmt::Formatter;
+use bimap::BiMap;
 use indexmap::{IndexMap, IndexSet};
 use invariants::dassert;
 use log::{error, info, trace, warn};
@@ -27,7 +28,7 @@ pub struct Color {
     pub(crate) parents: Vec<ColorId>,
     /// Translation for each parent color, from black_colored_class here to parents one. Useful for
     /// implementing case split logic and the like.
-    pub(crate) parents_classes: Vec<IndexMap<Id, Id>>,
+    pub(crate) parents_classes: Vec<BiMap<Id, Id>>,
 }
 
 impl Color {
@@ -159,11 +160,30 @@ impl Color {
 
     pub fn translate_from_base(&self, id: Id) -> Id {
         for cls_map in &self.parents_classes {
-            if let Some(id) = cls_map.get(&id) {
+            if let Some(id) = cls_map.get_by_left(&id) {
                 return *id;
             }
         }
         return id;
+    }
+
+    pub fn translate_to_base(&self, id: Id) -> Id {
+        for cls_map in &self.parents_classes {
+            if let Some(id) = cls_map.get_by_right(&id) {
+                return *id;
+            }
+        }
+        return id;
+    }
+
+    pub fn get_all_enodes<L, N>(&self, id: Id, egraph: &EGraph<L, N>) -> Vec<L>
+        where L: Language, N: Analysis<L> {
+        let set: IndexSet<Id> = IndexSet::default();
+        let mut res: IndexSet<L> = IndexSet::default();
+        for cls in self.black_ids(id).unwrap_or(&set) {
+            res.extend(egraph[*cls].nodes.iter().map(|n: &L| egraph.colored_canonize(self.color_id, n)));
+        }
+        return res.into_iter().collect_vec();
     }
 
     pub fn assert_black_ids<L, N>(&self, egraph: &EGraph<L, N>)

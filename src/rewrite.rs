@@ -340,7 +340,9 @@ pub trait Searcher<L, N>: std::fmt::Display
 /// }
 ///
 /// let start = "(+ x (* y z))".parse().unwrap();
-/// Runner::default().with_expr(&start).run(rules);
+/// let mut runner = Runner::default().with_expr(&start);
+/// runner.egraph.rebuild();
+/// runner.run(rules);
 /// ```
 /// [`Pattern`]: struct.Pattern.html
 /// [`EClass`]: struct.EClass.html

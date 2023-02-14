@@ -322,6 +322,7 @@ where
     /// insertion order.
     pub fn with_expr(mut self, expr: &RecExpr<L>) -> Self {
         let id = self.egraph.add_expr(expr);
+        self.egraph.rebuild();
         self.roots.push(id);
         self
     }
