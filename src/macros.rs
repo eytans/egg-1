@@ -291,6 +291,31 @@ define_language! {
 
 type EGraph = egg::EGraph<SimpleLanguage, ()>;
 
+struct NotZeroCond {
+    var: Var
+}
+
+impl NotZeroCond {
+    fn new(var: &'static str) -> Self {
+        NotZeroCond { var: var.parse().unwrap() }
+    }
+}
+
+impl Condition<SimpleLanguage, ()> for NotZeroCond {
+    fn check(&self, egraph: &mut egg::EGraph<SimpleLanguage, ()>, eclass: Id, subst: &Subst) -> bool {
+        let zero = SimpleLanguage::Num(0);
+        !egraph[subst[self.var]].nodes.contains(&zero)
+    }
+
+    fn check_colored(&self, egraph: &mut egg::EGraph<SimpleLanguage, ()>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
+        todo!("NotZeroCond::check_colored")
+    }
+
+    fn describe(&self) -> String {
+         format!("{} != 0", self.var)
+     }
+}
+
 let mut rules: Vec<Rewrite<SimpleLanguage, ()>> = vec![
     rewrite!("commute-add"; "(+ ?a ?b)" => "(+ ?b ?a)"),
     rewrite!("commute-mul"; "(* ?a ?b)" => "(* ?b ?a)"),
@@ -301,7 +326,7 @@ let mut rules: Vec<Rewrite<SimpleLanguage, ()>> = vec![
 
     rewrite!("something_conditional";
              "(/ ?a ?b)" => "(* ?a (/ 1 ?b))"
-             if is_not_zero("?b")),
+             if {NotZeroCond::new("?b")}),
 ];
 
 // rewrite! supports bidirectional rules too

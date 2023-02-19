@@ -169,6 +169,12 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     pub colored_equivalences: IndexMap<Id, IndexSet<(ColorId, Id)>>,
 }
 
+impl<L: Language, N: Analysis<L>> EGraph<L, N> {
+    pub fn classes_by_op_id(&self) -> IndexMap<OpId, IndexSet<Id>> {
+        self.classes_by_op.clone()
+    }
+}
+
 type SparseVec<T> = Vec<Option<Box<T>>>;
 
 impl<L: Language, N: Analysis<L> + Default> Default for EGraph<L, N> {
@@ -479,6 +485,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             nodes: vec![enode.clone()],
             data: N::make(self, &enode),
             parents: Default::default(),
+            changed_parents: Default::default(),
             colored_parents: Default::default(),
             color
         });
@@ -577,6 +584,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             self.analysis.merge(&mut to_class.data, from_class.data);
             concat(&mut to_class.nodes, from_class.nodes);
             concat(&mut to_class.parents, from_class.parents);
+            concat(&mut to_class.changed_parents, from_class.changed_parents);
             from_class.colored_parents.into_iter().for_each(|(k, v)|
                 to_class.colored_parents.entry(k).or_default().extend(v));
             N::modify(self, to);
@@ -805,15 +813,23 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
             for id in todo {
                 self.repairs_since_rebuild += 1;
+                for (n, p_id) in std::mem::take(&mut self[id].changed_parents) {
+                    if let Some(m_id) = self.memo.remove(&n) {
+                        assert_eq!(self.find(m_id), self.find(p_id));
+                    }
+                }
                 let mut parents = std::mem::take(&mut self[id].parents)
                     .into_iter().map(|(n, e)| {
                     self.memo.remove(&n);
                     (n, e)
                 }).collect_vec();
-                parents.iter_mut().for_each(|(n, id)| {
+                parents.iter_mut().for_each(|(n, p_id)| {
                     n.update_children(|child| self.find(child));
-                    *id = self.find(*id);
-                    debug_assert!(self[*id].color.is_none());
+                    *p_id = self.find(*p_id);
+                    debug_assert!(self[*p_id].color.is_none());
+                    for child in n.children().iter().filter(|c| **c != id) {
+                        self[*child].changed_parents.push((n.clone(), *p_id));
+                    }
                 });
                 parents.sort_unstable();
                 parents.dedup_by(|(n1, e1), (n2, e2)| {
