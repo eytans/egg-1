@@ -24,7 +24,7 @@ serde_cbor = "0.11.2"
 multimap = "0.8.2"
 itertools = "0.9.0"
 global_counter = "0.2.1"
-bimap = "0.5.3"
+bimap = {version = "0.6.2", features = ["serde"]}
 bitvec = "1.0.0"
 invariants = "0.1.2"
 # for very silly reasons

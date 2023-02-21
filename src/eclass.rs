@@ -16,6 +16,7 @@ pub struct EClass<L, D> {
     /// The analysis data associated with this eclass.
     pub data: D,
     pub(crate) parents: Vec<(L, Id)>,
+    pub(crate) changed_parents: Vec<(L, Id)>,
 
     /// Each EClass has a unique color (None is black, i.e. default).
     #[cfg(feature = "colored")]
