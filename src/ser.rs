@@ -102,7 +102,8 @@ impl<L: Language, N: Analysis<L>> DeserializationHelper<L> for EGraph<L, N> {
                 data: N::make(self, &dummy_node),
                 parents: vec![],
                 color: None,
-                colored_parents: Default::default()
+                colored_parents: Default::default(),
+                changed_parents: Default::default()
             }));
             self.unionfind.make_set_at(id);
         }

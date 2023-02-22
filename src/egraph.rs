@@ -1109,15 +1109,10 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         self.get_color(c_id).unwrap().assert_black_ids(self);
     }
 
-    #[cfg(feature = "eytans_assert")]
     fn memo_black_canonized(&self) {
         debug_assert!(self.memo.keys().all(|n| self.memo.contains_key(&self.canonize(n))));
     }
 
-    #[cfg(not(feature = "eytans_assert"))]
-    fn memo_black_canonized(&self) { }
-
-    #[cfg(feature = "eytans_assert")]
     fn colored_memo_canonized(&self) {
         if cfg!(debug_assertions) {
             for (n, colors) in self.colored_memo.iter() {
@@ -1149,9 +1144,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             }
         }
     }
-
-    #[cfg(not(feature = "eytans_assert"))]
-    fn colored_memo_canonized(&self) { }
 
     fn memo_all_canonized(&self) {
         self.memo_black_canonized();
