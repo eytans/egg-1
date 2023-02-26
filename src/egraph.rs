@@ -151,9 +151,8 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     /// The `Analysis` given when creating this `EGraph`.
     pub analysis: N,
     pub(crate) memo: IndexMap<L, Id>,
-    /* These need to be pub(crate) for `Deserialization` */
-    pub(crate) unionfind: UnionFind,
-    pub(crate) classes: SparseVec<EClass<L, N::Data>>,
+    unionfind: UnionFind,
+    classes: SparseVec<EClass<L, N::Data>>,
     dirty_unions: Vec<Id>,
     repairs_since_rebuild: usize,
     pub(crate) classes_by_op: IndexMap<OpId, IndexSet<Id>>,
@@ -1345,6 +1344,39 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     .map(|x| self.colored_find(c.get_id(), *x)).collect::<IndexSet<Id>>()).collect_vec();
             canonized.iter().map(|x| x.len()).sum::<usize>() != canonized.into_iter().flatten().unique().count()
         }).map(|c| c.get_id()).collect_vec()
+    }
+
+    /// For `Deserialization`
+    pub(crate) fn add_class<'a>(&'a mut self, id: Id) {
+        let idx = usize::from(id);
+        while self.classes.len() <= idx { self.classes.push(None) }
+        if self.classes[idx].is_none() {
+            let dummy_node = L::from_op_str("?", vec![]).unwrap();
+            self.classes[idx] = Some(Box::new(EClass {
+                id: id,
+                nodes: vec![],
+                data: N::make(self, &dummy_node),
+                parents: vec![],
+                color: None,
+                colored_parents: Default::default(),
+                changed_parents: Default::default()
+            }));
+            self.unionfind.make_set_at(id);
+        }
+    }
+
+    /// For `Deserialization`
+    pub(crate) fn add_node(&mut self, eclass: Id, enode: L) -> &L {
+        self.update_parents(eclass, &enode);
+        EGraph::<L, ()>::update_memo_from_parent(&mut self.memo, &enode, &eclass);
+        let class = self.classes[usize::from(eclass)].as_mut().unwrap();
+        class.nodes.push(enode);
+        return class.nodes.last().unwrap();
+    }
+
+    fn update_parents(&mut self, parent: Id, enode: &L) {
+        enode.children().iter().for_each(|u| self.classes[usize::from(*u)].as_mut().unwrap()
+            .parents.push((enode.clone(), parent)));
     }
 }
 

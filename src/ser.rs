@@ -22,13 +22,6 @@ pub trait Deserialization {
     fn from_tuples_text(in_: &mut impl Read) -> Result<(Self, ColorPalette)> where Self: Sized;
 }
 
-trait DeserializationHelper<L: Language> {
-    fn add_class<'a>(&'a mut self, id: Id);
-    fn add_node(&mut self, eclass: Id, enode: L) -> &L;
-    fn update_parents(&mut self, parent: Id, enode: &L);
-    fn line_to_tuple(line: &str) -> (String, Vec<Id>);
-}
-
 pub struct ColorPalette {
     colors: HashMap<Id, ColorId>
 }
@@ -54,7 +47,7 @@ impl Default for ColorPalette {
     fn default() -> Self { ColorPalette::new() }
 }
 
-impl<N: Analysis<SymbolLang>> Serialization for EGraph<SymbolLang, N> {
+impl Serialization for EGraph<SymbolLang, ()> {
     fn to_tuples(&self) -> Vec<(String, Vec<Id>)> {
         self.classes().flat_map(
             |ec| {
@@ -90,43 +83,10 @@ impl<N: Analysis<SymbolLang>> Serialization for EGraph<SymbolLang, N> {
     }
 }
 
-impl<L: Language, N: Analysis<L>> DeserializationHelper<L> for EGraph<L, N> {
-    fn add_class<'a>(&'a mut self, id: Id) {
-        let idx = usize::from(id);
-        while self.classes.len() <= idx { self.classes.push(None) }
-        if self.classes[idx].is_none() {
-            let dummy_node = L::from_op_str("?", vec![]).unwrap();
-            self.classes[idx] = Some(Box::new(EClass {
-                id: id,
-                nodes: vec![],
-                data: N::make(self, &dummy_node),
-                parents: vec![],
-                color: None,
-                colored_parents: Default::default(),
-                changed_parents: Default::default()
-            }));
-            self.unionfind.make_set_at(id);
-        }
-    }
-
-    fn add_node(&mut self, eclass: Id, enode: L) -> &L {
-        self.update_parents(eclass, &enode);
-        EGraph::<L, ()>::update_memo_from_parent(&mut self.memo, &enode, &eclass);
-        let class = self.classes[usize::from(eclass)].as_mut().unwrap();
-        class.nodes.push(enode);
-        return class.nodes.last().unwrap();
-    }
-
-    fn update_parents(&mut self, parent: Id, enode: &L) {
-        enode.children().iter().for_each(|u| self.classes[usize::from(*u)].as_mut().unwrap()
-            .parents.push((enode.clone(), parent)));
-    }
-
-    fn line_to_tuple(line: &str) -> (String, Vec<Id>) {
-        let v: Vec<_> = line.split(' ').filter(|s| s.len() > 0).collect();
-        (v[0].into(), v[1..].iter().map(
-            |u| Id::from(u.parse::<usize>().unwrap())).collect())
-    }
+fn line_to_tuple(line: &str) -> (String, Vec<Id>) {
+    let v: Vec<_> = line.split(' ').filter(|s| s.len() > 0).collect();
+    (v[0].into(), v[1..].iter().map(
+        |u| Id::from(u.parse::<usize>().unwrap())).collect())
 }
 
 impl Deserialization for EGraph<SymbolLang, ()> {
@@ -177,7 +137,7 @@ impl Deserialization for EGraph<SymbolLang, ()> {
         Ok(EGraph::<SymbolLang, ()>::from_tuples(BufReader::new(in_).lines()
             .map(|r| r.unwrap().trim().to_string())
             .filter(|s| s.len() > 0)
-            .map(|ln| EGraph::<SymbolLang, ()>::line_to_tuple(&ln)
+            .map(|ln| line_to_tuple(&ln)
         ).collect::<Vec<_>>().iter() ))
     }
 }
