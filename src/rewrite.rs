@@ -8,7 +8,9 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use itertools::Itertools;
 use log::{info, trace, warn};
-use invariants::iassert;
+use invariants::{dassert, iassert};
+use serde::serde_if_integer128;
+use crate::egraph::RuleApplication;
 
 /// A rewrite that searches for the lefthand side and applies the righthand side.
 ///
@@ -370,13 +372,34 @@ pub trait Applier<L, N>: std::fmt::Display
     /// [`Id`]: struct.Id.html
     /// [`apply_one`]: trait.Applier.html#method.apply_one
     fn apply_matches(&self, egraph: &mut EGraph<L, N>, matches: &[SearchMatches]) -> Vec<Id> {
+        egraph.update_rule_applications();
         let mut added = vec![];
         for mat in matches {
             for subst in &mat.substs {
-                let ids = self
+                // let mut ids = vec![];
+                let mut temp = self
                     .apply_one(egraph, mat.eclass, subst)
                     .into_iter()
-                    .filter_map(|id| {
+                    .map(|id| {
+                        let application = RuleApplication::new(
+                            subst.vec.iter().map(|x| x.1).collect_vec(),
+                            mat.eclass,
+                            self.to_string(),
+                        );
+                        if egraph.find(id) != mat.eclass && !egraph.rule_applications.insert(application.clone()) {
+                            dassert!(application.eclass == egraph.find(application.eclass));
+                            dassert!(application.vars.iter().all(|v| egraph.find(*v) == *v));
+                            println!("Gotya!!!! {}", &application.rule);
+                            println!("Rule application already exists: {:?}", application);
+                            // print memo
+                            println!("Memo: {:?}", egraph.memo);
+                            // print eclass
+                            println!("Eclass: {:?}", egraph[mat.eclass]);
+                            panic!("Rule application already exists: {:?}", application)
+                        }
+                        id
+                    }).collect_vec();
+                let ids = temp.into_iter().filter_map(|id| {
                         if !cfg!(feature = "colored") {
                             iassert!(subst.color().is_none());
                         }

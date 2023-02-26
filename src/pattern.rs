@@ -5,6 +5,7 @@ use std::fmt;
 use crate::{machine, Analysis, Applier, EGraph, Id, Language, RecExpr, Searcher, Subst, Var, OpId, ColorId};
 use std::fmt::Formatter;
 use std::str::FromStr;
+use std::sync::atomic::AtomicUsize;
 use indexmap::IndexSet;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -322,13 +323,21 @@ where
     }
 }
 
+static counter: AtomicUsize = AtomicUsize::new(0);
+
 fn apply_pat<L: Language, A: Analysis<L>>(
     pat: &[ENodeOrVar<L>],
     egraph: &mut EGraph<L, A>,
     subst: &Subst,
 ) -> Id {
     trace!("apply_rec {:2?} {:?}", pat, subst);
-
+    if subst.vec.len() == 3 && subst.vec[0].1 == Id(70) && subst.vec[1].1 == Id(46) && subst.vec[2].1 == Id(23) {
+        let x = counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        println!("Current counter is {}", x);
+        if x == 15 {
+            warn!("applying {:?} to {:?}", pat, subst);
+        }
+    }
     let result = match pat.last().unwrap() {
         ENodeOrVar::Var(w) => subst[*w],
         ENodeOrVar::ENode(e, _) => {

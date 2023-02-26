@@ -167,6 +167,22 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     pub(crate) colored_memo: IndexMap<L, IndexMap<ColorId, Id>>,
     #[cfg(feature = "colored")]
     pub colored_equivalences: IndexMap<Id, IndexSet<(ColorId, Id)>>,
+
+    pub rule_applications: IndexSet<RuleApplication>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, Eq, PartialEq)]
+pub struct RuleApplication {
+    pub vars: Vec<Id>,
+    // Target eclass/result
+    pub eclass: Id,
+    pub rule: String,
+}
+
+impl RuleApplication {
+    pub fn new(vars: Vec<Id>, eclass: Id, rule: String) -> Self {
+        Self { vars, eclass, rule }
+    }
 }
 
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
@@ -207,6 +223,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             repairs_since_rebuild: 0,
             colored_memo: Default::default(),
             colored_equivalences: Default::default(),
+            rule_applications: Default::default(),
         }
     }
 
@@ -430,6 +447,9 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 let tup = (enode.clone(), id);
                 self[child].parents.push(tup);
             });
+            if enode.children().iter().map(|x| x.0 as usize).collect_vec() == vec![23, 67, 38] {
+                println!("This is here! {:?}@{:?}", enode, id);
+            }
             assert!(self.memo.insert(enode, id).is_none());
 
             N::modify(self, id);
@@ -550,6 +570,9 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             }
             to.extend(from);
         }
+        if (id1.0 == 39 && id2.0 == 67) || (id1.0 == 67 && id2.0 == 39) {
+            warn!("union: {} {}", id1, id2);
+        }
 
         let (to, from) = self.unionfind.union(id1, id2);
         let changed = to != from;
@@ -634,6 +657,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     #[inline(never)]
     fn rebuild_classes(&mut self) -> usize {
+        self.update_rule_applications();
         let mut classes_by_op = std::mem::take(&mut self.classes_by_op);
         classes_by_op.values_mut().for_each(|ids| ids.clear());
 
@@ -752,6 +776,12 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         trimmed
     }
 
+    pub fn update_rule_applications(&mut self) {
+        self.rule_applications = std::mem::take(&mut self.rule_applications).into_iter().map(|x| {
+            RuleApplication::new(x.vars.into_iter().map(|v| self.find(v)).collect_vec(), self.find(x.eclass), x.rule)
+        }).collect();
+    }
+
     #[inline(never)]
     fn check_memo(&self) -> bool {
         let mut test_memo = IndexMap::new();
@@ -811,13 +841,20 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             }
             assert!(!todo.is_empty());
 
+            // TODO: Make sure we don't miss removing edges from memo
+            println!("Todo is {:?}", todo);
             for id in todo {
-                self.repairs_since_rebuild += 1;
-                for (n, p_id) in std::mem::take(&mut self[id].changed_parents) {
-                    if let Some(m_id) = self.memo.remove(&n) {
-                        assert_eq!(self.find(m_id), self.find(p_id));
-                    }
+                if id.0 == 39 {
+                    println!("Dealing with {}", id);
+                    println!("Parents are {:?}", self[id].parents);
+                    println!("Memo pointing here is: {:?}", self.memo.iter().filter(|(_, &v)| self.find(v) == id).collect_vec());
                 }
+                self.repairs_since_rebuild += 1;
+                // for (n, p_id) in std::mem::take(&mut self[id].changed_parents) {
+                //     if let Some(m_id) = self.memo.remove(&n) {
+                //         assert_eq!(self.find(m_id), self.find(p_id));
+                //     }
+                // }
                 let mut parents = std::mem::take(&mut self[id].parents)
                     .into_iter().map(|(n, e)| {
                     self.memo.remove(&n);
@@ -850,6 +887,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 self[id].parents = parents;
                 N::modify(self, id);
             }
+            println!("To union after round of rebuild: {:?}", to_union);
 
             for (id1, id2) in to_union.drain(..) {
                     let (to, did_something) = self.union_impl(id1, id2);
@@ -881,6 +919,9 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
 
     pub fn update_memo_from_parent(memo: &mut IndexMap<L, Id>, n: &L, e: &Id) -> Option<(Id, Id)> {
+        if n.children().iter().map(|x| x.0 as usize).collect_vec() == vec![23, 67, 38] {
+           println!("This is here! {:?}@{:?}", n, e);
+        }
         if let Some(old) = memo.insert(n.clone(), *e) {
             return Some((old, *e));
         }
