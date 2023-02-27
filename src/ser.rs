@@ -141,3 +141,34 @@ impl Deserialization for EGraph<SymbolLang, ()> {
         ).collect::<Vec<_>>().iter() ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+    use std::io::BufReader;
+    use std::str::FromStr;
+    use crate::{EGraph, RecExpr, Serialization, Deserialization, SymbolLang};
+    use crate::ser::ColorPalette;
+
+    #[test]
+    fn basic_term_ser() {
+        let mut g = EGraph::<SymbolLang, ()>::new(());
+        let exp1: RecExpr<SymbolLang> = RecExpr::from_str("(:: y (rev l))").unwrap();
+        let exp2: RecExpr<SymbolLang> = RecExpr::from_str("(rev (:+ l y))").unwrap();
+        let u1 = g.add_expr(&exp1);
+        let u2 = g.add_expr(&exp2);
+
+        // Serialize to text
+        let mut v = Vec::<u8>::new();
+        g.to_tuples_text(&ColorPalette::new(), &mut v)
+            .unwrap();
+
+        // Deserialize
+        let (mut g, pal) =
+            EGraph::<SymbolLang, ()>::from_tuples_text(
+                &mut io::Cursor::new(v)).unwrap();
+        // Check that original exprs are still there
+        assert_eq!(g.add_expr(&exp2), u2);
+        assert_eq!(g.add_expr(&exp1), u1);
+    }
+}
