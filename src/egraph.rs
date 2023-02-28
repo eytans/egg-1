@@ -4,6 +4,7 @@ use std::{
 };
 
 use std::iter::FromIterator;
+use std::rc::Rc;
 use indexmap::{IndexMap, IndexSet};
 use invariants::{AssertConfig, AssertLevel, dassert, iassert, tassert, wassert};
 use log::*;
@@ -293,11 +294,19 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     ///
     /// [`Dot`]: struct.Dot.html
     pub fn dot(&self) -> Dot<L, N> {
-        Dot { egraph: self, color: None , print_color: "blue".to_string() }
+        Dot { egraph: self, color: None , print_color: "blue".to_string(), pred: None }
+    }
+
+    pub fn filtered_dot(&self, filter: impl Fn(&EGraph<L, N>, Id) -> bool +'static) -> Dot<L, N> {
+        Dot { egraph: self, color: None, pred: Some(Rc::new(filter)), print_color: "blue".to_string() }
     }
 
     pub fn colored_dot(&self, color: ColorId) -> Dot<L, N> {
-        Dot { egraph: self, color: Some(color), print_color: "blue".to_string() }
+        Dot { egraph: self, color: Some(color), print_color: "blue".to_string(), pred: None }
+    }
+
+    pub fn colored_filtered_dot(&self, color: ColorId, filter: impl Fn(&EGraph<L, N>, Id) -> bool + 'static) -> Dot<L, N> {
+        Dot { egraph: self, color: Some(color), pred: Some(Rc::new(filter)), print_color: "blue".to_string() }
     }
 }
 
