@@ -543,6 +543,12 @@ pub struct SymbolLang {
     pub children: Vec<Id>,
 }
 
+impl Default for SymbolLang {
+    fn default() -> Self {
+        SymbolLang::from_op_str("?", vec![]).unwrap()
+    }
+}
+
 impl SymbolLang {
     /// Create an enode with the given string and children
     pub fn new(op: impl Into<Symbol>, children: Vec<Id>) -> Self {
@@ -589,7 +595,7 @@ impl Language for SymbolLang {
 #[cfg(test)]
 mod test {
     use itertools::Itertools;
-    use crate::util;
+    use crate::{EGraph, SymbolLang, util};
 
     #[test]
     #[ignore]
@@ -645,6 +651,8 @@ mod test {
         let serialized = serde_cbor::to_vec(&egraph).unwrap();
         // Deserialize the egraph
         util::clear_strings();
+        let d: EGraph<SymbolLang, ()> = Default::default();
+        println!("{:?}", d);
         let deserialized: EGraph<SymbolLang, ()> = serde_cbor::from_slice(&serialized).unwrap();
         // Get the strings again
         let strings2 = util::get_strings().lock().unwrap().clone();
