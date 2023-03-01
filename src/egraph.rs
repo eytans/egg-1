@@ -9,7 +9,7 @@ use indexmap::{IndexMap, IndexSet};
 use invariants::{AssertConfig, AssertLevel, dassert, iassert, tassert, wassert};
 use log::*;
 
-use crate::OpId;
+use crate::{OpId, Var};
 use crate::Subst;
 use crate::UnionFind;
 use crate::Searcher;
@@ -168,6 +168,8 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     pub(crate) colored_memo: IndexMap<L, IndexMap<ColorId, Id>>,
     #[cfg(feature = "colored")]
     pub colored_equivalences: IndexMap<Id, IndexSet<(ColorId, Id)>>,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub filterer: Option<Rc<dyn Fn(&EGraph<L, N>, Id) -> bool + 'static> >,
 }
 
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
@@ -208,6 +210,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             repairs_since_rebuild: 0,
             colored_memo: Default::default(),
             colored_equivalences: Default::default(),
+            filterer: None,
         }
     }
 

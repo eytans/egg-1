@@ -8,7 +8,7 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use itertools::Itertools;
 use log::{info, trace, warn};
-use invariants::iassert;
+use invariants::{dassert, iassert};
 
 /// A rewrite that searches for the lefthand side and applies the righthand side.
 ///
@@ -86,7 +86,7 @@ impl<L: Language, N: Analysis<L>> Rewrite<L, N> {
     }
 }
 
-impl<L: Language, N: Analysis<L>> Rewrite<L, N> {
+impl<L: Language + 'static, N: Analysis<L> + 'static> Rewrite<L, N> {
     /// Create a new [`Rewrite`]. You typically want to use the
     /// [`rewrite!`] macro instead.
     ///
@@ -354,8 +354,8 @@ pub trait Searcher<L, N>: std::fmt::Display
 /// [`Analysis`]: trait.Analysis.html
 pub trait Applier<L, N>: std::fmt::Display
     where
-        L: Language,
-        N: Analysis<L>,
+        L: Language + 'static,
+        N: Analysis<L> +'static,
 {
     /// Apply many substititions.
     ///
@@ -453,8 +453,8 @@ pub struct ConditionalApplier<C, A, L, N> {
 }
 
 impl<L, N, C, A> ConditionalApplier<C, A, L, N> where
-    L: Language,
-    N: Analysis<L>,
+    L: Language + 'static,
+    N: Analysis<L> +'static,
     C: Condition<L, N>,
     A: Applier<L, N>,
 {
@@ -503,8 +503,8 @@ impl<L, N, C, A> ConditionalApplier<C, A, L, N> where
 }
 
 impl<L, N, C, A> std::fmt::Display for ConditionalApplier<C, A, L, N> where
-    L: Language,
-    N: Analysis<L>,
+    L: Language + 'static,
+    N: Analysis<L> + 'static,
     C: Condition<L, N>,
     A: Applier<L, N>, {
         fn fmt( & self, f: & mut Formatter < '_ > ) -> std::fmt::Result {
@@ -514,10 +514,10 @@ impl<L, N, C, A> std::fmt::Display for ConditionalApplier<C, A, L, N> where
 
 impl<C, A, N, L> Applier<L, N> for ConditionalApplier<C, A, L, N>
     where
-        L: Language,
+        L: Language + 'static,
         C: Condition<L, N>,
         A: Applier<L, N>,
-        N: Analysis<L>,
+        N: Analysis<L> + 'static,
 {
     // TODO: sort out an API for this
     fn apply_one(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> Vec<Id> {
@@ -688,8 +688,8 @@ impl<L: Language> ConditionEqual<Pattern<L>, Pattern<L>> {
 
 impl<L, N, A1, A2> Condition<L, N> for ConditionEqual<A1, A2>
     where
-        L: Language,
-        N: Analysis<L>,
+        L: Language + 'static,
+        N: Analysis<L> + 'static,
         A1: Applier<L, N>,
         A2: Applier<L, N>,
 {

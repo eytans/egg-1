@@ -309,8 +309,8 @@ impl fmt::Display for SearchMatches {
 }
 impl<L, A> Applier<L, A> for Pattern<L>
 where
-    L: Language,
-    A: Analysis<L>,
+    L: Language + 'static,
+    A: Analysis<L> + 'static,
 {
     fn apply_one(&self, egraph: &mut EGraph<L, A>, _: Id, subst: &Subst) -> Vec<Id> {
         let id = apply_pat(self.ast.as_ref(), egraph, subst);
