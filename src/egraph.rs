@@ -171,6 +171,29 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
 
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     pub(crate) fn inner_new(uf: UnionFind, classes: Vec<Option<Box<EClass<SymbolLang, ()>>>>, memo: IndexMap<SymbolLang, Id>) -> EGraph<SymbolLang, ()> {
+        for c in classes.iter()
+            .filter(|c| c.is_some())
+            .map(|c| c.as_ref().unwrap()) {
+            for n in &c.nodes {
+                // Check children are canonized
+                for c in n.children.iter() {
+                    assert_eq!(uf.find(*c), *c);
+                }
+                // Check all parents exist as expected
+                for ch in n.children.iter() {
+                    assert!(classes[ch.0 as usize].as_ref().unwrap().parents.iter()
+                        .any(|(n1, id1)| n1 == n));
+                }
+                // Check memo
+                assert_eq!(memo.get(n), Some(&c.id));
+            }
+            // No lingerings in memo:
+            assert_eq!(memo.len(),
+                       classes.iter()
+                           .filter(|c| c.is_some())
+                           .map(|c| c.as_ref().unwrap().nodes.len())
+                           .sum::<usize>());
+        }
         EGraph {
             analysis: (),
             memo,
