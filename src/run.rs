@@ -171,8 +171,8 @@ pub struct Runner<L: Language, N: Analysis<L>, IterData = ()> {
 
 impl<L, N> Default for Runner<L, N, ()>
 where
-    L: Language,
-    N: Analysis<L> + Default,
+    L: Language + 'static,
+    N: Analysis<L> + Default + 'static,
 {
     fn default() -> Self {
         Runner::new(N::default())
@@ -240,8 +240,8 @@ type RunnerResult<T> = std::result::Result<T, StopReason>;
 
 impl<L, N, IterData> Runner<L, N, IterData>
 where
-    L: Language,
-    N: Analysis<L>,
+    L: Language + 'static,
+    N: Analysis<L> + 'static,
     IterData: IterationData<L, N>,
 {
     /// Create a new `Runner` with the given analysis and default parameters.
@@ -549,8 +549,8 @@ the [`EGraph`] and dominating how much time is spent while running the
 #[allow(unused_variables)]
 pub trait RewriteScheduler<L, N>
 where
-    L: Language,
-    N: Analysis<L>,
+    L: Language + 'static,
+    N: Analysis<L> + 'static,
 {
     /// Whether or not the [`Runner`](struct.Runner.html) is allowed
     /// to say it has saturated.
@@ -609,8 +609,8 @@ pub struct SimpleScheduler;
 
 impl<L, N> RewriteScheduler<L, N> for SimpleScheduler
 where
-    L: Language,
-    N: Analysis<L>,
+    L: Language + 'static,
+    N: Analysis<L> + 'static,
 {
 }
 
@@ -677,8 +677,8 @@ impl Default for BackoffScheduler {
 
 impl<L, N> RewriteScheduler<L, N> for BackoffScheduler
 where
-    L: Language,
-    N: Analysis<L>,
+    L: Language + 'static,
+    N: Analysis<L> + 'static,
 {
     fn can_stop(&mut self, iteration: usize) -> bool {
         let n_stats = self.stats.len();

@@ -56,7 +56,7 @@ impl std::fmt::Display for UnionApplier {
     }
 }
 
-impl<L: Language, N: Analysis<L>> Applier<L, N> for UnionApplier {
+impl<L: Language + 'static, N: Analysis<L> + 'static> Applier<L, N> for UnionApplier {
     fn apply_matches(&self, egraph: &mut EGraph<L, N>, matches: &[SearchMatches]) -> Vec<Id> {
         let mut added = vec![];
         for mat in matches {
