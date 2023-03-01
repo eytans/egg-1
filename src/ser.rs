@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::io::{Read, Write, BufReader, Result, BufRead};
+use indexmap::IndexMap;
 use itertools::Itertools;
 use crate::{EGraph, Analysis, Language, Id, EClass, SymbolLang, ColorId};
+use crate::unionfind::UnionFind;
 
 /// A trait for EGraphs that can be serialized.
 pub trait Serialization {
@@ -22,13 +24,14 @@ pub trait Deserialization {
     fn from_tuples_text(in_: &mut impl Read) -> Result<(Self, ColorPalette)> where Self: Sized;
 }
 
+#[derive(Debug, Clone)]
 pub struct ColorPalette {
-    colors: HashMap<Id, ColorId>
+    colors: IndexMap<Id, ColorId>
 }
 
 impl ColorPalette {
     fn new() -> Self {
-        ColorPalette { colors: HashMap::default() }
+        ColorPalette { colors: Default::default() }
     }
 
     fn get<L: Language, N: Analysis<L>>(&mut self, g: &mut EGraph<L, N>, color: Id) -> ColorId {
@@ -92,18 +95,19 @@ fn line_to_tuple(line: &str) -> (String, Vec<Id>) {
 impl Deserialization for EGraph<SymbolLang, ()> {
 
     fn from_tuples<'a>(tuples: impl Iterator<Item=&'a (impl ToString + 'a, Vec<Id>)>) -> (Self, ColorPalette) {
-        let mut g = EGraph::<SymbolLang, ()>::default();
+        let mut builder = EGraphBuilder::default();
         let mut leaf_ops = Vec::new();
         let mut color_unions = Vec::new();
         for (op, vertices) in tuples {
             let op = op.to_string();
             if op == "?~" { color_unions.push(vertices.clone()); continue; }
-            for id in vertices { g.add_class(*id); }
+            for id in vertices { builder.add_class(*id); }
             let target = vertices[0];
             let sources = vertices[1..].to_vec();
-            let enode = g.add_node(target, SymbolLang::new(op, sources));
+            let enode = builder.add_node(target, SymbolLang::new(op, sources));
             if enode.is_leaf() { leaf_ops.push(enode.op_id()) }
         }
+        let mut g = builder.build();
         //g.rebuild_classes();
         g.rebuild();
         for op in leaf_ops {
@@ -142,12 +146,58 @@ impl Deserialization for EGraph<SymbolLang, ()> {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+struct EGraphBuilder {
+    unionfind: UnionFind,
+    classes: Vec<Option<Box<EClass<SymbolLang, ()>>>>,
+    memo: IndexMap<SymbolLang, Id>,
+    palette: ColorPalette,
+}
+
+impl EGraphBuilder {
+    /// For `Deserialization`
+    pub(crate) fn add_class<'a>(&'a mut self, id: Id) {
+        let idx = usize::from(id);
+        while self.classes.len() <= idx { self.classes.push(None) }
+        if self.classes[idx].is_none() {
+            self.classes[idx] = Some(Box::new(EClass {
+                id: id,
+                nodes: vec![],
+                data: (),
+                parents: vec![],
+                color: None,
+                colored_parents: Default::default(),
+                changed_parents: Default::default()
+            }));
+            self.unionfind.make_set_at(id);
+        }
+    }
+
+    /// For `Deserialization`
+    pub(crate) fn add_node(&mut self, eclass: Id, enode: SymbolLang) -> &SymbolLang {
+        self.update_parents(eclass, &enode);
+        EGraph::<SymbolLang, ()>::update_memo_from_parent(&mut self.memo, &enode, &eclass);
+        let class = self.classes[usize::from(eclass)].as_mut().unwrap();
+        class.nodes.push(enode);
+        return class.nodes.last().unwrap();
+    }
+
+    fn update_parents(&mut self, parent: Id, enode: &SymbolLang) {
+        enode.children().iter().for_each(|u| self.classes[usize::from(*u)].as_mut().unwrap()
+            .parents.push((enode.clone(), parent)));
+    }
+
+    pub fn build(self) -> EGraph<SymbolLang, ()> {
+        EGraph::<SymbolLang, ()>::inner_new(self.unionfind, self.classes, self.memo)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::io;
     use std::io::BufReader;
     use std::str::FromStr;
-    use crate::{EGraph, RecExpr, Serialization, Deserialization, SymbolLang};
+    use crate::{EGraph, RecExpr, Serialization, Deserialization, SymbolLang, rewrite, Language, Runner};
     use crate::ser::ColorPalette;
 
     #[test]
@@ -170,5 +220,36 @@ mod tests {
         // Check that original exprs are still there
         assert_eq!(g.add_expr(&exp2), u2);
         assert_eq!(g.add_expr(&exp1), u1);
+    }
+
+    #[test]
+    fn ser_after_rewrite() {
+        // Define rewrites for addition
+        let mut rws = vec![];
+        rws.extend(rewrite!("add-base"; "(+ Z x)" <=> "x"));
+        rws.extend(rewrite!("add-ind"; "(+ (S x) y)" <=> "(S (+ y x))"));
+        rws.extend(rewrite!("add-comm"; "(+ x y)" <=> "(+ y x)"));
+
+        let mut g = EGraph::<SymbolLang, ()>::new(());
+        // Add the number 10 from successors
+        let num10_exp = RecExpr::from_str("(S (S (S (S (S (S (S (S (S (S Z))))))))))").unwrap();
+        let num10 = g.add_expr(&num10_exp);
+        let exp1_exp = RecExpr::from_str("(+ (S Z) (S Z))").unwrap();
+        let exp1 = g.add_expr(&exp1_exp);
+        g.add(SymbolLang::from_op_str("+", vec![num10, exp1]).unwrap());
+        g = Runner::default().with_egraph(g).run(&rws).egraph;
+
+        // Serialize to text
+        let mut v = Vec::<u8>::new();
+        g.to_tuples_text(&ColorPalette::new(), &mut v)
+            .unwrap();
+
+        // Deserialize
+        let (mut g, pal) =
+            EGraph::<SymbolLang, ()>::from_tuples_text(
+                &mut io::Cursor::new(v)).unwrap();
+        // Check that original exprs are still there
+        assert_eq!(g.add_expr(&num10_exp), num10);
+        assert_eq!(g.add_expr(&exp1_exp), exp1);
     }
 }

@@ -8,7 +8,7 @@ use indexmap::{IndexMap, IndexSet};
 use invariants::{AssertConfig, AssertLevel, dassert, iassert, tassert, wassert};
 use log::*;
 
-use crate::OpId;
+use crate::{OpId, SymbolLang};
 use crate::Subst;
 use crate::UnionFind;
 use crate::Searcher;
@@ -167,6 +167,26 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     pub(crate) colored_memo: IndexMap<L, IndexMap<ColorId, Id>>,
     #[cfg(feature = "colored")]
     pub colored_equivalences: IndexMap<Id, IndexSet<(ColorId, Id)>>,
+}
+
+impl<L: Language, N: Analysis<L>> EGraph<L, N> {
+    pub(crate) fn inner_new(uf: UnionFind, classes: Vec<Option<Box<EClass<SymbolLang, ()>>>>, memo: IndexMap<SymbolLang, Id>) -> EGraph<SymbolLang, ()> {
+        EGraph {
+            analysis: (),
+            memo,
+            unionfind: uf,
+            classes,
+            dirty_unions: vec![],
+            repairs_since_rebuild: 0,
+            classes_by_op: IndexMap::new(),
+            #[cfg(feature = "colored")]
+            colors: vec![],
+            #[cfg(feature = "colored")]
+            colored_memo: IndexMap::new(),
+            #[cfg(feature = "colored")]
+            colored_equivalences: IndexMap::new(),
+        }
+    }
 }
 
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
