@@ -154,6 +154,10 @@ impl Color {
         self.union_map.get(&self.union_find.find(id))
     }
 
+    pub fn black_reps(&self) -> impl Iterator<Item=&Id> {
+        self.union_map.keys().into_iter()
+    }
+
     pub fn parents(&self) -> &Vec<ColorId> {
         &self.parents
     }

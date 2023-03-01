@@ -9,7 +9,7 @@ use indexmap::{IndexMap, IndexSet};
 use invariants::{AssertConfig, AssertLevel, dassert, iassert, tassert, wassert};
 use log::*;
 
-use crate::{OpId, Var};
+use crate::{OpId, SymbolLang, Var};
 use crate::Subst;
 use crate::UnionFind;
 use crate::Searcher;
@@ -170,6 +170,49 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     pub colored_equivalences: IndexMap<Id, IndexSet<(ColorId, Id)>>,
     #[serde(skip_serializing, skip_deserializing)]
     pub filterer: Option<Rc<dyn Fn(&EGraph<L, N>, Id) -> bool + 'static> >,
+}
+
+impl<L: Language, N: Analysis<L>> EGraph<L, N> {
+    pub(crate) fn inner_new(uf: UnionFind, classes: Vec<Option<Box<EClass<SymbolLang, ()>>>>, memo: IndexMap<SymbolLang, Id>) -> EGraph<SymbolLang, ()> {
+        for c in classes.iter()
+            .filter(|c| c.is_some())
+            .map(|c| c.as_ref().unwrap()) {
+            for n in &c.nodes {
+                // Check children are canonized
+                for c in n.children.iter() {
+                    assert_eq!(uf.find(*c), *c);
+                }
+                // Check all parents exist as expected
+                for ch in n.children.iter() {
+                    assert!(classes[ch.0 as usize].as_ref().unwrap().parents.iter()
+                        .any(|(n1, id1)| n1 == n));
+                }
+                // Check memo
+                assert_eq!(memo.get(n), Some(&c.id));
+            }
+            // No lingerings in memo:
+            assert_eq!(memo.len(),
+                       classes.iter()
+                           .filter(|c| c.is_some())
+                           .map(|c| c.as_ref().unwrap().nodes.len())
+                           .sum::<usize>());
+        }
+        EGraph {
+            analysis: (),
+            memo,
+            unionfind: uf,
+            classes,
+            dirty_unions: vec![],
+            repairs_since_rebuild: 0,
+            classes_by_op: IndexMap::new(),
+            #[cfg(feature = "colored")]
+            colors: vec![],
+            #[cfg(feature = "colored")]
+            colored_memo: IndexMap::new(),
+            #[cfg(feature = "colored")]
+            colored_equivalences: IndexMap::new(),
+        }
+    }
 }
 
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
@@ -1120,7 +1163,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         self.get_color(c_id).unwrap().assert_black_ids(self);
     }
 
-
     fn memo_black_canonized(&self) {
         debug_assert!(self.memo.keys().all(|n| self.memo.contains_key(&self.canonize(n))));
     }
@@ -1357,6 +1399,39 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     .map(|x| self.colored_find(c.get_id(), *x)).collect::<IndexSet<Id>>()).collect_vec();
             canonized.iter().map(|x| x.len()).sum::<usize>() != canonized.into_iter().flatten().unique().count()
         }).map(|c| c.get_id()).collect_vec()
+    }
+
+    /// For `Deserialization`
+    pub(crate) fn add_class<'a>(&'a mut self, id: Id) {
+        let idx = usize::from(id);
+        while self.classes.len() <= idx { self.classes.push(None) }
+        if self.classes[idx].is_none() {
+            let dummy_node = L::from_op_str("?", vec![]).unwrap();
+            self.classes[idx] = Some(Box::new(EClass {
+                id: id,
+                nodes: vec![],
+                data: N::make(self, &dummy_node),
+                parents: vec![],
+                color: None,
+                colored_parents: Default::default(),
+                changed_parents: Default::default()
+            }));
+            self.unionfind.make_set_at(id);
+        }
+    }
+
+    /// For `Deserialization`
+    pub(crate) fn add_node(&mut self, eclass: Id, enode: L) -> &L {
+        self.update_parents(eclass, &enode);
+        EGraph::<L, ()>::update_memo_from_parent(&mut self.memo, &enode, &eclass);
+        let class = self.classes[usize::from(eclass)].as_mut().unwrap();
+        class.nodes.push(enode);
+        return class.nodes.last().unwrap();
+    }
+
+    fn update_parents(&mut self, parent: Id, enode: &L) {
+        enode.children().iter().for_each(|u| self.classes[usize::from(*u)].as_mut().unwrap()
+            .parents.push((enode.clone(), parent)));
     }
 }
 
