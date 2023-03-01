@@ -19,6 +19,12 @@ impl UnionFind {
         id
     }
 
+    /// This is needed for deserialization
+    pub(crate) fn make_set_at(&mut self, id: Id) -> Id {
+        while self.parents.len() <= usize::from(id) { self.make_set(); }
+        id
+    }
+
     #[inline(always)]
     fn parent(&self, query: Id) -> Id {
         self.parents[usize::from(query)].get()

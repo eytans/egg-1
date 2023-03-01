@@ -42,6 +42,7 @@ mod machine;
 mod pattern;
 mod rewrite;
 mod run;
+mod ser;
 mod subst;
 mod unionfind;
 mod util;
@@ -118,6 +119,7 @@ pub use {
     rewrite::{Applier, ImmutableCondition, Condition, ConditionEqual, ConditionalApplier, Rewrite, Searcher, RcImmutableCondition, ToCondRc},
     // rewrite::{Applier, ImmutableCondition, ImmutableFunctionCondition, Condition, ConditionEqual, ConditionalApplier, Rewrite, Searcher, RcImmutableCondition, ToCondRc},
     run::*,
+    ser::{Serialization, Deserialization},
     subst::{Subst, Var},
     util::*,
     eggstentions::*,
