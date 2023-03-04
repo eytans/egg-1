@@ -17,7 +17,7 @@ use std::ops::Deref;
 use std::rc::Rc;
 use std::time::Instant;
 use indexmap::{IndexMap, IndexSet};
-use log::warn;
+use log::{trace, warn};
 
 
 
@@ -197,13 +197,18 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> Matcher<L, N> for Rc<dyn M
 pub struct DisjointMatcher<L: Language, N: Analysis<L>> {
     pub(crate) matcher1: Rc<dyn Matcher<L, N>>,
     pub(crate) matcher2: Rc<dyn Matcher<L, N>>,
+    #[cfg(debug_assertions)]
+    pub desc: String,
 }
 
 impl<L: Language + 'static, N: Analysis<L> + 'static> DisjointMatcher<L, N> {
     pub fn new(matcher1: Rc<dyn Matcher<L, N>>, matcher2: Rc<dyn Matcher<L, N>>) -> Self {
+        let desc = format!("{} != {}", matcher1.describe(), matcher2.describe());
         DisjointMatcher {
             matcher1,
             matcher2,
+            #[cfg(debug_assertions)]
+            desc,
         }
     }
 
@@ -539,11 +544,18 @@ impl<A: Searcher<SymbolLang, ()> + PrettyString> PrettyString for MultiDiffSearc
 
 pub struct DisjointMatchCondition<L: Language, N: Analysis<L>> {
     disjointer: DisjointMatcher<L, N>,
+    #[cfg(debug_assertions)]
+    desc: String,
 }
 
 impl<L: Language + 'static, N: Analysis<L> + 'static> DisjointMatchCondition<L, N> {
     pub fn new(disjointer: DisjointMatcher<L, N>) -> Self {
-        DisjointMatchCondition { disjointer }
+        let desc = disjointer.describe();
+        DisjointMatchCondition {
+            disjointer,
+            #[cfg(debug_assertions)]
+            desc,
+        }
     }
 }
 
@@ -551,14 +563,20 @@ impl<L: Language, N: Analysis<L>> ToCondRc<L, N> for DisjointMatchCondition<L, N
 
 impl<L: Language + 'static, N: Analysis<L> + 'static> ImmutableCondition<L, N> for DisjointMatchCondition<L, N> {
     fn check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
-        self.disjointer.is_disjoint(egraph, subst)
+        trace!("DisjointMatchCondition::{}({}, {}) - Start", self.describe(), eclass, subst);
+        let res = self.disjointer.is_disjoint(egraph, subst);
+        trace!("DisjointMatchCondition::{}({}, {}) - End - {}", self.describe(), eclass, subst, res);
+        res
     }
 
     fn colored_check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
         // I think this is always like check_imm because adding colored assumptions will just
         // create sets that are less disjoint.
-        self.check_imm(egraph, eclass, subst)
-            .then(|| subst.color().map(|c| vec![c]).unwrap_or(vec![]))
+        trace!("DisjointMatchCondition::colored::{}({}, {}) - Start", self.describe(), eclass, subst);
+        let res = self.check_imm(egraph, eclass, subst)
+            .then(|| subst.color().map(|c| vec![c]).unwrap_or(vec![]));
+        trace!("DisjointMatchCondition::colored::{}({}, {}) - End - {:?}", self.describe(), eclass, subst, res);
+        res
     }
 
     fn describe(&self) -> String {
@@ -580,18 +598,24 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> ToCondRc<L, N> for Matcher
 
 impl<L: Language + 'static, N: Analysis<L> + 'static> ImmutableCondition<L, N> for MatcherContainsCondition<L, N> {
     fn check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
+        trace!("MatcherContainsCondition::{}({}, {}) - Start", ImmutableCondition::describe(self), eclass, subst);
         let fixed = egraph.opt_colored_find(subst.color(), eclass);
-        (self.matcher.match_(egraph, subst)).iter()
+        let res = (self.matcher.match_(egraph, subst)).iter()
             .map(|id| egraph.opt_colored_find(subst.color(), *id))
-            .any(|id| id == fixed)
+            .any(|id| id == fixed);
+        trace!("MatcherContainsCondition::{}({}, {}) - End - {}", ImmutableCondition::describe(self), eclass, subst, res);
+        res
     }
 
     fn colored_check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
+        trace!("MatcherContainsCondition::colored::{}({}, {}) - Start", ImmutableCondition::describe(self), eclass, subst);
         let fixed = egraph.opt_colored_find(subst.color(), eclass);
         let mut colors = Vec::new();
         for id in self.matcher.match_(egraph, subst) {
             if egraph.opt_colored_find(subst.color(), id) == fixed {
-                return Some(subst.color().map(|c| vec![c]).unwrap_or(vec![]));
+                let res = Some(subst.color().map(|c| vec![c]).unwrap_or(vec![]));
+                trace!("MatcherContainsCondition::colored::{}({}, {}) - End - {:?}", ImmutableCondition::describe(self), eclass, subst, res);
+                return res;
             }
             if subst.color().is_none() {
                 if let Some(eqs) = egraph.colored_equivalences.get(&id) {
@@ -605,11 +629,13 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> ImmutableCondition<L, N> f
                 }
             }
         }
-        if colors.is_empty() {
+        let res = if colors.is_empty() {
             None
         } else {
             Some(colors)
-        }
+        };
+        trace!("MatcherContainsCondition::colored::{}({}, {}) - End - {:?}", ImmutableCondition::describe(self), eclass, subst, res);
+        res
     }
 
     fn describe(&self) -> String {
@@ -710,6 +736,7 @@ impl<L: 'static + Language, N: 'static + Analysis<L>> Searcher<L, N> for Filteri
     }
 
     fn search(&self, egraph: &EGraph<L, N>) -> Vec<SearchMatches> {
+        trace!("FilteringSearcher::search({})", self.pretty_string());
         let origin = self.searcher.search(egraph);
         let res = self.predicate.filter(egraph, origin);
         res

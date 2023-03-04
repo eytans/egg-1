@@ -211,6 +211,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             colored_memo: IndexMap::new(),
             #[cfg(feature = "colored")]
             colored_equivalences: IndexMap::new(),
+            filterer: None
         }
     }
 }

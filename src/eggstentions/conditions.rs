@@ -26,11 +26,15 @@ impl<L: Language, N: Analysis<L>> ToCondRc<L, N> for AndCondition<L, N> {}
 
 impl<L: Language, N: Analysis<L>> ImmutableCondition<L, N> for AndCondition<L, N> {
     fn check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
-        self.conditions.iter().all(|c| c.check_imm(egraph, eclass, subst))
+        trace!("AndCondition::{}({:?}, {:?} - Start)", self.describe(), eclass, subst);
+        let res = self.conditions.iter().all(|c| c.check_imm(egraph, eclass, subst));
+        trace!("AndCondition::{}({:?}, {:?}) = {:?}", self.describe(), eclass, subst, res);
+        res
     }
 
     fn colored_check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
-        self.conditions.iter()
+        trace!("AndCondition::colored::{}({:?}, {:?} - Start)", self.describe(), eclass, subst);
+        let res = self.conditions.iter()
             .map(|c|
                 c.colored_check_imm(egraph, eclass, subst))
             .fold1(|a, b| a.and_then(|x|
@@ -46,7 +50,9 @@ impl<L: Language, N: Analysis<L>> ImmutableCondition<L, N> for AndCondition<L, N
                             .filter(|(c, v)| v.len() > 1)
                             .map(|(c, _)| c).collect_vec())
                     }
-                }))).flatten()
+                }))).flatten();
+        trace!("AndCondition::colored::{}({:?}, {:?}) = {:?}", self.describe(), eclass, subst, res);
+        res
     }
 
     fn vars(&self) -> Vec<Var> {
@@ -70,11 +76,15 @@ impl<L: Language, N: Analysis<L>> MutAndCondition<L, N> {
 
 impl<L: Language, N: Analysis<L>> Condition<L, N> for MutAndCondition<L, N> {
     fn check(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
-        self.conditions.iter().all(|c| c.check(egraph, eclass, subst))
+        trace!("MutAndCondition::{}({:?}, {:?} - Start)", self.describe(), eclass, subst);
+        let res = self.conditions.iter().all(|c| c.check(egraph, eclass, subst));
+        trace!("MutAndCondition::{}({:?}, {:?}) = {:?}", self.describe(), eclass, subst, res);
+        res
     }
 
     fn check_colored(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
-        self.conditions.iter()
+        trace!("MutAndCondition::colored::{}({:?}, {:?} - Start)", self.describe(), eclass, subst);
+        let res = self.conditions.iter()
             .map(|c| c.check_colored(egraph, eclass, subst))
             .fold1(|a, b| a.and_then(|x|
                 b.and_then(|y| {
@@ -89,7 +99,9 @@ impl<L: Language, N: Analysis<L>> Condition<L, N> for MutAndCondition<L, N> {
                             .filter(|(c, v)| v.len() > 1)
                             .map(|(c, _)| c).collect_vec())
                     }
-                }))).flatten()
+                }))).flatten();
+        trace!("MutAndCondition::colored::{}({:?}, {:?}) = {:?}", self.describe(), eclass, subst, res);
+        res
     }
 
     fn vars(&self) -> Vec<Var> {
@@ -115,14 +127,18 @@ impl<L: Language, N: Analysis<L>> ToCondRc<L, N> for OrCondition<L, N> {}
 
 impl<L: Language, N: Analysis<L>> ImmutableCondition<L, N> for OrCondition<L, N> {
     fn check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
-        self.conditions.is_empty() || self.conditions.iter()
-            .any(|c| c.check_imm(egraph, eclass, subst))
+        trace!("OrCondition::{}({:?}, {:?} - Start)", self.describe(), eclass, subst);
+        let res = self.conditions.is_empty() || self.conditions.iter()
+            .any(|c| c.check_imm(egraph, eclass, subst));
+        trace!("OrCondition::{}({:?}, {:?}) = {:?}", self.describe(), eclass, subst, res);
+        res
     }
 
     fn colored_check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
         if self.conditions.is_empty() {
             return Some(vec![]);
         }
+        trace!("OrCondition::colored::{}({:?}, {:?} - Start)", self.describe(), eclass, subst);
         let mut collected = HashSet::<ColorId>::default();
         for r in self.conditions.iter().map(|c|
             c.colored_check_imm(egraph, eclass, subst)) {
@@ -134,6 +150,7 @@ impl<L: Language, N: Analysis<L>> ImmutableCondition<L, N> for OrCondition<L, N>
             }
         }
         let res = (!collected.is_empty()).then(|| collected.into_iter().collect_vec());
+        trace!("OrCondition::colored::{}({:?}, {:?}) = {:?}", self.describe(), eclass, subst, res);
         res
     }
 
