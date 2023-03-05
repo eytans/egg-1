@@ -165,7 +165,7 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     #[cfg(feature = "colored")]
     colors: Vec<Option<Color>>,
     #[cfg(feature = "colored")]
-    pub(crate) colored_memo: IndexMap<L, IndexMap<ColorId, Id>>,
+    pub(crate) colored_memo: IndexMap<ColorId, IndexMap<L, Id>>,
     #[cfg(feature = "colored")]
     pub colored_equivalences: IndexMap<Id, IndexSet<(ColorId, Id)>>,
     #[serde(skip_serializing, skip_deserializing)]
@@ -457,8 +457,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         self.memo.get(enode).map(|id| self.find(*id)).or_else(|| {
             enode.update_children(|id| self.colored_find(color, id));
             // We need to find the black representative of the colored edge (yes, confusing).
-            self.colored_memo.get(enode).map(|colors|
-                colors.get(&color).map(|id| self.find(*id))).flatten()
+            self.colored_memo[&color].get(&*enode).map(|id| self.find(*id))
         })
     }
 
@@ -514,8 +513,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 self[child].colored_parents.entry(color).or_default().push((enode.clone(), id));
             });
 
-            let color_map = self.colored_memo.entry(enode).or_default();
-            assert!(color_map.insert(color, id).is_none());
+            assert!(self.colored_memo[&color].insert(enode, id).is_none());
             N::modify(self, id);
             return id;
         }
@@ -721,9 +719,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     dassert!(&self.colored_canonize(c, a) == a);
                     // This is a colored class so if the canonized node is not in the memo
                     // it needs deleting.
-                    a == b || ((self.colored_memo.get(a)
-                        .map(|map| !map.contains_key(&c))
-                        .unwrap_or(true)) && {
+                    a == b || ((!self.colored_memo[&c].contains_key(a)) && {
                         // Side effect for removing value due to being in black memo (so no need
                         // for a colored node):
                         for id in a.children() {
@@ -1065,14 +1061,9 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         // Need to do some merging and initial color deletion here because we are deleting duplicate
         // edges.
         let mut memo: IndexMap<L, Id> = {
-            let keys = self.colored_memo.keys().cloned().collect_vec();
+            let keys = self.colored_memo[&c_id].keys().cloned().collect_vec();
             let colored_memo_canonized = keys.into_iter().filter_map(|mut node| {
-                let id = self.colored_memo.get_mut(&node)
-                    .map(|map| map.remove(&c_id))
-                    .flatten();
-                if id.is_some() && self.colored_memo[&node].is_empty() {
-                    self.colored_memo.remove(&node);
-                }
+                let id = self.colored_memo[&c_id].remove(&node);
                 self.colored_update_node(c_id, &mut node);
                 id.map(|inner| (node, inner))
             }).collect_vec();
@@ -1090,8 +1081,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             });
             v.into_iter().collect()
         };
-        dassert!(self.colored_memo.values().all(|m| !m.is_empty()));
-        dassert!(self.colored_memo.values().all(|m| !m.contains_key(&c_id)));
+        dassert!(self.colored_memo[&c_id].is_empty());
 
         for (id1, id2) in to_union.drain(..) {
             if self[id1].color.is_some() && self[id2].color.is_some() {
@@ -1158,7 +1148,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     }
                     if !is_black {
                         dassert!(self.colored_canonize(c_id, &n) == n, "Colored canonize should be idempotent {:?} {:?}", self.colored_canonize(c_id, &n), n);
-                        let old = self.colored_memo.entry(n.clone()).or_default().insert(c_id, e);
+                        let old = self.colored_memo[&c_id].insert(n.clone(), e);
                         if let Some(old) = old {
                             to_union.push((old, e));
                         }
@@ -1184,26 +1174,28 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
     fn colored_memo_canonized(&self) {
         if cfg!(debug_assertions) {
-            for (n, colors) in self.colored_memo.iter() {
-                debug_assert!(!colors.is_empty());
-                for (c, id) in colors {
+            for (c, c_memo) in self.colored_memo.iter() {
+                for (n, id) in c_memo {
                     let mut is_deleted: Option<bool> = None;
-                    let deleted: fn(&EGraph<L, N>, n: &L, c: ColorId, &mut Option<bool>) -> bool = |egraph: &EGraph<L, N>, n: &L, c: ColorId, is_deleted: &mut Option<bool> | {
-                        if let Some(is_deleted) = is_deleted.clone() {
-                            return is_deleted;
-                        }
-                        let res = egraph.memo.iter().any(|(n1, _e1)| {
-                            egraph.colored_canonize(c, n) == egraph.colored_canonize(c, n1)
-                        });
-                        *is_deleted = Some(res);
-                        res
+                    let canoned_n = self.colored_canonize(*c, n);
+                    let deleted: fn(&EGraph<L, N>, n: &L, c: ColorId, &mut Option<bool>) -> bool =
+                        |egraph: &EGraph<L, N>, n: &L, c: ColorId, is_deleted: &mut Option<bool> | {
+                            if let Some(is_deleted) = is_deleted.clone() {
+                                return is_deleted;
+                            }
+                            let canoned_n = egraph.colored_canonize(c, n);
+                            let res = egraph.memo.iter().any(|(n1, _e1)| {
+                                canoned_n == egraph.colored_canonize(c, n1) });
+                            *is_deleted = Some(res);
+                            res
                     };
                     tassert!({
-                        self.colored_memo.contains_key(&self.colored_canonize(*c, n)) || deleted(self, n, *c, &mut is_deleted)
+                        self.colored_memo[c].contains_key(&self.colored_canonize(*c, n)) || deleted(self, n, *c, &mut is_deleted)
                     }, "Missing {:?} (orig: {:?}) in {} id (under color {})", self.colored_canonize(*c, n), n, id, c);
-                    dassert!(((is_deleted.is_none() || !is_deleted.as_ref().unwrap()) && self.colored_memo[&self.colored_canonize(*c, n)].contains_key(c)) || deleted(self, n, *c, &mut is_deleted));
+                    dassert!(((is_deleted.is_none() || !is_deleted.as_ref().unwrap()) && self.colored_memo[c].contains_key(&canoned_n)) || deleted(self, n, *c, &mut is_deleted));
                     if n.children().len() > 0 && (is_deleted.is_none() || !*is_deleted.as_ref().unwrap()) {
-                        dassert!(self.find(self.colored_memo[&self.colored_canonize(*c, n)][c]) == self.find(*id) || deleted(self, n, *c, &mut is_deleted), "Colored memo does not have correct id for {:?} in color {}. It is {} but should be {}", n, c, self.colored_memo[&self.colored_canonize(*c, n)][c], self.find(*id));
+                        dassert!(self.find(self.colored_memo[c][&canoned_n]) == self.find(*id) || deleted(self, n, *c, &mut is_deleted),
+                            "Colored memo does not have correct id for {:?} in color {}. It is {} but should be {}", n, c, self.colored_memo[c][&canoned_n], self.find(*id));
                     }
                     // dassert!(&self.colored_canonize(*c, n) == n ||
                     //     self.memo.iter().any(|(n1, e1)| {
@@ -1226,15 +1218,16 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 // assert_eq!(value,  &self.find(*value), "Memo should point to canonized class {} <- {:?}. Canonized edge: {:?}. Uncanonized class is {:?}", *value, key, self.canonize(key), self.classes[value.0 as usize]);
                 assert!(self[*value].nodes.binary_search(key).is_ok(), "Bad edge in class {} edge {:?} canonized {:?}\n Class nodes: {:?}", *value, key, self.canonize(key), self[*value].nodes);
             }
-            for (key, value) in &self.colored_memo {
-                for (c, id) in value {
+            for (c, c_memo) in &self.colored_memo {
+                for (key, id) in c_memo {
+                    assert!(self[*id].color == Some(*c), "Bad color in colored memo {} <- {:?} (color {})", *id, key, c);
                     let found = self[*id].nodes.binary_search(key).is_ok();
                     let fixed_colored_id = self.colored_find(*c, *id);
                     let fixed_id = self.find(*id);
                     if !found {
-                        println!("Stop here!");
+                        println!("Stop here! {}", self.memo.contains_key(key));
                     }
-                    assert!(found, "Edge {:?} not in class id {}(={}) under color {}", key, id, self.colored_find(*c, *id), c);
+                    assert!(found, "Edge {:?} not in class id {}(={}) under color {}", key, fixed_id, fixed_colored_id, c);
                 }
             }
         }
@@ -1242,7 +1235,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
     fn memo_classes_agree(&self) {
         debug_assert!(self.memo.iter().all(|(_n, id)| self[self.find(*id)].color.is_none())
-            && self.colored_memo.iter().all(|(_, cs)| cs.iter().all(|(c, id)|
+            && self.colored_memo.iter().all(|(c, c_memo)| c_memo.iter().all(|(_, id)|
                 self[self.find(*id)].color == Some(*c))));
     }
 
@@ -1302,7 +1295,9 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
     pub fn create_color(&mut self) -> ColorId {
         self.colors.push(Some(Color::new(&self.unionfind, ColorId::from(self.colors.len()))));
-        self.colors.last().unwrap().as_ref().unwrap().get_id()
+        let c_id = self.colors.last().unwrap().as_ref().unwrap().get_id();
+        self.colored_memo.insert(c_id, Default::default());
+        return c_id;
     }
 
     pub fn delete_color(&mut self, c_id: ColorId) {
@@ -1313,7 +1308,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             let class = std::mem::replace(&mut self.classes[black.0 as usize], None).unwrap();
             for n in &class.nodes {
                 self.classes_by_op.get_mut(&n.op_id()).map(|x| x.remove(&class.id));
-                self.colored_memo.get_mut(n).map(|x| x.remove(&c_id));
             }
             self.colored_equivalences[&black].remove(&(c_id, colored));
             if self.colored_equivalences[&black].is_empty() {
@@ -1324,6 +1318,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 self.colored_equivalences.remove(&colored);
             }
         }
+        self.colored_memo.remove(&c_id);
         dassert!(self.colored_equivalences.iter().all(|(id, ids)|
             ids.iter().chain([(c_id, *id)].iter()).all(|(c_id, id)| self[*id].color.iter().all(|c| c != c_id))));
     }
@@ -1474,8 +1469,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
                 let nodes = self[new_class_id].nodes.clone();
                 for n in nodes {
-                    let old = self.colored_memo.entry(n)
-                        .or_default().insert(new_c_id, new_class_id);
+                    let old = self.colored_memo[&new_c_id].insert(n, new_class_id);
                     if let Some(old) = old {
                         todo.push((old, new_class_id));
                     }
