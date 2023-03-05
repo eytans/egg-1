@@ -2,6 +2,7 @@ use crate::Id;
 use std::cell::Cell;
 use std::fmt::Debug;
 use indexmap::{IndexMap, IndexSet};
+use log::trace;
 
 // The Key bound on UnionFind is necessary to derive clone. We only
 // instantiate UnionFind in one place (EGraph), so this type bound
@@ -61,6 +62,7 @@ impl UnionFind {
                 std::mem::swap(&mut root1, &mut root2);
             }
             self.set_parent(root2, root1);
+            trace!("union {:?} {:?}", root1, root2);
             (root1, root2)
         }
     }

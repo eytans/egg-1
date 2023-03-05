@@ -871,7 +871,16 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 self.repairs_since_rebuild += 1;
                 for (n, p_id) in std::mem::take(&mut self[id].changed_parents) {
                     if let Some(m_id) = self.memo.remove(&n) {
-                        assert_eq!(self.find(m_id), self.find(p_id));
+                        // We might have already unioned these two, so we need to check
+                        if cfg!(debug_assertions) {
+                            let fixed_m_id = self.find(m_id);
+                            let fixed_p_id = self.find(p_id);
+                            if !(to_union.contains(&(fixed_p_id, fixed_m_id)) || to_union.contains(&(fixed_m_id, fixed_p_id))) {
+                                assert_eq!(fixed_m_id, fixed_p_id,
+                                           "Found unexpected non-equivalence for {:?}(memo)!={:?}(changed_parent) for enode {:?}",
+                                           fixed_m_id, fixed_p_id, n);
+                            }
+                        }
                     }
                 }
                 let mut parents = std::mem::take(&mut self[id].parents)
@@ -881,8 +890,10 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 }).collect_vec();
                 parents.iter_mut().for_each(|(n, p_id)| {
                     n.update_children(|child| self.find(child));
+                    let old_p_id = *p_id;
                     *p_id = self.find(*p_id);
                     debug_assert!(self[*p_id].color.is_none());
+                    trace!("Updating parent {:?} of {:?} to {:?}", n, old_p_id, *p_id);
                     for child in n.children().iter().filter(|c| **c != id) {
                         self[*child].changed_parents.push((n.clone(), *p_id));
                     }
@@ -890,6 +901,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 parents.sort_unstable();
                 parents.dedup_by(|(n1, e1), (n2, e2)| {
                     n1 == n2 && {
+                        trace!("Adding union from parent dedup {:?} and {:?}", e1, e2);
                         to_union.push((*e1, *e2));
                         true
                     }
@@ -937,7 +949,9 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
 
     pub fn update_memo_from_parent(memo: &mut IndexMap<L, Id>, n: &L, e: &Id) -> Option<(Id, Id)> {
+        trace!("Updating memo from parent {:?} to {:?}", n, e);
         if let Some(old) = memo.insert(n.clone(), *e) {
+            trace!("Adding memo union {:?} and {:?}", old, e);
             return Some((old, *e));
         }
         None
