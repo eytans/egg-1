@@ -167,7 +167,8 @@ impl EGraphBuilder {
                 parents: vec![],
                 color: None,
                 colored_parents: Default::default(),
-                changed_parents: Default::default()
+                changed_parents: Default::default(),
+                colord_changed_parents: Default::default(),
             }));
             self.unionfind.make_set_at(id);
         }

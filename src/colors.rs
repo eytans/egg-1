@@ -132,22 +132,14 @@ impl Color {
         (to, changed, g_todo)
     }
 
-    pub fn colored_union<L: Language, N: Analysis<L>>(&mut self, graph: &mut EGraph<L, N>, id1: Id, id2: Id) -> (Id, bool) {
-        let (to, changed, todo) = self.inner_colored_union(id1, id2);
-        if let Some((id1, id2)) = todo {
-            graph.union(id1, id2);
-        }
-        (to, changed)
-    }
-
-    pub(crate) fn inner_colored_union(&mut self, id1: Id, id2: Id) -> (Id, bool, Option<(Id, Id)>) {
+    pub(crate) fn inner_colored_union(&mut self, id1: Id, id2: Id) -> (Id, Id, bool, Option<(Id, Id)>) {
         let (to, from, changed, g_todo) = self.union_impl(id1, id2);
         if changed {
             self.dirty_unions.push(to);
             let from_ids = self.union_map.remove(&from).unwrap_or_else(|| IndexSet::singleton(from));
             self.union_map.entry(to).or_insert_with(|| IndexSet::singleton(to)).extend(from_ids);
         }
-        (to, changed, g_todo)
+        (to, from, changed, g_todo)
     }
 
     pub fn black_ids(&self, id: Id) -> Option<&IndexSet<Id>> {
@@ -196,7 +188,6 @@ impl Color {
         if cfg!(debug_assertions) {
             for (_, set) in &self.union_map {
                 for id in set {
-                    trace!("checking {:?} is black rep", id);
                     debug_assert!(egraph.find(*id) == *id, "black id {:?} is not black rep {:?}", id, egraph.find(*id));
                 }
             }

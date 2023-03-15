@@ -541,7 +541,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             parents: Default::default(),
             changed_parents: Default::default(),
             colored_parents: Default::default(),
-            color
+            color,
+            colord_changed_parents: Default::default(),
         });
 
         assert_eq!(self.classes.len(), usize::from(id));
@@ -1053,7 +1054,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// Reapply congruence closure for color.
     /// Returns which colors to remove from which edges.
     pub fn colored_cong_closure(&mut self, c_id: ColorId) {
-        // TODO: When we rebuild the colored_memo, we should point to the *black* representative id.
         self.get_color(c_id).unwrap().assert_black_ids(self);
 
         let mut to_union = vec![];
@@ -1132,6 +1132,30 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                         parents.push((p, fixed_id, false, Some(*g)));
                     }
                 }
+                if let Some(pars) = self[id].colord_changed_parents.remove(&c_id) {
+                    for (n, p_id) in pars {
+                        trace!("Removing colored parent from memo: {:?} {:?}", n, p_id);
+                        let opt_old = self.colored_memo[&c_id].remove(&n);
+                        if let Some(m_id) = opt_old {
+                            if cfg!(debug_assertions) {
+                                let fixed_m_id = self.colored_find(c_id, m_id);
+                                let fixed_p_id = self.colored_find(c_id, p_id);
+                                if !(to_union.contains(&(fixed_p_id, fixed_m_id)) || to_union.contains(&(fixed_m_id, fixed_p_id))) {
+                                    assert_eq!(fixed_m_id, fixed_p_id,
+                                               "Found unexpected non-equivalence for {:?}(memo)!={:?}(changed_parent) for enode {:?}",
+                                               fixed_m_id, fixed_p_id, n);
+                                }
+                            }
+                        }
+                    }
+                }
+                for (n, p_id, _, _) in parents.iter() {
+                    for child in n.children().iter().filter(|c| **c != id) {
+                        dassert!(self.colored_find(c_id, *child) == *child);
+                        trace!("Adding colored parent to changed parents: {:?} {:?}", n, p_id);
+                        self[*child].colord_changed_parents.entry(c_id).or_default().push((n.clone(), *p_id));
+                    }
+                }
                 // TODO: we might be able to prevent parent recollection by memoization.
                 parents.sort_unstable();
                 parents.dedup_by(|(n1, e1, _is_black_1, _opt1),
@@ -1148,6 +1172,10 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     }
                     if !is_black {
                         dassert!(self.colored_canonize(c_id, &n) == n, "Colored canonize should be idempotent {:?} {:?}", self.colored_canonize(c_id, &n), n);
+                        // if let Some(b_ids) = self.get_color(c_id).unwrap().black_ids(e) {
+                        //     dassert!(b_ids.iter().any(|b_id| self[*b_id].nodes.iter().any(|n1| &self.colored_canonize(c_id, n1) == &n)));
+                        // }
+                        trace!("Adding colored parent to memo: {:?} {:?} @ color {c_id}", n, e);
                         let old = self.colored_memo[&c_id].insert(n.clone(), e);
                         if let Some(old) = old {
                             to_union.push((old, e));
@@ -1226,6 +1254,29 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     let fixed_id = self.find(*id);
                     if !found {
                         println!("Stop here! {}", self.memo.contains_key(key));
+                        println!("Memo contains key: {:?}", self.memo.contains_key(key));
+                        println!("Is canonized: {:?}", &self.colored_canonize(*c, key) == key);
+                        for is in self.colors[c.0 as usize].as_ref().unwrap().black_ids(*id) {
+                            for id_i in is {
+                                if self[*id_i].nodes.iter().find(|x| *x == key).is_some() {
+                                    println!("Found in black id {} (fixed: {})", id_i, self.find(*id_i));
+                                }
+                            }
+                        }
+                        for class in self.classes() {
+                            let mut fixed = class.nodes.iter().map(|x| self.colored_canonize(*c, x)).collect_vec();
+                            if fixed.iter().find(|x| *x == key).is_some() {
+                                println!("Found in class {}", class.id);
+                            }
+                        }
+
+                        println!("Colored memo is: {:?}", self.colored_memo[c]);
+                        println!("Colored classes nodes are:");
+                        for class in self.classes().filter(|x| x.color == Some(*c)) {
+                            println!("Class {} nodes: {:?}", class.id, class.nodes);
+                        }
+                        // Create dot file
+                        self.colored_dot(*c).to_dot("debug.dot").unwrap();
                     }
                     assert!(found, "Edge {:?} not in class id {}(={}) under color {}", key, fixed_id, fixed_colored_id, c);
                 }
@@ -1332,7 +1383,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     }
 
     pub fn colored_union(&mut self, color: ColorId, id1: Id, id2: Id) -> (Id, bool) {
-        let (to, changed, todo) = self.get_color_mut(color).unwrap().inner_colored_union(id1, id2);
+        let (to, from, changed, todo) = self.get_color_mut(color).unwrap().inner_colored_union(id1, id2);
         dassert!({
             let fixed = self.colored_find(color, id1);
             self[fixed].color.is_none() || self[fixed].color().unwrap() == color
@@ -1341,6 +1392,10 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             let fixed = self.colored_find(color, id2);
             self[fixed].color.is_none() || self[fixed].color().unwrap() == color
         });
+        if changed {
+            let from_cp = self[from].colord_changed_parents.remove(&color).unwrap_or_default();
+            self[to].colord_changed_parents.entry(color).or_default().extend(from_cp);
+        }
         if let Some((id1, id2)) = todo {
             wassert!(self[id1].color().unwrap() == color);
             wassert!(self[id1].color().unwrap() == self[id2].color().unwrap(),
@@ -1424,7 +1479,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 parents: vec![],
                 color: None,
                 colored_parents: Default::default(),
-                changed_parents: Default::default()
+                changed_parents: Default::default(),
+                colord_changed_parents: Default::default(),
             }));
             self.unionfind.make_set_at(id);
         }

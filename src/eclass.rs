@@ -24,6 +24,8 @@ pub struct EClass<L, D> {
     /// Colored parents are colored_canonized pointing to the black ID of the class.
     #[cfg(feature = "colored")]
     pub(crate) colored_parents: IndexMap<ColorId, Vec<(L, Id)>>,
+    #[cfg(feature = "colored")]
+    pub(crate) colord_changed_parents: IndexMap<ColorId, Vec<(L, Id)>>,
 }
 
 impl<L, D> EClass<L, D> {
