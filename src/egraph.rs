@@ -2,6 +2,7 @@ use std::{
     borrow::BorrowMut,
     fmt::{self, Debug},
 };
+use std::cmp::Ordering;
 
 use std::iter::FromIterator;
 use std::rc::Rc;
@@ -533,7 +534,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             enode.update_children(|id| self.find(id));
         }
 
-        log::trace!("  ...colored ({:?}) adding to {}", color, id);
+        log::trace!("  ...colored ({:?}) adding {:?} to {}", color, enode, id);
         let class = Box::new(EClass {
             id,
             nodes: vec![enode.clone()],
@@ -720,28 +721,11 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     dassert!(&self.colored_canonize(c, a) == a);
                     // This is a colored class so if the canonized node is not in the memo
                     // it needs deleting.
-                    a == b || ((!self.colored_memo[&c].contains_key(a)) && {
+                    a == b || ((!cfg!(feature = "colored_no_cremove")) && (!self.colored_memo[&c].contains_key(a)) && {
+                        trace!("Removing node {a:?} from class {key} @ color {c}. Normal memo contains: {}", self.memo.contains_key(a));
                         // Side effect for removing value due to being in black memo (so no need
                         // for a colored node):
-                        for id in a.children() {
-                            if let Some(ids) = self.get_color(c).unwrap().black_ids(*id).cloned() {
-                                for id in ids {
-                                    let mut was_empty = false;
-                                    if let Some(parents) = classes[id.0 as usize]
-                                        .as_mut().unwrap().colored_parents.get_mut(&c) {
-                                        parents.retain(|(n, e)| n != a);
-                                        if parents.is_empty() {
-                                            was_empty = true;
-                                        }
-                                    }
-                                    // Remove the color from the colored parents if it was the last one.
-                                    if was_empty {
-                                        classes[id.0 as usize].as_mut().unwrap()
-                                            .colored_parents.remove(&c);
-                                    }
-                                }
-                            }
-                        }
+                        self.update_deleted_enode(&mut classes, &c, a);
                         true
                     })
                 });
@@ -803,6 +787,28 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         }
         self.colors = colors;
         trimmed
+    }
+
+    fn update_deleted_enode(&mut self, mut classes: &mut SparseVec<EClass<L, <N as Analysis<L>>::Data>>, c: &ColorId, a: &mut L) {
+        for id in a.children() {
+            if let Some(ids) = self.get_color(*c).unwrap().black_ids(*id).cloned() {
+                for id in ids {
+                    let mut was_empty = false;
+                    if let Some(parents) = classes[id.0 as usize]
+                        .as_mut().unwrap().colored_parents.get_mut(c) {
+                        parents.retain(|(n, e)| n != a);
+                        if parents.is_empty() {
+                            was_empty = true;
+                        }
+                    }
+                    // Remove the color from the colored parents if it was the last one.
+                    if was_empty {
+                        classes[id.0 as usize].as_mut().unwrap()
+                            .colored_parents.remove(c);
+                    }
+                }
+            }
+        }
     }
 
     #[inline(never)]
@@ -1061,12 +1067,9 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         // Need to do some merging and initial color deletion here because we are deleting duplicate
         // edges.
         let mut memo: IndexMap<L, Id> = {
-            let keys = self.colored_memo[&c_id].keys().cloned().collect_vec();
-            let colored_memo_canonized = keys.into_iter().filter_map(|mut node| {
-                let id = self.colored_memo[&c_id].remove(&node);
-                self.colored_update_node(c_id, &mut node);
-                id.map(|inner| (node, inner))
-            }).collect_vec();
+            let mut colored_memo_canonized = self.colored_memo[&c_id].iter()
+                .map(|(mut node, id)| (self.colored_canonize(c_id, node), *id))
+                .collect_vec();
             let mut v = self.memo.iter()
                 .map(|(orig, e)| (self.colored_canonize(c_id, orig), self.find(*e)))
                 .chain(colored_memo_canonized)
@@ -1081,7 +1084,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             });
             v.into_iter().collect()
         };
-        dassert!(self.colored_memo[&c_id].is_empty());
 
         for (id1, id2) in to_union.drain(..) {
             if self[id1].color.is_some() && self[id2].color.is_some() {
@@ -1108,7 +1110,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             for id in todo {
                 // I need to build parents while aware what is a colored edge
                 // Colored edges might be deleted, and they need to be updated in colored_memo if not
-                let mut parents: Vec<(L, Id, bool, Option<Id>)> = vec![];
+                let mut parents: Vec<(L, bool, Id, Option<Id>)> = vec![];
                 for g in all_groups.get(&id).unwrap() {
                     for (p, id) in &self[*g].parents {
                         let canoned = self.colored_canonize(c_id, p);
@@ -1117,7 +1119,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                             to_union.push((fixed_id, memo_id));
                         }
                         // I need bool and option for sorting
-                        parents.push((canoned, fixed_id, true, None));
+                        parents.push((canoned, true, fixed_id, None));
                     }
                     for (mut p, id) in self[*g].colored_parents.remove(&c_id).unwrap_or(vec![]) {
                         debug_assert!(self[id].color.unwrap() == c_id, "Color mismatch");
@@ -1125,14 +1127,19 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                         if let Some(memo_id) = memo.remove(&p) {
                             to_union.push((fixed_id, memo_id));
                         }
+                        self.colored_memo[&c_id].remove(&p);
                         self.colored_update_node(c_id, &mut p);
                         if let Some(memo_id) = memo.remove(&p) {
                             to_union.push((fixed_id, memo_id));
                         }
-                        parents.push((p, fixed_id, false, Some(*g)));
+                        parents.push((p, false, fixed_id, Some(*g)));
                     }
                 }
                 if let Some(pars) = self[id].colord_changed_parents.remove(&c_id) {
+                    #[cfg(debug_assertions)]
+                    let fixed_to_union: IndexSet<(Id, Id)> = to_union.iter()
+                        .map(|(a, b)| (self.colored_find(c_id, *a),
+                                       self.colored_find(c_id, *b))).collect();
                     for (n, p_id) in pars {
                         trace!("Removing colored parent from memo: {:?} {:?}", n, p_id);
                         let opt_old = self.colored_memo[&c_id].remove(&n);
@@ -1140,7 +1147,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                             if cfg!(debug_assertions) {
                                 let fixed_m_id = self.colored_find(c_id, m_id);
                                 let fixed_p_id = self.colored_find(c_id, p_id);
-                                if !(to_union.contains(&(fixed_p_id, fixed_m_id)) || to_union.contains(&(fixed_m_id, fixed_p_id))) {
+                                if !(fixed_to_union.contains(&(fixed_p_id, fixed_m_id)) ||
+                                    fixed_to_union.contains(&(fixed_m_id, fixed_p_id))) {
                                     assert_eq!(fixed_m_id, fixed_p_id,
                                                "Found unexpected non-equivalence for {:?}(memo)!={:?}(changed_parent) for enode {:?}",
                                                fixed_m_id, fixed_p_id, n);
@@ -1149,7 +1157,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                         }
                     }
                 }
-                for (n, p_id, _, _) in parents.iter() {
+                for (n, _, p_id, _) in parents.iter() {
                     for child in n.children().iter().filter(|c| **c != id) {
                         dassert!(self.colored_find(c_id, *child) == *child);
                         trace!("Adding colored parent to changed parents: {:?} {:?}", n, p_id);
@@ -1157,16 +1165,35 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     }
                 }
                 // TODO: we might be able to prevent parent recollection by memoization.
+                // There is a bit of a trick here. We are sorting such that black nodes will be
+                // last. The reason is that we will delete all colored nodes that have a black rep.
+                // Of course we need to act differently for [colored_no_cremove]. Dedup goes in
+                // reverse order, so we need to reverse the check.
+                if cfg!(feature = "colored_no_cremove") {
+                    parents.iter_mut().for_each(|(n1, is_black_1, e1, _opt1)| {
+                        *is_black_1 = !*is_black_1
+                    });
+                }
                 parents.sort_unstable();
-                parents.dedup_by(|(n1, e1, _is_black_1, _opt1),
-                                  (n2, e2, _is_black_2, _opt2)| {
+                if cfg!(feature = "colored_no_cremove") {
+                    parents.iter_mut().for_each(|(n1, is_black_1, e1, _opt1)| {
+                        *is_black_1 = !*is_black_1
+                    });
+                }
+                parents.dedup_by(|(n1, is_black_1, e1, _opt1),
+                                  (n2, is_black_2, e2, _opt2)| {
                     n1 == n2 && {
+                        if cfg!(feature = "colored_no_cremove") {
+                            dassert!(*is_black_2 || !*is_black_1)
+                        } else {
+                            dassert!(*is_black_1 || !*is_black_2)
+                        }
                         to_union.push((*e1, *e2));
                         true
                     }
                 });
 
-                for (n, e, is_black, orig_class) in parents {
+                for (n, is_black, e, orig_class) in parents {
                     if let Some(old) = memo.insert(n.clone(), e) {
                         to_union.push((old, e));
                     }
@@ -1278,7 +1305,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                         // Create dot file
                         self.colored_dot(*c).to_dot("debug.dot").unwrap();
                     }
-                    assert!(found, "Edge {:?} not in class id {}(={}) under color {}", key, fixed_id, fixed_colored_id, c);
+                    assert!(found, "Edge {:?}(={:?}) not in class id {}(={}) under color {}", key, self.colored_canonize(*c, key), fixed_id, fixed_colored_id, c);
                 }
             }
         }
