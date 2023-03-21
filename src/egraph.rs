@@ -1147,6 +1147,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                             if cfg!(debug_assertions) {
                                 let fixed_m_id = self.colored_find(c_id, m_id);
                                 let fixed_p_id = self.colored_find(c_id, p_id);
+                                #[cfg(debug_assertions)]
                                 if !(fixed_to_union.contains(&(fixed_p_id, fixed_m_id)) ||
                                     fixed_to_union.contains(&(fixed_m_id, fixed_p_id))) {
                                     assert_eq!(fixed_m_id, fixed_p_id,
