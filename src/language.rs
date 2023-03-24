@@ -231,7 +231,7 @@ impl LanguageChildren for Id {
 /// [`Language`]: trait.Language.html
 /// [ser]: https://docs.rs/serde/latest/serde/trait.Serialize.html
 /// [pretty]: struct.RecExpr.html#method.pretty
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecExpr<L> {
     nodes: Vec<L>,
 }

@@ -1041,17 +1041,17 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         e.update_children(|e| self.colored_find(color, e));
     }
 
-    pub(crate) fn colored_canonize(&self, color: ColorId, e: &L) -> L {
+    pub fn colored_canonize(&self, color: ColorId, e: &L) -> L {
         let mut res = e.clone();
         self.colored_update_node(color, &mut res);
         res
     }
 
-    pub(crate) fn update_node(&self, e: &mut L) {
+    pub fn update_node(&self, e: &mut L) {
         e.update_children(|e| self.find(e));
     }
 
-    pub(crate) fn canonize(&self, e: &L) -> L {
+    pub fn canonize(&self, e: &L) -> L {
         let mut res = e.clone();
         self.update_node(&mut res);
         res
@@ -1473,6 +1473,10 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
     pub fn get_colored_equalities(&self, id: Id) -> Option<&IndexSet<(ColorId, Id)>> {
         self.colored_equivalences.get(&id)
+    }
+
+    pub fn color_sizes(&self) -> impl Iterator<Item=(ColorId, usize)> + '_ {
+        self.colored_memo.iter().map(|(c, m)| (*c, m.len()))
     }
 
     pub fn detect_vacuity(&self, disjoints: &[OpId]) -> Vec<ColorId> {
