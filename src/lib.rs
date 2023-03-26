@@ -109,7 +109,6 @@ use log::LevelFilter;
 pub(crate) use unionfind::UnionFind;
 
 pub use {
-    crate::eggstentions::expression_ops::*,
     dot::Dot,
     eclass::{EClass},
     egraph::EGraph,
