@@ -172,7 +172,7 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     #[serde(skip_serializing, skip_deserializing)]
     pub filterer: Option<Rc<dyn Fn(&EGraph<L, N>, Id) -> bool + 'static> >,
     /// What operations are not allowed to be equal (for vacuity check).
-    pub(crate) vacuity_ops: Vec<Vec<OpId>>,
+    pub vacuity_ops: Vec<Vec<OpId>>,
 }
 
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
