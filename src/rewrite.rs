@@ -1036,6 +1036,7 @@ mod tests {
         assert_eq!(egraph.colored_find(color, yx), egraph.colored_find(color, add));
         // Added z and yx
         assert_eq!(egraph.classes().count(), class_count + 2);
+        #[cfg(not(feature = "colored_no_cmemo"))]
         assert_eq!(egraph[egraph.find(yx)].color().unwrap(), color);
     }
 }

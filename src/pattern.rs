@@ -401,6 +401,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "colored")]
     fn single_colored_find() {
         crate::init_logger();
         let mut egraph = EGraph::default();
@@ -455,6 +456,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "colored")]
     fn colored_eq_x_x() {
         crate::init_logger();
         let mut egraph = EGraph::default();
@@ -475,6 +477,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "colored")]
     fn colored_eclass_search_sanity() {
         // Create an egraph with x and colored f(x) merged with black y
         crate::init_logger();

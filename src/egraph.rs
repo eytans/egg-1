@@ -505,8 +505,11 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     }
 
     pub fn colored_add(&mut self, color: ColorId, mut enode: L) -> Id {
-        if let Some(id) = self.colored_lookup(color, &mut enode) {
-            return id;
+        if cfg!(feature = "colored_no_cmemo") {
+           return self.add(enode);
+        }
+        return if let Some(id) = self.colored_lookup(color, &mut enode) {
+            id
         } else {
             let id = self.inner_create_class(&mut enode, Some(color));
             self.get_color_mut(color).unwrap().black_colored_classes.insert(id, id);
@@ -516,7 +519,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
             assert!(self.colored_memo[&color].insert(enode, id).is_none());
             N::modify(self, id);
-            return id;
+            id
         }
     }
 
@@ -620,6 +623,10 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         tassert!(to == self.find(id1));
         tassert!(to == self.find(id2));
         if changed {
+            #[cfg(feature = "colored_no_cmemo")]
+            iassert!(self[to].color().is_none());
+            #[cfg(feature = "colored_no_cmemo")]
+            iassert!(self[from].color().is_none());
             if let Some(c) = self[to].color {
                 iassert!(self[from].color == self[to].color);
                 iassert!(self.colored_find(c, to) == self.colored_find(c, from));
@@ -1199,6 +1206,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                         to_union.push((old, e));
                     }
                     if !is_black {
+                        #[cfg(feature = "colored_no_cmemo")]
+                        panic!("Should not have colored enodes in no_cmemo mode");
                         dassert!(self.colored_canonize(c_id, &n) == n, "Colored canonize should be idempotent {:?} {:?}", self.colored_canonize(c_id, &n), n);
                         // if let Some(b_ids) = self.get_color(c_id).unwrap().black_ids(e) {
                         //     dassert!(b_ids.iter().any(|b_id| self[*b_id].nodes.iter().any(|n1| &self.colored_canonize(c_id, n1) == &n)));
@@ -1549,6 +1558,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             let union_map = self.collect_colored_equality_classes(&c);
             let id_changer = self.initialize_id_changer(&union_map);
             let new_classes = self.create_new_colored_classes(new_c_id, &id_changer);
+            #[cfg(feature = "colored_no_cmemo")]
+            iassert!(new_classes.len() == 0);
             iassert!(IndexSet::<Id>::from_iter(id_changer.values().copied()) == IndexSet::<Id>::from_iter(new_classes.iter().copied()));
             for new_class_id in new_classes.iter().copied() {
                 // Already did first edge in create_new_colored_classes

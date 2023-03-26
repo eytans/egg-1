@@ -41,6 +41,7 @@ serde_cbor = "0.11"
 [features]
 default = ["colored"]
 #default = ["colored", "colored_no_cremove"]
+#default = ["colored", "colored_no_cmemo"]
 upward-merging = []
 stdweb = [ "instant/stdweb" ]
 reports = [ ]
