@@ -171,10 +171,14 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     pub colored_equivalences: IndexMap<Id, IndexSet<(ColorId, Id)>>,
     #[serde(skip_serializing, skip_deserializing)]
     pub filterer: Option<Rc<dyn Fn(&EGraph<L, N>, Id) -> bool + 'static> >,
+    /// What operations are not allowed to be equal (for vacuity check).
+    pub(crate) vacuity_ops: Vec<Vec<OpId>>,
 }
 
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
-    pub(crate) fn inner_new(uf: UnionFind, classes: Vec<Option<Box<EClass<SymbolLang, ()>>>>, memo: IndexMap<SymbolLang, Id>) -> EGraph<SymbolLang, ()> {
+    pub(crate) fn inner_new(uf: UnionFind,
+                            classes: Vec<Option<Box<EClass<SymbolLang, ()>>>>,
+                            memo: IndexMap<SymbolLang, Id>,) -> EGraph<SymbolLang, ()> {
         for c in classes.iter()
             .filter(|c| c.is_some())
             .map(|c| c.as_ref().unwrap()) {
@@ -212,7 +216,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             colored_memo: IndexMap::new(),
             #[cfg(feature = "colored")]
             colored_equivalences: IndexMap::new(),
-            filterer: None
+            filterer: None,
+            vacuity_ops: Default::default(),
         }
     }
 }
@@ -256,6 +261,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             colored_memo: Default::default(),
             colored_equivalences: Default::default(),
             filterer: None,
+            vacuity_ops: Default::default(),
         }
     }
 
@@ -1488,23 +1494,45 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         self.colored_memo.iter().map(|(c, m)| (*c, m.len()))
     }
 
-    pub fn detect_vacuity(&self, disjoints: &[OpId]) -> Vec<ColorId> {
+    #[cfg(feature = "colored")]
+    pub fn detect_color_vacuity(&self) -> Vec<ColorId> {
+        self.vacuity_ops.iter().flat_map(|disjoints| {
+            let empty = Default::default();
+            let dis_classes = disjoints.into_iter()
+                .map(|o_id| self.classes_by_op.get(o_id).unwrap_or(&empty))
+                .map(|x| x.iter().map(|x| (self[*x].color, *x)).into_group_map()).collect_vec();
+            dassert!({
+                let empty = vec![];
+                dis_classes.iter().flat_map(|x| x.get(&None).unwrap_or(&empty)).unique().count() ==
+                dis_classes.iter().map(|x| x.get(&None).map_or(0, |x| x.len())).sum::<usize>()
+            });
+            self.colors().filter(|c| {
+                let canonized = dis_classes.iter().map(|map|
+                    map.get(&None).map_or(vec![].iter(), |x| x.iter())
+                        .chain(map.get(&Some(c.get_id())).map_or(vec![].iter(), |x| x.iter()))
+                        .map(|x| self.colored_find(c.get_id(), *x)).collect::<IndexSet<Id>>()).collect_vec();
+                canonized.iter().map(|x| x.len()).sum::<usize>() != canonized.into_iter().flatten().unique().count()
+            }).map(|c| c.get_id()).collect_vec()
+        }).unique().collect()
+    }
+
+    pub fn detect_graph_vacuity(&self) -> bool {
         let empty = Default::default();
-        let dis_classes= disjoints.into_iter()
-            .map(|o_id| self.classes_by_op.get(o_id).unwrap_or(&empty))
-            .map(|x| x.iter().map(|x| (self[*x].color, *x)).into_group_map()).collect_vec();
-        dassert!({
-            let empty = vec![];
-            dis_classes.iter().flat_map(|x| x.get(&None).unwrap_or(&empty)).unique().count() ==
-            dis_classes.iter().map(|x| x.get(&None).map_or(0, |x| x.len())).sum::<usize>()
-        });
-        self.colors().filter(|c| {
-            let canonized = dis_classes.iter().map(|map|
-                map.get(&None).map_or(vec![].iter(), |x| x.iter())
-                    .chain(map.get(&Some(c.get_id())).map_or(vec![].iter(), |x| x.iter()))
-                    .map(|x| self.colored_find(c.get_id(), *x)).collect::<IndexSet<Id>>()).collect_vec();
-            canonized.iter().map(|x| x.len()).sum::<usize>() != canonized.into_iter().flatten().unique().count()
-        }).map(|c| c.get_id()).collect_vec()
+        self.vacuity_ops.iter().any(|disjoints| {
+            assert!(disjoints.len() > 1);
+            let folded = disjoints.into_iter()
+                .map(|o_id| self.classes_by_op.get(o_id).unwrap_or(&empty))
+                .fold((false, empty.clone()), |(res, acc), ids| {
+                    if res {
+                        (res, empty.clone())
+                    } else {
+                        let next_intersection = acc.intersection(ids).next();
+                        let unioned = acc.union(ids).copied().collect();
+                        (!next_intersection.is_none(), unioned)
+                    }
+                });
+            folded.0
+        })
     }
 
     /// For `Deserialization`
@@ -2289,5 +2317,88 @@ mod tests {
         // {0: "id1", 1: "id3", 2: "id4", 3: "id5", 4: "id6", 5: "id7", 6: "+", 7: "-"}
         egraph.rebuild();
         egraph.dot().to_dot("test.dot").unwrap();
+    }
+
+    #[test]
+    #[cfg(feature = "colored")]
+    fn test_colored_vacuity_check_sanity() {
+        init_logger();
+
+        // Create an egraph with both Zero and (Succ x y)
+        let mut egraph: EGraph<SymbolLang, ()> = EGraph::new(());
+        let zero = RecExpr::from_str("Zero").unwrap();
+        let succ = RecExpr::from_str("(Succ x y)").unwrap();
+        let zero_id = egraph.add_expr(&zero);
+        let succ_id = egraph.add_expr(&succ);
+
+        // Create color where they are combined
+        let color = egraph.create_color();
+        egraph.colored_union(color, zero_id, succ_id);
+        egraph.rebuild();
+
+        // Create a color with (Succ z k)
+        let color2 = egraph.create_color();
+        let succ2 = RecExpr::from_str("(Succ z k)").unwrap();
+        let succ2_id = egraph.add_expr(&succ2);
+        egraph.colored_union(color2, succ_id, succ2_id);
+        egraph.rebuild();
+
+        // Check vacuity (with additonal op options) only returns color
+        let zero_op = SymbolLang::leaf("Zero".to_string()).op_id();
+        let succ_op = SymbolLang::leaf("Succ".to_string()).op_id();
+        let another_op = SymbolLang::leaf("Another".to_string()).op_id();
+
+        // two other sets
+        let k_op = SymbolLang::leaf("k".to_string()).op_id();
+        let z_op = SymbolLang::leaf("z".to_string()).op_id();
+        let x_op = SymbolLang::leaf("x".to_string()).op_id();
+        let y_op = SymbolLang::leaf("y".to_string()).op_id();
+
+        egraph.vacuity_ops = vec![vec![k_op, z_op], vec![zero_op, succ_op, another_op], vec![x_op, y_op]];
+        let vacs = egraph.detect_color_vacuity();
+        assert_eq!(vacs.len(), 1);
+        assert_eq!(vacs[0], color);
+    }
+
+    #[test]
+    fn test_graph_vacuity_check_sanity() {
+        init_logger();
+
+        // Create an egraph with both Zero and (Succ x y)
+        let mut egraph: EGraph<SymbolLang, ()> = EGraph::new(());
+        let zero = RecExpr::from_str("Zero").unwrap();
+        let succ = RecExpr::from_str("(Succ x y)").unwrap();
+        let zero_id = egraph.add_expr(&zero);
+        let succ_id = egraph.add_expr(&succ);
+
+        egraph.rebuild();
+
+        // Check vacuity (with additonal op options) only returns color
+        let zero_op = SymbolLang::leaf("Zero".to_string()).op_id();
+        let succ_op = SymbolLang::leaf("Succ".to_string()).op_id();
+        let another_op = SymbolLang::leaf("Another".to_string()).op_id();
+
+        // two other sets
+        let k_op = SymbolLang::leaf("k".to_string()).op_id();
+        let z_op = SymbolLang::leaf("z".to_string()).op_id();
+        let x_op = SymbolLang::leaf("x".to_string()).op_id();
+        let y_op = SymbolLang::leaf("y".to_string()).op_id();
+
+        egraph.vacuity_ops = vec![vec![k_op, z_op], vec![zero_op, succ_op, another_op], vec![x_op, y_op]];
+
+        assert!(!egraph.detect_graph_vacuity());
+
+        let succ2 = RecExpr::from_str("(Succ z k)").unwrap();
+        let succ2_id = egraph.add_expr(&succ2);
+        egraph.union(succ_id, succ2_id);
+        egraph.rebuild();
+
+        assert!(!egraph.detect_graph_vacuity());
+
+        // Create color where they are combined
+        egraph.union(zero_id, succ_id);
+        egraph.rebuild();
+
+        assert!(egraph.detect_graph_vacuity());
     }
 }
