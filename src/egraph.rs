@@ -567,15 +567,21 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// [`RecExpr`]: struct.RecExpr.html
     pub fn equivs(&self, expr1: &RecExpr<L>, expr2: &RecExpr<L>) -> Vec<Id> {
         let matches1 = Pattern::from(expr1.as_ref()).search(self);
-        trace!("Matches1: {:?}", matches1);
+        trace!("Matches1 ({:?}): {:?}", expr1, matches1);
 
         let matches2 = Pattern::from(expr2.as_ref()).search(self);
-        trace!("Matches2: {:?}", matches2);
+        trace!("Matches2 ({:?}): {:?}", expr2, matches2);
 
         let mut equiv_eclasses = Vec::new();
 
         for m1 in &matches1 {
+            if m1.substs.iter().all(|s| s.color.is_some()) {
+                continue;
+            }
             for m2 in &matches2 {
+                if m2.substs.iter().all(|s| s.color.is_some()) {
+                    continue;
+                }
                 if self.find(m1.eclass) == self.find(m2.eclass) {
                     equiv_eclasses.push(m1.eclass)
                 }
