@@ -11,8 +11,6 @@ pub mod test {
  */
     use std::path::PathBuf;
     use std::time::{Duration, Instant};
-    use crate::{SymbolLang, Symbol, Id, RecExpr};
-    //use proptest::prelude::*;
 
     fn mean_stdev(data: &[f64]) -> (f64, f64) {
         assert_ne!(data.len(), 0);

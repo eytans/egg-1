@@ -25,7 +25,7 @@ use crate::AstSize;
 use crate::Analysis;
 use crate::LanguageChildren;
 
-pub use crate::colors::{Color, ColorParents, ColorId};
+pub use crate::colors::{Color, ColorId};
 use itertools::{Itertools};
 
 use serde::{Deserialize, Serialize};

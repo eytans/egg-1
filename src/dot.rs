@@ -8,7 +8,7 @@ Use the [`Dot`] struct to visualize an [`EGraph`]
 [GraphViz]: https://graphviz.gitlab.io/
 !*/
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::io::{Error, ErrorKind, Result, Write};

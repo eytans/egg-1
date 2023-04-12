@@ -34,7 +34,6 @@ lazy_static = "1.4.0"
 
 [dev-dependencies]
 env_logger = {version = "0.7", default-features = false}
-proptest = "1.0.0"
 ordered-float = "1"
 serde_cbor = "0.11"
 

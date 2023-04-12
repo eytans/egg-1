@@ -6,10 +6,6 @@ use itertools::Itertools;
 use std::fmt::Formatter;
 use bimap::BiMap;
 use indexmap::{IndexMap, IndexSet};
-use invariants::dassert;
-use log::{error, info, trace, warn};
-
-pub type ColorParents = smallvec::SmallVec<[ColorId; 3]>;
 
 global_counter!(COLOR_IDS, usize, usize::default());
 
@@ -95,7 +91,7 @@ impl Color {
         let (to, from) = self.union_find.union(id1, id2);
         let mut g_todo = None;
         if to != from {
-            for colored_from in self.black_colored_classes.remove(&from) {
+            if let Some(colored_from) = self.black_colored_classes.remove(&from) {
                 let old_to = self.black_colored_classes.insert(to, colored_from);
                 if let Some(colored_to) = old_to {
                     g_todo = Some((colored_to, colored_from));
@@ -124,7 +120,7 @@ impl Color {
     pub(crate) fn inner_black_union(&mut self, id1: Id, id2: Id) -> (Id, bool, Option<(Id, Id)>) {
         let orig_to = self.find(id1);
         let orig_from = self.find(id2);
-        let (mut to, mut from, changed, g_todo) = self.union_impl(id1, id2);
+        let (to, _from, changed, g_todo) = self.union_impl(id1, id2);
         if changed {
             self.dirty_unions.push(to);
         }
