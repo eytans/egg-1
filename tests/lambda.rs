@@ -37,7 +37,7 @@ impl Lambda {
 
 type EGraph = egg::EGraph<Lambda, LambdaAnalysis>;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct LambdaAnalysis;
 
 #[derive(Debug, Deserialize, Serialize)]

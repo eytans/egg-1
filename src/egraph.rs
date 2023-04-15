@@ -2,7 +2,6 @@ use std::{
     borrow::BorrowMut,
     fmt::{self, Debug},
 };
-use std::cmp::Ordering;
 
 use std::iter::FromIterator;
 use std::rc::Rc;
@@ -173,6 +172,10 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     pub filterer: Option<Rc<dyn Fn(&EGraph<L, N>, Id) -> bool + 'static> >,
     /// What operations are not allowed to be equal (for vacuity check).
     pub vacuity_ops: Vec<Vec<OpId>>,
+    #[cfg(feature = "keep_splits")]
+    /// All the case splits that happened for this EGraph. They can be recursive for deeper cases.
+    /// Will be updated by the user. The runner will run on all of them.
+    pub all_splits: Vec<EGraph<L, N>>,
 }
 
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
@@ -218,6 +221,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             colored_equivalences: IndexMap::new(),
             filterer: None,
             vacuity_ops: Default::default(),
+            #[cfg(feature = "keep_splits")]
+            all_splits: vec![],
         }
     }
 }
@@ -262,6 +267,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             colored_equivalences: Default::default(),
             filterer: None,
             vacuity_ops: Default::default(),
+            #[cfg(feature = "keep_splits")]
+            all_splits: vec![],
         }
     }
 

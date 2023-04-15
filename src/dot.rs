@@ -15,7 +15,6 @@ use std::io::{Error, ErrorKind, Result, Write};
 use std::path::Path;
 use std::rc::Rc;
 use std::str::FromStr;
-use itertools::Itertools;
 use multimap::MultiMap;
 
 use crate::{egraph::EGraph, Analysis, Language, EClass, ColorId, SymbolLang, RecExpr, Id};

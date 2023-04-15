@@ -2,6 +2,7 @@ use indexmap::{IndexMap, IndexSet};
 use instant::{Duration, Instant};
 use log::*;
 use serde::Serialize;
+use itertools::Itertools;
 
 use crate::{Analysis, EGraph, Id, Language, RecExpr, Rewrite, SearchMatches};
 
@@ -245,7 +246,7 @@ where
     IterData: IterationData<L, N>,
 {
     /// Create a new `Runner` with the given analysis and default parameters.
-    pub fn new(analysis: N) -> Self {
+pub fn new(analysis: N) -> Self {
         Self {
             iter_limit: 30,
             node_limit: 100_000,
@@ -315,6 +316,10 @@ where
         Self { scheduler, ..self }
     }
 
+    fn with_boxed_scheduler(self, scheduler: Box<dyn RewriteScheduler<L, N> + 'static>) -> Self {
+        Self { scheduler, ..self }
+    }
+
     /// Add an expression to the egraph to be run.
     ///
     /// The eclass id of this addition will be recorded in the
@@ -342,7 +347,24 @@ where
         L: 'a,
         N: 'a,
     {
-        let rules: Vec<&Rewrite<L, N>> = rules.into_iter().collect();
+
+        let rules = rules.into_iter().collect::<Vec<_>>();
+        #[cfg(feature = "keep_splits")]
+        {
+            assert!(self.hooks.is_empty(), "hooks must be added before run");
+            let mut sched = std::mem::replace(&mut self.scheduler, Box::new(SimpleScheduler::default()));
+            for g in self.egraph.all_splits.iter_mut() {
+                let mut runner: Runner<L, N> = Runner::new(g.analysis.clone())
+                    .with_iter_limit(self.iter_limit)
+                    .with_node_limit(self.node_limit)
+                    .with_time_limit(self.time_limit)
+                    .with_egraph(std::mem::replace(g, EGraph::new(g.analysis.clone())))
+                    .with_boxed_scheduler(sched);
+                sched = std::mem::replace(&mut runner.scheduler, Box::new(SimpleScheduler::default()));
+                let runner = runner.run(rules.iter().cloned());
+                *g = runner.egraph;
+            }
+        }
         check_rules(&rules);
         self.egraph.rebuild();
         loop {
@@ -604,7 +626,7 @@ where
 /// method.
 ///
 /// [`RewriteScheduler`]: trait.RewriteScheduler.html
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct SimpleScheduler;
 
 impl<L, N> RewriteScheduler<L, N> for SimpleScheduler

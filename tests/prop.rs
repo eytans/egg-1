@@ -16,7 +16,7 @@ define_language! {
 type EGraph = egg::EGraph<Prop, ConstantFold>;
 type Rewrite = egg::Rewrite<Prop, ConstantFold>;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct ConstantFold;
 impl Analysis<Prop> for ConstantFold {
     type Data = Option<bool>;

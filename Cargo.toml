@@ -47,6 +47,7 @@ reports = [ ]
 colored = []
 colored_no_cremove = ["colored"]
 colored_no_cmemo = ["colored", "colored_no_cremove"]
+keep_splits = []
 
 [workspace]
 members = [

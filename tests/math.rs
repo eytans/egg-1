@@ -47,7 +47,7 @@ impl egg::CostFunction<Math> for MathCostFn {
     }
 }
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize, Clone)]
 pub struct ConstantFold;
 impl Analysis<Math> for ConstantFold {
     type Data = Option<Constant>;
@@ -232,7 +232,7 @@ pub fn rules() -> Vec<Rewrite> { vec![
     rw!("recip-mul-div"; "(* ?x (/ 1 ?x))" => "1" if is_not_zero("?x")),
 
     rw!("d-variable"; "(d ?x ?x)" => "1" if is_sym("?x")),
-    rw!("d-constant"; "(d ?x ?c)" => "0" if {crate::conditions::MutAndCondition::new(vec![Box::new(is_sym("?x")), Box::new(is_const_or_distinct_var("?c", "?x"))])}),
+    rw!("d-constant"; "(d ?x ?c)" => "0" if {conditions::MutAndCondition::new(vec![Box::new(is_sym("?x")), Box::new(is_const_or_distinct_var("?c", "?x"))])}),
 
     rw!("d-add"; "(d ?x (+ ?a ?b))" => "(+ (d ?x ?a) (d ?x ?b))"),
     rw!("d-mul"; "(d ?x (* ?a ?b))" => "(+ (* ?a (d ?x ?b)) (* ?b (d ?x ?a)))"),
