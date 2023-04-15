@@ -8,8 +8,6 @@ use itertools::{Itertools, Either};
 use crate::tools::tools::Grouped;
 use crate::eggstentions::pretty_string::PrettyString;
 use std::fmt::{Debug, Display};
-use std::fs::File;
-use std::io::Read;
 use smallvec::alloc::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -20,12 +18,14 @@ use indexmap::{IndexMap, IndexSet};
 use log::{trace, warn};
 
 
-
+/// A trait for a matcher that can be used in a Searcher. Differs from condition, as it is more
+/// general and can be seen as a subpattern.
 pub trait Matcher<L: Language + 'static, N: Analysis<L> + 'static>: ToRc<L, N> {
     /// Returns ids of all roots that match this matcher, considering egraph and subst.
     /// Does not return colored ids for black subst!
     fn match_<'b>(&self, egraph: &'b EGraph<L, N>, subst: &'b Subst) -> IndexSet<Id>;
 
+    /// Returns a string representation of the matcher.
     fn describe(&self) -> String;
 }
 
@@ -35,44 +35,14 @@ impl<L: 'static + Language, N: 'static + Analysis<L>> std::fmt::Display for dyn 
     }
 }
 
-// TODO: remove this struct
-pub struct SearcherMatcher<L: Language, N: Analysis<L>> {
-    pub(crate) searcher: Rc<dyn Fn(&EGraph<L, N>, &Subst) -> IndexSet<Id>>,
-    pub(crate) desc: &'static str,
-    phantom: PhantomData<L>,
-}
-
-impl<L: Language, N: Analysis<L>> SearcherMatcher<L, N> {
-    pub fn new<F>(desc: &'static str, f: F) -> Self
-        where
-            F: Fn(&EGraph<L, N>, &Subst) -> IndexSet<Id> + 'static,
-    {
-        SearcherMatcher {
-            searcher: Rc::new(f),
-            desc,
-            phantom: Default::default(),
-        }
-    }
-}
-
-impl<L: Language + 'static, N: Analysis<L> + 'static> ToRc<L, N> for SearcherMatcher<L, N> {}
-
-impl<L: Language + 'static, N: Analysis<L> + 'static>  Matcher<L, N> for SearcherMatcher<L, N> {
-    fn match_<'b>(&self, graph: &'b EGraph<L, N>, subst: &'b Subst) -> IndexSet<Id> {
-        (self.searcher)(graph, subst)
-    }
-
-    fn describe(&self) -> String {
-        self.desc.to_string()
-    }
-}
-
+/// A trait for a matcher that matches a single hole in a pattern.
 pub struct VarMatcher<L: Language, N: Analysis<L>> {
     pub(crate) var: Var,
     phantom: PhantomData<(N, L)>,
 }
 
 impl<L: Language, N: Analysis<L>> VarMatcher<L, N> {
+    /// Creates a new VarMatcher.
     pub fn new(var: Var) -> Self {
         VarMatcher {
             var,
@@ -94,45 +64,14 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> Matcher<L, N> for VarMatch
     }
 }
 
-// pub struct ENodeMatcher<L: Language, N: Analysis<L>> {
-//     pub(crate) enode: L,
-//     pub(crate) desc: &'static str,
-//     phantom: PhantomData<N>,
-// }
-//
-// impl<L: Language, N: Analysis<L>> ENodeMatcher<L, N> {
-//     pub fn new(desc: &'static str, enode: L) -> Self {
-//         ENodeMatcher {
-//             enode,
-//             desc,
-//             phantom: Default::default(),
-//         }
-//     }
-// }
-//
-// impl<L: Language + 'static, N: Analysis<L> + 'static> ToRc<L, N> for ENodeMatcher<L, N> {}
-//
-// impl<L: Language + 'static, N: Analysis<L> + 'static> Matcher<L, N> for ENodeMatcher<L, N> {
-//     fn match_<'b>(&self, graph: &'b EGraph<L, N>, subst: &'b Subst) -> IndexSet<Id> {
-//         if let Some(c) = subst.color() {
-//             graph.colored_lookup(c, self.enode.clone())
-//         } else {
-//             graph.lookup(self.enode.clone())
-//         }
-//             .into_iter().collect()
-//     }
-//
-//     fn describe(&self) -> String {
-//         self.desc.to_string()
-//     }
-// }
-
+/// A trait for a matcher that matches a different pattern.
 pub struct PatternMatcher<L: Language, N: Analysis<L>> {
     pub(crate) pattern: Pattern<L>,
     phantom: PhantomData<N>,
 }
 
 impl<L: Language, N: Analysis<L>> PatternMatcher<L, N> {
+    /// Creates a new PatternMatcher.
     pub fn new(pattern: Pattern<L>) -> Self {
         PatternMatcher {
             pattern,
@@ -145,7 +84,7 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> ToRc<L, N> for PatternMatc
 
 impl<L: Language + 'static, N: Analysis<L> + 'static> Matcher<L, N> for PatternMatcher<L, N> {
     fn match_<'b>(&self, graph: &'b EGraph<L, N>, subst: &'b Subst) -> IndexSet<Id> {
-        let mut time = Instant::now();
+        let time = Instant::now();
         // TODO: Support hierarchical colors.
         let res = self.pattern.search(graph).into_iter().flat_map(|x| {
             let mut black_subs = None;
@@ -179,6 +118,7 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> Matcher<L, N> for PatternM
     }
 }
 
+/// Helper alias for wrapping a dynamically typed matcher in a smart pointer.
 pub type RcMatcher<L, N> = Rc<dyn Matcher<L, N>>;
 
 impl<L: Language + 'static, N: Analysis<L> + 'static> ToRc<L, N> for Rc<dyn Matcher<L, N>> {}
@@ -194,14 +134,17 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> Matcher<L, N> for Rc<dyn M
     }
 }
 
+/// A trait for a matcher that matches a pattern but ignores a different pattern.
 pub struct DisjointMatcher<L: Language, N: Analysis<L>> {
     pub(crate) matcher1: Rc<dyn Matcher<L, N>>,
     pub(crate) matcher2: Rc<dyn Matcher<L, N>>,
+    /// A description of the matcher.
     #[cfg(debug_assertions)]
     pub desc: String,
 }
 
 impl<L: Language + 'static, N: Analysis<L> + 'static> DisjointMatcher<L, N> {
+    /// Creates a new DisjointMatcher.
     pub fn new(matcher1: Rc<dyn Matcher<L, N>>, matcher2: Rc<dyn Matcher<L, N>>) -> Self {
         let desc = format!("{} != {}", matcher1.describe(), matcher2.describe());
         DisjointMatcher {
@@ -212,6 +155,7 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> DisjointMatcher<L, N> {
         }
     }
 
+    /// Returns true if the two matchers are disjoint for this subst and graph.
     pub fn is_disjoint<'b>(&self, graph: &'b EGraph<L, N>, subst: &'b Subst) -> bool {
         let match_2 = self.matcher2.match_(graph, subst);
         let res = self.matcher1.match_(graph, subst).into_iter().all(|x| {
@@ -225,7 +169,7 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> ToRc<L, N> for DisjointMat
 
 impl<L: Language + 'static, N: Analysis<L> + 'static> Matcher<L, N> for DisjointMatcher<L, N> {
     fn match_<'b>(&self, graph: &'b EGraph<L, N>, subst: &'b Subst) -> IndexSet<Id> {
-        let mut time = Instant::now();
+        let time = Instant::now();
         let res = self.matcher1.match_(graph, subst).into_iter().filter(|&x| {
             !self.matcher2.match_(graph, subst).contains(&x)
         }).collect();
@@ -242,16 +186,19 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> Matcher<L, N> for Disjoint
     }
 }
 
+/// Wrapper for two types of searchers.
 pub struct EitherSearcher<L: Language, N: Analysis<L>, A: Searcher<L, N> + Debug, B: Searcher<L, N> + Debug> {
     node: Either<A, B>,
     phantom: PhantomData<(L, N)>,
 }
 
 impl<L: Language, N: Analysis<L>, A: Searcher<L, N> + Debug, B: Searcher<L, N> + Debug> EitherSearcher<L, N, A, B> {
+    /// Creates a new EitherSearcher with the left type.
     pub fn left(a: A) -> EitherSearcher<L, N, A, B> {
         EitherSearcher { node: Either::Left(a), phantom: PhantomData::default() }
     }
 
+    /// Creates a new EitherSearcher with the right type.
     pub fn right(b: B) -> EitherSearcher<L, N, A, B> {
         EitherSearcher { node: Either::Right(b), phantom: PhantomData::default() }
     }
@@ -337,7 +284,8 @@ fn sort_by_common_vars(patterns: &mut Vec<impl Searcher<SymbolLang, ()>>) -> Ind
         p.vars().iter().map(|v| common_vars.get(v).unwrap_or(&0)).sum()
     }
 
-    // patterns.sort_by_key(|p| count_commons(p, &common_vars));
+    patterns.sort_by_key(|p| count_commons(p, &common_vars));
+    patterns.reverse();
     common_vars
 }
 
@@ -394,6 +342,9 @@ pub struct MultiDiffSearcher<A: Searcher<SymbolLang, ()>> {
 }
 
 impl<A: Searcher<SymbolLang, ()>> MultiDiffSearcher<A> {
+    /** 
+     * Creates a new MultiDiffSearcher from a list of patterns.
+     */
     pub fn new(mut patterns: Vec<A>) -> MultiDiffSearcher<A> {
         let common_vars = sort_by_common_vars(&mut patterns);
         assert!(!patterns.is_empty());
@@ -430,7 +381,7 @@ impl<A: 'static + Searcher<SymbolLang, ()>> Searcher<SymbolLang, ()> for MultiDi
             return self.patterns[0].search(egraph);
         }
 
-        let mut search_results =
+        let search_results =
             self.patterns.iter().map(|p| {
                 // For each color collect all substitutions by common var assignments
                 let mut res: IndexMap<Option<ColorId>, Vec<_>> = IndexMap::new();
@@ -444,12 +395,12 @@ impl<A: 'static + Searcher<SymbolLang, ()>> Searcher<SymbolLang, ()> for MultiDi
                                  class,
                                  s))
                             .sorted()
-                            .group_by(|(v, c, s)| (s.color(), v.clone()));
+                            .group_by(|(v, _c, s)| (s.color(), v.clone()));
                         groups.into_iter().map(|(k, v)| (k, v.collect_vec())).grouped(|x| x.0.0)
                     };
                     for (color, vars) in by_vars {
-                        res.entry(color).or_default().extend(vars.into_iter().map(|((c, vars), g)| {
-                            (vars, g.into_iter().map(|(var, c, s)| (c, s)).collect_vec())
+                        res.entry(color).or_default().extend(vars.into_iter().map(|((_c, vars), g)| {
+                            (vars, g.into_iter().map(|(_var, c, s)| (c, s)).collect_vec())
                         }));
                     }
                 }
@@ -500,7 +451,7 @@ impl<A: 'static + Searcher<SymbolLang, ()>> Searcher<SymbolLang, ()> for MultiDi
         }).collect()
     }
 
-    fn colored_search_eclass(&self, egraph: &EGraph<SymbolLang, ()>, eclass: Id, color: ColorId) -> Option<SearchMatches> {
+    fn colored_search_eclass(&self, _egraph: &EGraph<SymbolLang, ()>, _eclass: Id, _color: ColorId) -> Option<SearchMatches> {
         unimplemented!()
     }
 
@@ -538,17 +489,22 @@ impl<A: Searcher<SymbolLang, ()> + Debug> Debug for MultiDiffSearcher<A> {
 
 impl<A: Searcher<SymbolLang, ()> + PrettyString> PrettyString for MultiDiffSearcher<A> {
     fn pretty_string(&self) -> String {
-        self.patterns.iter().map(|p| p.pretty_string()).intersperse(" ||| ".to_string()).collect()
+        itertools::Itertools::intersperse(self.patterns.iter().map(|p| p.pretty_string()), " ||| ".to_string()).collect()
     }
 }
 
+/**
+ * A condition that is true for ids where the two disjoint matchers disagree.
+ */
 pub struct DisjointMatchCondition<L: Language, N: Analysis<L>> {
     disjointer: DisjointMatcher<L, N>,
+    #[allow(dead_code)]
     #[cfg(debug_assertions)]
     desc: String,
 }
 
 impl<L: Language + 'static, N: Analysis<L> + 'static> DisjointMatchCondition<L, N> {
+    /// Create a new disjoint matcher condition.
     pub fn new(disjointer: DisjointMatcher<L, N>) -> Self {
         let desc = disjointer.describe();
         DisjointMatchCondition {
@@ -584,11 +540,15 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> ImmutableCondition<L, N> f
     }
 }
 
+/**
+ * A condition that is true when the matcher contains the id being checked.
+ */
 pub struct MatcherContainsCondition<L: Language + 'static, N: Analysis<L> + 'static> {
     matcher: Rc<dyn Matcher<L, N>>,
 }
 
 impl <L: Language + 'static, N: Analysis<L> + 'static> MatcherContainsCondition<L, N> {
+    /// Create a new matcher contains condition.
     pub fn new(matcher: Rc<dyn Matcher<L, N>>) -> Self {
         MatcherContainsCondition { matcher }
     }
@@ -657,6 +617,7 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> Condition<L, N> for Matche
     }
 }
 
+/// Searcher that only returns results where given condition (`predicate`) is true.
 #[derive(Clone)]
 pub struct FilteringSearcher<L: Language, N: Analysis<L>> {
     searcher: Rc<dyn Searcher<L, N>>,
@@ -671,6 +632,7 @@ impl<L: Language, N: Analysis<L>> PrettyString for FilteringSearcher<L, N> {
 }
 
 impl<'a, L: Language + 'static, N: Analysis<L> + 'static> FilteringSearcher<L, N> {
+    /// Create a new DisjointMatchCondition from two matchers.
     pub fn create_non_pattern_filterer(matcher: RcMatcher<L, N>,
                                        negator: RcMatcher<L, N>)
         -> RcImmutableCondition<L, N> {
@@ -678,6 +640,7 @@ impl<'a, L: Language + 'static, N: Analysis<L> + 'static> FilteringSearcher<L, N
         DisjointMatchCondition::new(dis_matcher).into_rc()
     }
 
+    /// Create a new Pattern matcher condition that will check a pattern exists in the graph.
     pub fn create_exists_pattern_filterer(searcher: Pattern<L>) -> RcImmutableCondition<L, N> {
         // TODO: partially fill pattern and if not all vars have values then search by eclass
         //       In practice, create special searcher that will take the constant part from
@@ -686,6 +649,7 @@ impl<'a, L: Language + 'static, N: Analysis<L> + 'static> FilteringSearcher<L, N
         MatcherContainsCondition::new(matcher.into_rc()).into_rc()
     }
 
+    /// Create a new FilteringSearcher.
     pub fn new(searcher: Rc<dyn Searcher<L, N>>,
                predicate: RcImmutableCondition<L, N>, ) -> Self {
         FilteringSearcher {
@@ -695,6 +659,7 @@ impl<'a, L: Language + 'static, N: Analysis<L> + 'static> FilteringSearcher<L, N
         }
     }
 
+    /// Create a new FilteringSearcher from a searcher and a predicate.
     pub fn from<S: Searcher<L, N> + 'static>(s: S, predicate: RcImmutableCondition<L, N>) -> Self {
         let dyn_searcher: Rc<dyn Searcher<L, N>> = Rc::new(s);
         Self::new(dyn_searcher, predicate)
@@ -702,14 +667,17 @@ impl<'a, L: Language + 'static, N: Analysis<L> + 'static> FilteringSearcher<L, N
 }
 
 impl FilteringSearcher<SymbolLang, ()> {
+    /// Create a new FilteringSearcher that will filter out all EClasses that are not equal to `true`.
     pub fn searcher_is_true<S: Searcher<SymbolLang, ()> + 'static>(s: S) -> Self {
         Self::searcher_is_pattern(s, "true".parse().unwrap())
     }
 
+    /// Create a new FilteringSearcher that will filter out all EClasses that are not equal to `false`.
     pub fn searcher_is_false<S: Searcher<SymbolLang, ()> + 'static>(s: S) -> Self {
         Self::searcher_is_pattern(s, "false".parse().unwrap())
     }
 
+    /// Create a new FilteringSearcher that will filter out all EClasses also match with `p`.
     pub fn searcher_is_pattern<S: Searcher<SymbolLang, ()> + 'static>(s: S, p: Pattern<SymbolLang>) -> Self {
         FilteringSearcher::new(
             Rc::new(s),
@@ -731,7 +699,7 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> std::fmt::Debug for Filter
 }
 
 impl<L: 'static + Language, N: 'static + Analysis<L>> Searcher<L, N> for FilteringSearcher<L, N> {
-    fn search_eclass(&self, egraph: &EGraph<L, N>, eclass: Id) -> Option<SearchMatches> {
+    fn search_eclass(&self, _egraph: &EGraph<L, N>, _eclass: Id) -> Option<SearchMatches> {
         unimplemented!()
     }
 
@@ -742,7 +710,7 @@ impl<L: 'static + Language, N: 'static + Analysis<L>> Searcher<L, N> for Filteri
         res
     }
 
-    fn colored_search_eclass(&self, egraph: &EGraph<L, N>, eclass: Id, color: ColorId) -> Option<SearchMatches> {
+    fn colored_search_eclass(&self, _egraph: &EGraph<L, N>, _eclass: Id, _color: ColorId) -> Option<SearchMatches> {
         unimplemented!()
     }
 
@@ -751,7 +719,9 @@ impl<L: 'static + Language, N: 'static + Analysis<L>> Searcher<L, N> for Filteri
     }
 }
 
+/// Trait for converting a type to a dynamic type behind a Rc pointer.
 pub trait ToDyn<L: Language, N: Analysis<L>> {
+    /// Convert to a dynamic type behind a Rc pointer.
     fn into_rc_dyn(self) -> Rc<dyn Searcher<L, N>>;
 }
 
@@ -769,7 +739,9 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> ToDyn<L, N> for FilteringS
     }
 }
 
+/// Trait for converting a type to a dynamic type behind a Rc pointer.
 pub trait ToRc<L: Language + 'static, N: Analysis<L> + 'static> {
+    /// Convert to a dynamic type behind a Rc pointer.
     fn into_rc(self) -> Rc<dyn Matcher<L, N>>
     where
         Self: Sized + Matcher<L, N> + 'static,
@@ -778,11 +750,13 @@ pub trait ToRc<L: Language + 'static, N: Analysis<L> + 'static> {
     }
 }
 
+/// A searcher that wraps another searcher and returns the same result.
 pub struct PointerSearcher<L: Language, N: Analysis<L>> {
     searcher: Rc<dyn Searcher<L, N>>,
 }
 
 impl<L: Language, N: Analysis<L>> PointerSearcher<L, N> {
+    /// Create a new PointerSearcher.
     pub fn new(searcher: Rc<dyn Searcher<L, N>>) -> Self { PointerSearcher { searcher } }
 }
 
@@ -816,7 +790,6 @@ mod tests {
     use std::str::FromStr;
 
     use crate::{EGraph, RecExpr, Searcher, SymbolLang, Pattern, Var, ImmutableCondition, ToCondRc};
-    use crate::eggstentions::conditions::AndCondition;
 
     use crate::eggstentions::searchers::{MultiDiffSearcher, FilteringSearcher, ToDyn, Matcher, PatternMatcher};
     use crate::searchers::{MatcherContainsCondition, ToRc, VarMatcher};
@@ -846,9 +819,9 @@ mod tests {
     fn diff_two_trees_one_common() {
         let searcher = MultiDiffSearcher::from_str("(a ?b ?c) |||| (a ?c ?d)").unwrap();
         let mut egraph: EGraph<SymbolLang, ()> = EGraph::default();
-        let x = egraph.add_expr(&RecExpr::from_str("x").unwrap());
-        let z = egraph.add_expr(&RecExpr::from_str("z").unwrap());
-        let a = egraph.add_expr(&RecExpr::from_str("(a x y)").unwrap());
+        let _x = egraph.add_expr(&RecExpr::from_str("x").unwrap());
+        let _z = egraph.add_expr(&RecExpr::from_str("z").unwrap());
+        let _a = egraph.add_expr(&RecExpr::from_str("(a x y)").unwrap());
         egraph.add_expr(&RecExpr::from_str("(a z x)").unwrap());
         egraph.rebuild();
         assert_eq!(searcher.search(&egraph).len(), 1);
@@ -862,7 +835,7 @@ mod tests {
         let sp0 = egraph.add_expr(&"(S p0)".parse().unwrap());
         let ind_var = egraph.add_expr(&"ind_var".parse().unwrap());
         egraph.union(ind_var, sp0);
-        let ltwf = egraph.add_expr(&"(ltwf p0 (S p0))".parse().unwrap());
+        let _ltwf = egraph.add_expr(&"(ltwf p0 (S p0))".parse().unwrap());
         egraph.union(full_pl, after_pl);
         egraph.rebuild();
         let searcher = MultiDiffSearcher::from_str("(ltwf ?x ind_var) |||| (pl ?x Z)").unwrap();
@@ -904,7 +877,7 @@ mod tests {
         egraph.rebuild();
         // ?x + ?y pattern
         let pat = Pattern::from_str("(+ ?a ?b)").unwrap();
-        let mut sms = pat.search(&egraph);
+        let sms = pat.search(&egraph);
         assert_eq!(sms.len(), 1);
         let sm = sms.first().unwrap().clone();
         assert_eq!(sm.substs.len(), 1);

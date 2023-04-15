@@ -3,7 +3,6 @@ use std::str::FromStr;
 
 use crate::{Id, Symbol};
 use crate::ColorId;
-use itertools::Itertools;
 use std::fmt::Formatter;
 use serde::{Deserialize, Serialize};
 
@@ -124,7 +123,7 @@ impl fmt::Debug for Subst {
             }
         }
         if cfg!(feature = "colored") {
-            write!(f, " color: {}", self.color.map_or("None".to_string(), |x| x.to_string()));
+            write!(f, " color: {}", self.color.map_or("None".to_string(), |x| x.to_string()))?;
         }
         write!(f, "}}")
     }

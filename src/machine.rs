@@ -39,7 +39,7 @@ enum Instruction<L> {
 #[inline(always)]
 fn for_each_matching_node<L, D>(eclass: &EClass<L, D>,
                                 node: &L,
-                                mut f: impl FnMut(&L))
+                                f: impl FnMut(&L))
     where
         L: Language,
 {
@@ -50,7 +50,7 @@ fn for_each_matching_node<L, D>(eclass: &EClass<L, D>,
     } else {
         debug_assert!(node.children().iter().all(|&id| id == Id::from(0)));
         debug_assert!(eclass.nodes.windows(2).all(|w| w[0] < w[1]));
-        let mut start = eclass.nodes.binary_search(node).unwrap_or_else(|i| i);
+        let start = eclass.nodes.binary_search(node).unwrap_or_else(|i| i);
         let matching = eclass.nodes[..start].iter().rev()
             .take_while(|x| filterer(x))
             .chain(eclass.nodes[start..].iter().take_while(|x| filterer(x)));
@@ -179,7 +179,7 @@ impl Machine {
         yield_fn(self, subst)
     }
 
-    fn run_colored_branches<L, N, F>(&mut self, egraph: &EGraph<L, N>, i: &Reg, mut run_matches: &mut F, c: &Color, old_reg: Id)
+    fn run_colored_branches<L, N, F>(&mut self, egraph: &EGraph<L, N>, i: &Reg, run_matches: &mut F, c: &Color, old_reg: Id)
     where L: Language, N: Analysis<L>, F: FnMut(&mut Machine, &EClass<L, <N as Analysis<L>>::Data>){
         let ids = c.black_ids(old_reg);
         ids.iter().for_each(|&b_ids| { b_ids.iter().filter(|i| *i != &old_reg).for_each(|id| {

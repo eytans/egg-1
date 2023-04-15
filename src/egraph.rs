@@ -9,7 +9,7 @@ use indexmap::{IndexMap, IndexSet};
 use invariants::{AssertConfig, AssertLevel, dassert, iassert, tassert, wassert};
 use log::*;
 
-use crate::{OpId, SymbolLang, Var};
+use crate::{OpId, SymbolLang};
 use crate::Subst;
 use crate::UnionFind;
 use crate::Searcher;
@@ -22,7 +22,6 @@ use crate::EClass;
 use crate::Dot;
 use crate::AstSize;
 use crate::Analysis;
-use crate::LanguageChildren;
 
 pub use crate::colors::{Color, ColorId};
 use itertools::{Itertools};
@@ -166,8 +165,10 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     colors: Vec<Option<Color>>,
     #[cfg(feature = "colored")]
     pub(crate) colored_memo: IndexMap<ColorId, IndexMap<L, Id>>,
+    /// For each id in the egraph, what are the ids that are equivalent to it, and in what color.
     #[cfg(feature = "colored")]
     pub colored_equivalences: IndexMap<Id, IndexSet<(ColorId, Id)>>,
+    /// A filter function used when creating dots.
     #[serde(skip_serializing, skip_deserializing)]
     pub filterer: Option<Rc<dyn Fn(&EGraph<L, N>, Id) -> bool + 'static> >,
     /// What operations are not allowed to be equal (for vacuity check).
@@ -193,7 +194,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 // Check all parents exist as expected
                 for ch in n.children.iter() {
                     assert!(classes[ch.0 as usize].as_ref().unwrap().parents.iter()
-                        .any(|(n1, id1)| n1 == n));
+                        .any(|(n1, _id1)| n1 == n));
                 }
                 // Check memo
                 assert_eq!(memo.get(n), Some(&c.id));
@@ -228,6 +229,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 }
 
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
+    /// Return a new map of `OpId` (operation id) to `Id` (eclass id) for all eclasses.
     pub fn classes_by_op_id(&self) -> IndexMap<OpId, IndexSet<Id>> {
         self.classes_by_op.clone()
     }
@@ -358,14 +360,17 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         Dot { egraph: self, color: None , print_color: "blue".to_string(), pred: None }
     }
 
+    #[allow(missing_docs)]
     pub fn filtered_dot(&self, filter: impl Fn(&EGraph<L, N>, Id) -> bool +'static) -> Dot<L, N> {
         Dot { egraph: self, color: None, pred: Some(Rc::new(filter)), print_color: "blue".to_string() }
     }
 
+    #[allow(missing_docs)]
     pub fn colored_dot(&self, color: ColorId) -> Dot<L, N> {
         Dot { egraph: self, color: Some(color), print_color: "blue".to_string(), pred: None }
     }
 
+    #[allow(missing_docs)]
     pub fn colored_filtered_dot(&self, color: ColorId, filter: impl Fn(&EGraph<L, N>, Id) -> bool + 'static) -> Dot<L, N> {
         Dot { egraph: self, color: Some(color), pred: Some(Rc::new(filter)), print_color: "blue".to_string() }
     }
@@ -517,6 +522,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         self.add_expr_rec(expr.as_ref(), Some(color))
     }
 
+    /// Adds an enode to the [`EGraph`], but only for a specific color.
     pub fn colored_add(&mut self, color: ColorId, mut enode: L) -> Id {
         if cfg!(feature = "colored_no_cmemo") {
            return self.add(enode);
@@ -686,7 +692,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             // let merged = self.process_unions().iter()
             //     // .filter(|&tup| tup.2.is_none())
             //     .map(|(id1, id2, color)| (*id1, *id2)).collect_vec();
-            let merged = self.process_unions();
+            let _merged = self.process_unions();
             if cfg!(feature = "colored") {
                 if !self.colors.is_empty() {
                     self.process_colored_unions();
@@ -815,14 +821,14 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         trimmed
     }
 
-    fn update_deleted_enode(&mut self, mut classes: &mut SparseVec<EClass<L, <N as Analysis<L>>::Data>>, c: &ColorId, a: &mut L) {
+    fn update_deleted_enode(&mut self, classes: &mut SparseVec<EClass<L, <N as Analysis<L>>::Data>>, c: &ColorId, a: &mut L) {
         for id in a.children() {
             if let Some(ids) = self.get_color(*c).unwrap().black_ids(*id).cloned() {
                 for id in ids {
                     let mut was_empty = false;
                     if let Some(parents) = classes[id.0 as usize]
                         .as_mut().unwrap().colored_parents.get_mut(c) {
-                        parents.retain(|(n, e)| n != a);
+                        parents.retain(|(n, _e)| n != a);
                         if parents.is_empty() {
                             was_empty = true;
                         }
@@ -837,6 +843,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         }
     }
 
+    #[allow(dead_code)]
     #[inline(never)]
     fn check_memo(&self) -> bool {
         let mut test_memo = IndexMap::new();
@@ -976,7 +983,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     //     None
     // }
 
-
+    /// Updates the memo table with a new parent. Should be used in the context of processing unions
     pub fn update_memo_from_parent(memo: &mut IndexMap<L, Id>, n: &L, e: &Id) -> Option<(Id, Id)> {
         trace!("Updating memo from parent {:?} to {:?}", n, e);
         if let Some(old) = memo.insert(n.clone(), *e) {
@@ -1028,7 +1035,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         self.memo_classes_agree();
 
         while self.colors().any(|c| c.is_dirty()) || !self.dirty_unions.is_empty()  {
-            let merged = self.process_unions();
+            let _merged = self.process_unions();
             self.memo_black_canonized();
             self.process_colored_unions();
         }
@@ -1067,16 +1074,19 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         e.update_children(|e| self.colored_find(color, e));
     }
 
+    /// Return a canonized version of `e` under color `color`.
     pub fn colored_canonize(&self, color: ColorId, e: &L) -> L {
         let mut res = e.clone();
         self.colored_update_node(color, &mut res);
         res
     }
 
+    /// canonize node in place
     pub fn update_node(&self, e: &mut L) {
         e.update_children(|e| self.find(e));
     }
 
+    /// Return a canonized version of `e`.
     pub fn canonize(&self, e: &L) -> L {
         let mut res = e.clone();
         self.update_node(&mut res);
@@ -1093,8 +1103,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         // Need to do some merging and initial color deletion here because we are deleting duplicate
         // edges.
         let mut memo: IndexMap<L, Id> = {
-            let mut colored_memo_canonized = self.colored_memo[&c_id].iter()
-                .map(|(mut node, id)| (self.colored_canonize(c_id, node), *id))
+            let colored_memo_canonized = self.colored_memo[&c_id].iter()
+                .map(|(node, id)| (self.colored_canonize(c_id, node), *id))
                 .collect_vec();
             let mut v = self.memo.iter()
                 .map(|(orig, e)| (self.colored_canonize(c_id, orig), self.find(*e)))
@@ -1197,13 +1207,13 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 // Of course we need to act differently for [colored_no_cremove]. Dedup goes in
                 // reverse order, so we need to reverse the check.
                 if cfg!(feature = "colored_no_cremove") {
-                    parents.iter_mut().for_each(|(n1, is_black_1, e1, _opt1)| {
+                    parents.iter_mut().for_each(|(_n1, is_black_1, _e1, _opt1)| {
                         *is_black_1 = !*is_black_1
                     });
                 }
                 parents.sort_unstable();
                 if cfg!(feature = "colored_no_cremove") {
-                    parents.iter_mut().for_each(|(n1, is_black_1, e1, _opt1)| {
+                    parents.iter_mut().for_each(|(_n1, is_black_1, _e1, _opt1)| {
                         *is_black_1 = !*is_black_1
                     });
                 }
@@ -1312,7 +1322,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                         println!("Stop here! {}", self.memo.contains_key(key));
                         println!("Memo contains key: {:?}", self.memo.contains_key(key));
                         println!("Is canonized: {:?}", &self.colored_canonize(*c, key) == key);
-                        for is in self.colors[c.0 as usize].as_ref().unwrap().black_ids(*id) {
+                        if let Some(is) = self.colors[c.0 as usize].as_ref().unwrap().black_ids(*id) {
                             for id_i in is {
                                 if self[*id_i].nodes.iter().find(|x| *x == key).is_some() {
                                     println!("Found in black id {} (fixed: {})", id_i, self.find(*id_i));
@@ -1320,7 +1330,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                             }
                         }
                         for class in self.classes() {
-                            let mut fixed = class.nodes.iter().map(|x| self.colored_canonize(*c, x)).collect_vec();
+                            let fixed = class.nodes.iter().map(|x| self.colored_canonize(*c, x)).collect_vec();
                             if fixed.iter().find(|x| *x == key).is_some() {
                                 println!("Found in class {}", class.id);
                             }
@@ -1346,6 +1356,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 self[self.find(*id)].color == Some(*c))));
     }
 
+    /// Assert that the invariant that there is at most one colored EClass in a colored equality class.
+    /// This is true because for each colored equality class, there is at most one colored EClass for the colored ENodes.
     pub fn no_two_colored_classes_in_ec(&self) -> bool {
         dassert!({
                 for c in self.colors() {
@@ -1389,10 +1401,12 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 // ***  Colored Implementation  ***
 #[cfg(feature = "colored")]
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
+    #[allow(missing_docs)]
     pub fn create_sub_color(&mut self, color: ColorId) -> ColorId {
         self.create_combined_color(vec![color])
     }
 
+    #[allow(missing_docs)]
     fn process_colored_unions(&mut self) {
         for i in 0..self.colors.len() {
             self.colored_cong_closure(ColorId(i));
@@ -1400,6 +1414,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         }
     }
 
+    #[allow(missing_docs)]
     pub fn create_color(&mut self) -> ColorId {
         self.colors.push(Some(Color::new(&self.unionfind, ColorId::from(self.colors.len()))));
         let c_id = self.colors.last().unwrap().as_ref().unwrap().get_id();
@@ -1407,6 +1422,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         return c_id;
     }
 
+    /// Do not use yet
     pub fn delete_color(&mut self, c_id: ColorId) {
         assert!(self.dirty_unions.is_empty());
         // TODO: Remove from parents and children
@@ -1430,6 +1446,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             ids.iter().chain([(c_id, *id)].iter()).all(|(c_id, id)| self[*id].color.iter().all(|c| c != c_id))));
     }
 
+    #[allow(missing_docs)]
     pub fn opt_colored_union(&mut self, color: Option<ColorId>, id1: Id, id2: Id) -> (Id, bool) {
         if let Some(color) = color {
             self.colored_union(color, id1, id2)
@@ -1438,6 +1455,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         }
     }
 
+    #[allow(missing_docs)]
     pub fn colored_union(&mut self, color: ColorId, id1: Id, id2: Id) -> (Id, bool) {
         let (to, from, changed, todo) = self.get_color_mut(color).unwrap().inner_colored_union(id1, id2);
         dassert!({
@@ -1467,7 +1485,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         // }
         tassert!(AssertConfig::new(AssertLevel::Trace); self.classes().filter(|x| x.color().is_some())
             .group_by(|x| (self.opt_colored_find(x.color(),  x.id), x.color().unwrap()))
-            .into_iter().all(|(c, classes)| classes.count() == 1), "A color has two colored classes for a single Id");
+            .into_iter().all(|(_c, classes)| classes.count() == 1), "A color has two colored classes for a single Id");
         (to, changed)
     }
 
@@ -1548,6 +1566,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         })
     }
 
+    #[allow(dead_code)]
     /// For `Deserialization`
     pub(crate) fn add_class<'a>(&'a mut self, id: Id) {
         let idx = usize::from(id);
@@ -1568,6 +1587,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         }
     }
 
+    #[allow(dead_code)]
     /// For `Deserialization`
     pub(crate) fn add_node(&mut self, eclass: Id, enode: L) -> &L {
         self.update_parents(eclass, &enode);
@@ -1630,7 +1650,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             by_color.push((new_classes, id_changer, union_map));
         }
 
-        for (c, (new_classes, id_changer, union_map)) in colors.iter().zip(by_color) {
+        for (c, (new_classes, id_changer, _union_map)) in colors.iter().zip(by_color) {
             // for (black_id, ids) in union_map {
             //     for id in ids.iter() {
             //         todo.extend(self.get_color_mut(new_c_id).unwrap().inner_colored_union(black_id, *id_changer.get(id).unwrap_or(id)).2);
@@ -1690,7 +1710,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         for (key, value) in id_changer.iter() {
             // Assert class not empty
             iassert!(!self[*key].is_empty(), "Expecting that all defined classes will have edges");
-            let mut nodes = self[*key].nodes.iter().cloned()
+            let nodes = self[*key].nodes.iter().cloned()
                 .map(|n| n.map_children(|id| *id_changer.get(&id).unwrap_or(&id)))
                 .collect_vec();
             self[*value].nodes.pop();
@@ -1724,7 +1744,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 continue;
             }
             if class.color.is_none() || class.color == Some(c) {
-                union_map.push((class.id, IndexSet::from_iter([class.id].into_iter().copied())));
+                union_map.push((class.id, IndexSet::from_iter([class.id].iter().copied())));
             }
         }
         let union_map = union_map;
@@ -1749,13 +1769,11 @@ impl<'a, L: Language, N: Analysis<L>> Debug for EGraphDump<'a, L, N> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
     use crate::*;
     use std::str::FromStr;
     use log::*;
     use crate::rewrite::*;
     use itertools::Itertools;
-    use crate::util::*;
 
     #[test]
     fn simple_add() {
@@ -2025,7 +2043,7 @@ mod tests {
             x.assert_black_ids(&egraph);
         }
 
-        egraph.dot().to_dot("graph.dot");
+        egraph.dot().to_dot("graph.dot").unwrap();
 
         let take_i_nil = egraph.add_expr(&"(take i nil)".parse().unwrap());
         warn!("take i nil - {} - {}", take_i_nil, egraph.colored_find(color_z, take_i_nil));
@@ -2050,7 +2068,7 @@ mod tests {
         let mut egraph = EGraph::<S, ()>::default();
 
         egraph.rebuild();
-        let mut rules = vec![
+        let rules = vec![
             rewrite!("rule2"; "(plus Z ?x)" => "?x"),
             rewrite!("rule5"; "(plus (succ ?x) ?y)" => "(succ (plus ?x ?y))"),
         ];
@@ -2073,7 +2091,7 @@ mod tests {
         egraph.rebuild();
         egraph = Runner::default().with_iter_limit(8).with_node_limit(400000).with_egraph(egraph).run(&rules).egraph;
         egraph.rebuild();
-        egraph.dot().to_dot("graph.dot");
+        egraph.dot().to_dot("graph.dot").unwrap();
 
 
         assert_eq!(egraph.colored_find(color_z, init), egraph.colored_find(color_z, res_z), "Black ids for color_z:\n  {}", egraph.get_color(color_z).unwrap().to_string());
@@ -2097,7 +2115,7 @@ mod tests {
         // or (false ?x) => ?x
         // not true => false
         // not false => true
-        let mut rules = vec![
+        let rules = vec![
             rewrite!("rule2"; "(eq ?x ?y)" => "(eq ?y ?x)"),
             rewrite!("rule3"; "(and true ?x)" => "?x"),
             rewrite!("rule4"; "(and false ?x)" => "false"),
@@ -2178,9 +2196,8 @@ mod tests {
 
     #[test]
     fn multi_level_colored_filter() {
-        use crate::SymbolLang as S;
-
         crate::init_logger();
+
         let (mut egraph, rules, expr_id, lv1_colors) = initialize_filter_tests();
         let mut lv2_colors = vec![];
         for color_vec in choose(lv1_colors.clone(), 2) {
@@ -2208,11 +2225,9 @@ mod tests {
 
     #[test]
     fn multi_level_colored_bad_filter() {
-        use crate::SymbolLang as S;
-
         crate::init_logger();
 
-        let (mut egraph, rules, expr_id, lv1_colors) = initialize_filter_tests();
+        let (mut egraph, rules, _expr_id, lv1_colors) = initialize_filter_tests();
         let mut lv2_colors = vec![];
         for c1 in lv1_colors.iter().flatten() {
             for c2 in lv1_colors.iter().flatten() {
@@ -2234,12 +2249,10 @@ mod tests {
 
     #[test]
     fn colored_bad_filter() {
-        use crate::SymbolLang as S;
-
         crate::init_logger();
 
-        let (mut egraph, rules, expr_id, lv1_colors) = initialize_filter_tests();
-        let bad_color = egraph.create_combined_color(lv1_colors[2].iter().copied().collect_vec());
+        let (mut egraph, rules, _expr_id, lv1_colors) = initialize_filter_tests();
+        let _bad_color = egraph.create_combined_color(lv1_colors[2].iter().copied().collect_vec());
 
         let mut egraph = Runner::default().with_egraph(egraph).run(&rules).egraph;
         egraph.rebuild();
@@ -2314,18 +2327,18 @@ mod tests {
         let id9 = egraph.add_expr(&y2);
         let idp37 = egraph.add(SymbolLang::from_op_str("+", vec![id3, id7]).unwrap());
         let id2 = egraph.add(SymbolLang::from_op_str("-", vec![id5]).unwrap());
-        let id2 = egraph.union(id2, idp37).0;
+        let _id2 = egraph.union(id2, idp37).0;
         egraph.rebuild();
-        let idp34 = egraph.add(SymbolLang::from_op_str("+", vec![id3, id4]).unwrap());
-        let temp = egraph.add(SymbolLang::from_op_str("-", vec![id6]).unwrap());
+        let _idp34 = egraph.add(SymbolLang::from_op_str("+", vec![id3, id4]).unwrap());
+        let _temp = egraph.add(SymbolLang::from_op_str("-", vec![id6]).unwrap());
         let temp1 = egraph.add(SymbolLang::from_op_str("-", vec![id8]).unwrap());
         let temp2 = egraph.add(SymbolLang::from_op_str("-", vec![id9]).unwrap());
         let id4 = egraph.union(id4, temp1).0;
         let id7 = egraph.union(id7, temp2).0;
-        let id8 = egraph.union(id8, id9).0;
-        let id5 = egraph.union(id5, id6).0;
-        let id1 = egraph.union(id1, id3).0;
-        let id4 = egraph.union(id4, id7).0;
+        let _id8 = egraph.union(id8, id9).0;
+        let _id5 = egraph.union(id5, id6).0;
+        let _id1 = egraph.union(id1, id3).0;
+        let _id4 = egraph.union(id4, id7).0;
         println!("All op strings: {:?}", util::get_strings());
         // {0: "id1", 1: "id3", 2: "id4", 3: "id5", 4: "id6", 5: "id7", 6: "+", 7: "-"}
         egraph.rebuild();

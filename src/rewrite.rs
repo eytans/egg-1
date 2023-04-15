@@ -2,13 +2,11 @@ use std::fmt;
 use std::rc::Rc;
 
 use crate::{Analysis, EGraph, Id, Language, Pattern, SearchMatches, Subst, Var, ColorId};
-use std::sync::Arc;
-use std::fmt::{Display, Formatter, Debug};
+use std::fmt::{Formatter, Debug};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use itertools::Itertools;
-use log::{info, trace, warn};
-use invariants::{dassert, iassert};
+use invariants::iassert;
 
 /// A rewrite that searches for the lefthand side and applies the righthand side.
 ///
@@ -33,9 +31,6 @@ pub struct Rewrite<L: Language, N: Analysis<L>> {
     long_name: String,
     searcher: Rc<dyn Searcher<L, N>>,
     applier: Rc<dyn Applier<L, N>>,
-    /// color manager is used when two or more colors are present in a match.
-    #[cfg(feature = "colored")]
-    color_manager: Arc<dyn FnMut(EGraph<L, N>) -> Option<ColorId>>,
 }
 
 impl<L, N> fmt::Debug for Rewrite<L, N>
@@ -57,13 +52,13 @@ impl<L, N> fmt::Debug for Rewrite<L, N>
         d.field("name", &self.name)
             .field("long_name", &self.long_name);
 
-        if let Some(pat) = Any::downcast_ref::<Pattern<L>>(&self.searcher) {
+        if let Some(pat) = <dyn Any>::downcast_ref::<Pattern<L>>(&self.searcher) {
             d.field("searcher", &DisplayAsDebug(pat));
         } else {
             d.field("searcher", &"<< searcher >>");
         }
 
-        if let Some(pat) = Any::downcast_ref::<Pattern<L>>(&self.applier) {
+        if let Some(pat) = <dyn Any>::downcast_ref::<Pattern<L>>(&self.applier) {
             d.field("applier", &DisplayAsDebug(pat));
         } else {
             d.field("applier", &"<< applier >>");
@@ -115,7 +110,6 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> Rewrite<L, N> {
             long_name,
             searcher,
             applier,
-            color_manager: Arc::new(|_| None),
         })
     }
 
@@ -147,7 +141,6 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> Rewrite<L, N> {
             long_name,
             searcher,
             applier,
-            color_manager: Arc::new(|_| None),
         })
     }
 
@@ -520,7 +513,7 @@ impl<C, A, N, L> Applier<L, N> for ConditionalApplier<C, A, L, N>
         N: Analysis<L> + 'static,
 {
     // TODO: sort out an API for this
-    fn apply_one(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> Vec<Id> {
+    fn apply_one(&self, _egraph: &mut EGraph<L, N>, _eclass: Id, _subst: &Subst) -> Vec<Id> {
         unimplemented!("ConditionalApplier::apply_one is not implemented. Instead we use conditioned_apply_one");
     }
 
@@ -782,7 +775,7 @@ pub trait ImmutableCondition<L, N>: ToCondRc<L, N> where
     fn filter(&self, egraph: &EGraph<L, N>, sms: Vec<SearchMatches>) -> Vec<SearchMatches> {
         sms.into_iter().filter_map(|mut sm| {
             let eclass = sm.eclass;
-            let mut substs = std::mem::take(&mut sm.substs);
+            let substs = std::mem::take(&mut sm.substs);
             sm.substs = substs.into_iter()
                 .filter_map(|s| {
                     self.colored_check_imm(egraph, eclass, &s).map(|x| (s, x)) })
@@ -897,9 +890,8 @@ mod tests {
     use crate::{SymbolLang as S, *};
     use std::str::FromStr;
     use std::fmt::Formatter;
-    use std::rc::Rc;
     // use crate::rewrite::{ImmutableCondition, ImmutableFunctionCondition, RcImmutableCondition};
-    use crate::rewrite::{ImmutableCondition, RcImmutableCondition};
+    use crate::rewrite::ImmutableCondition;
     use crate::searchers::{MatcherContainsCondition, ToRc, VarMatcher};
 
     type EGraph = crate::EGraph<S, ()>;
@@ -999,7 +991,7 @@ mod tests {
         egraph.rebuild();
         // ?x + ?y pattern
         let pat = Pattern::from_str("(+ ?a ?b)").unwrap();
-        let mut sms = pat.search(&egraph);
+        let sms = pat.search(&egraph);
         assert_eq!(sms.len(), 1);
         let sm = sms.first().unwrap().clone();
         assert_eq!(sm.substs.len(), 1);

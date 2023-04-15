@@ -1,22 +1,17 @@
-use std::cmp::{min_by, Ordering};
 use std::collections::{HashMap, HashSet};
-use std::hash::Hash;
-use std::iter;
-use std::rc::Rc;
 
 use crate::{EGraph, Id, Language, SymbolLang, RecExpr, EClass, ColorId};
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 use itertools::Itertools;
-use log::info;
-
-use crate::tools::tools::combinations;
 use crate::eggstentions::tree::Tree;
 
+/// Reconstructs a RecExpr from an eclass.
 pub fn reconstruct(graph: &EGraph<SymbolLang, ()>, class: Id, max_depth: usize)
     -> Option<RecExpr<SymbolLang>> {
     reconstruct_colored(graph, None, class, max_depth)
 }
 
+/// Reconstructs a RecExpr from an eclass under a specific colored assumption.
 pub fn reconstruct_colored(graph: &EGraph<SymbolLang, ()>, color: Option<ColorId>, class: Id, max_depth: usize) -> Option<RecExpr<SymbolLang>> {
     let mut translations: IndexMap<Id, RecExpr<SymbolLang>> = IndexMap::new();
     let class = graph.find(class);
@@ -24,6 +19,7 @@ pub fn reconstruct_colored(graph: &EGraph<SymbolLang, ()>, color: Option<ColorId
     translations.get(&class).map(|x| x.clone())
 }
 
+/// Reconstructs a RecExpr from an eclass, but filtering to start with `edge`.
 pub fn reconstruct_edge(graph: &EGraph<SymbolLang, ()>, class: Id, edge: SymbolLang, max_depth: usize) -> Option<RecExpr<SymbolLang>> {
     let mut translations: IndexMap<Id, RecExpr<SymbolLang>> = IndexMap::new();
     for child in &edge.children {
@@ -42,7 +38,7 @@ fn reconstruct_inner(graph: &EGraph<SymbolLang, ()>, class: Id, max_depth: usize
     let mut inner_ids = vec![];
     check_class(graph, color, class, translations, &mut inner_ids, &cur_class);
     color.map(|c| {
-        for x in graph.get_color(c) {
+        if let Some(x) = graph.get_color(c) {
             let ids = x.black_ids(class);
             if let Some(ids) = ids {
                 for id in ids {
@@ -68,7 +64,7 @@ fn reconstruct_inner(graph: &EGraph<SymbolLang, ()>, class: Id, max_depth: usize
     }
 }
 
-fn check_class<'a>(graph: &EGraph<SymbolLang, ()>, color: Option<ColorId>, class: Id, translations: &mut IndexMap<Id, RecExpr<SymbolLang>>, mut inner_ids: &mut Vec<&'a SymbolLang>, colorded_class: &'a EClass<SymbolLang, ()>) {
+fn check_class<'a>(graph: &EGraph<SymbolLang, ()>, color: Option<ColorId>, class: Id, translations: &mut IndexMap<Id, RecExpr<SymbolLang>>, inner_ids: &mut Vec<&'a SymbolLang>, colorded_class: &'a EClass<SymbolLang, ()>) {
     for edge in &colorded_class.nodes {
         if edge.children.iter().all(|c| translations.contains_key(c)) {
             build_translation(graph, color, translations, &edge, class);
@@ -99,6 +95,7 @@ fn build_translation(graph: &EGraph<SymbolLang, ()>, color: Option<ColorId>, tra
     translations.insert(id, RecExpr::from(res));
 }
 
+/// Reconstructs a RecExpr for each EClass in the graph.
 pub fn reconstruct_all(graph: &EGraph<SymbolLang, ()>, color: Option<ColorId>, max_depth: usize)
     -> IndexMap<Id, Tree> {
     let mut translations: IndexMap<Id, SymbolLang> = IndexMap::default();

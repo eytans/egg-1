@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::io::{Read, Write, BufReader, Result, BufRead};
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -151,7 +150,7 @@ struct EGraphBuilder {
     unionfind: UnionFind,
     classes: Vec<Option<Box<EClass<SymbolLang, ()>>>>,
     memo: IndexMap<SymbolLang, Id>,
-    palette: ColorPalette,
+    _palette: ColorPalette,
 }
 
 impl EGraphBuilder {
@@ -196,7 +195,6 @@ impl EGraphBuilder {
 #[cfg(test)]
 mod tests {
     use std::io;
-    use std::io::BufReader;
     use std::str::FromStr;
     use crate::{EGraph, RecExpr, Serialization, Deserialization, SymbolLang, rewrite, Language, Runner};
     use crate::ser::ColorPalette;
@@ -215,7 +213,7 @@ mod tests {
             .unwrap();
 
         // Deserialize
-        let (mut g, pal) =
+        let (mut g, _pal) =
             EGraph::<SymbolLang, ()>::from_tuples_text(
                 &mut io::Cursor::new(v)).unwrap();
         // Check that original exprs are still there
@@ -246,7 +244,7 @@ mod tests {
             .unwrap();
 
         // Deserialize
-        let (mut g, pal) =
+        let (mut g, _pal) =
             EGraph::<SymbolLang, ()>::from_tuples_text(
                 &mut io::Cursor::new(v)).unwrap();
         // Check that original exprs are still there

@@ -2,14 +2,14 @@ use std::fmt;
 use std::str::FromStr;
 use std::sync::Mutex;
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use std::fmt::Formatter;
 use std::iter::FromIterator;
 use itertools::Itertools;
 use serde::de::{Error, MapAccess};
 use serde::Deserializer;
-use serde::ser::{SerializeMap, SerializeTuple};
+use serde::ser::SerializeMap;
 
 static STRINGS: Lazy<Mutex<IndexMap<u32, &'static str>>> = Lazy::new(Default::default);
 // If in test mode create function to get the strings

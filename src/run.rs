@@ -1,8 +1,6 @@
 use indexmap::{IndexMap, IndexSet};
 use instant::{Duration, Instant};
 use log::*;
-use serde::Serialize;
-use itertools::Itertools;
 
 use crate::{Analysis, EGraph, Id, Language, RecExpr, Rewrite, SearchMatches};
 
@@ -316,6 +314,7 @@ pub fn new(analysis: N) -> Self {
         Self { scheduler, ..self }
     }
 
+    #[allow(dead_code)]
     fn with_boxed_scheduler(self, scheduler: Box<dyn RewriteScheduler<L, N> + 'static>) -> Self {
         Self { scheduler, ..self }
     }

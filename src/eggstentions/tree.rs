@@ -18,30 +18,39 @@ macro_rules! bail {
 
 type ROption<T> = Rc<Option<T>>;
 
+/// A term tree with a root and subtrees
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct Tree {
+    /// The root of the term 
     pub root: String,
+    /// The subtrees of the term
     pub subtrees: Vec<Tree>,
+    /// The type of the term
     pub typ: ROption<Tree>,
 }
 
 impl Tree {
+    /// Create a new single node tree
     pub fn leaf(op: String) -> Tree {
         Tree { root: op, subtrees: Vec::new(), typ: Rc::new(None) }
     }
 
+    /// Create a new single node tree with a type
     pub fn tleaf(op: String, typ: Option<Tree>) -> Tree {
         Tree { root: op, subtrees: Vec::new(), typ: Rc::new(typ) }
     }
 
+    /// Create a new tree with a root and subtrees
     pub fn branch(op: String, subtrees: Vec<Tree>) -> Tree {
         Tree { root: op, subtrees, typ: Rc::new(None) }
     }
 
+    #[allow(missing_docs)]
     pub fn depth(&self) -> usize {
         return max(self.subtrees.iter().map(|x| x.depth())).unwrap_or(0) + 1
     }
 
+    #[allow(missing_docs)]
     pub fn size(&self) -> usize {
         return self.subtrees.iter().map(|x| x.size()).sum::<usize>() + 1
     }
@@ -61,6 +70,7 @@ impl Tree {
     //     };
     // }
 
+    /// Add this term to the egraph
     pub fn add_to_graph(&self, graph: &mut EGraph<SymbolLang, ()>) -> Id {
         let mut children = Vec::new();
         for t in &self.subtrees {
@@ -69,18 +79,21 @@ impl Tree {
         graph.add(SymbolLang::new(self.root.clone(), children))
     }
 
+    #[allow(missing_docs)]
     pub fn is_leaf(&self) -> bool {
         self.subtrees.is_empty()
     }
 
+    #[allow(missing_docs)]
     pub fn to_sexp_string(&self) -> String {
         if self.is_leaf() {
             self.root.clone()
         } else {
-            format!("({} {})", self.root.clone(), self.subtrees.iter().map(|t| t.to_string()).intersperse(" ".parse().unwrap()).collect::<String>())
+            format!("({} {})", self.root.clone(), itertools::Itertools::intersperse(self.subtrees.iter().map(|t| t.to_string()), " ".parse().unwrap()).collect::<String>())
         }
     }
 
+    /// Lexicographic ordering for trees, by root symbol and then by subtree ordering.
     pub fn tree_lexicographic_ordering(t1: &Tree, t2: &Tree) -> Ordering {
         match t1.root.cmp(&t2.root ) {
             Less => Less,
@@ -102,6 +115,7 @@ impl Tree {
         }
     }
 
+    /// Ordering for trees, by depth and then by size and then by lexicographic ordering.
     pub fn tree_size_ordering(t1: &Tree, t2: &Tree) -> Ordering {
         match t1.depth().cmp(&t2.depth()) {
             Less => Less,

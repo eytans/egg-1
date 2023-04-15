@@ -3,6 +3,7 @@ use std::cmp::Ordering;
 use crate::{CostFunction, Id, SymbolLang};
 use itertools::Itertools;
 
+/// A cost function that minimizes the depth, number of nodes and maximizes variables in the egraph.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RepOrder {
     vars: Vec<String>,
@@ -11,6 +12,7 @@ pub struct RepOrder {
 }
 
 impl RepOrder {
+    /// Returns the current depth.
     pub fn get_depth(&self) -> usize {
         self.depth
     }
@@ -53,6 +55,7 @@ impl Ord for RepOrder {
     }
 }
 
+/// A struct to create a cost function out of RepOrder.
 pub struct MinRep;
 
 impl CostFunction<SymbolLang> for MinRep {

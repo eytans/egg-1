@@ -2,17 +2,20 @@ use crate::{Analysis, Applier, EGraph, Id, Language, Pattern, SearchMatches, Sub
 use itertools::Itertools;
 use std::fmt::Formatter;
 
+/// A wrapper around an Applier that applies the applier to all matches.
 pub struct DiffApplier<T: Applier<SymbolLang, ()>> {
     applier: T
 }
 
 impl<T: Applier<SymbolLang, ()>> DiffApplier<T> {
+    /// Create a new DiffApplier.
     pub fn new(applier: T) -> DiffApplier<T> {
         DiffApplier { applier }
     }
 }
 
 impl DiffApplier<Pattern<SymbolLang>> {
+    /// Returns a string representation of the pattern.
     pub fn pretty(&self, width: usize) -> String {
         self.applier.pretty(width)
     }
@@ -26,10 +29,10 @@ impl<T: Applier<SymbolLang, ()>> std::fmt::Display for DiffApplier<T> {
 
 impl<T: Applier<SymbolLang, ()>> Applier<SymbolLang, ()> for DiffApplier<T> {
     fn apply_matches(&self, egraph: &mut EGraph<SymbolLang, ()>, matches: &[SearchMatches]) -> Vec<Id> {
-        let mut added = vec![];
+        let added = vec![];
         for mat in matches {
             for subst in &mat.substs {
-                let ids = self.apply_one(egraph, mat.eclass, subst);
+                let _ids = self.apply_one(egraph, mat.eclass, subst);
             }
         }
         added
@@ -40,11 +43,13 @@ impl<T: Applier<SymbolLang, ()>> Applier<SymbolLang, ()> for DiffApplier<T> {
     }
 }
 
+/// A special applier that will run union for `vars`.
 pub struct UnionApplier {
     vars: Vec<Var>,
 }
 
 impl UnionApplier {
+    /// Create a new UnionApplier.
     pub fn new(vars: Vec<Var>) -> UnionApplier {
         UnionApplier{vars}
     }
@@ -76,7 +81,7 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> Applier<L, N> for UnionApp
         added
     }
 
-    fn apply_one(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> Vec<Id> {
+    fn apply_one(&self, _egraph: &mut EGraph<L, N>, _eclass: Id, _subst: &Subst) -> Vec<Id> {
         unimplemented!()
     }
 

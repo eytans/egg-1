@@ -1,4 +1,3 @@
-use std::rc::Rc;
 use egg::{rewrite as rw, *};
 use ordered_float::NotNan;
 use serde::{Deserialize, Serialize};
@@ -96,7 +95,7 @@ struct IsConstOrDistinctCondition {
 }
 
 impl Condition<Math, ConstantFold> for IsConstOrDistinctCondition {
-    fn check(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, eclass: Id, subst: &Subst) -> bool {
+    fn check(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, _eclass: Id, subst: &Subst) -> bool {
         egraph.find(subst[self.v]) != egraph.find(subst[self.w])
             && egraph[subst[self.v]]
             .nodes
@@ -124,7 +123,7 @@ struct IsConstCondition {
 }
 
 impl Condition<Math, ConstantFold> for IsConstCondition {
-    fn check(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, eclass: Id, subst: &Subst) -> bool {
+    fn check(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, _eclass: Id, subst: &Subst) -> bool {
         egraph[subst[self.v]]
             .nodes
             .iter()
@@ -150,7 +149,7 @@ struct IsSymCondition {
 }
 
 impl Condition<Math, ConstantFold> for IsSymCondition {
-    fn check(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, eclass: Id, subst: &Subst) -> bool {
+    fn check(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, _eclass: Id, subst: &Subst) -> bool {
         egraph[subst[self.v]]
             .nodes
             .iter()
@@ -176,7 +175,7 @@ struct IsNotZeroCondition {
 }
 
 impl Condition<Math, ConstantFold> for IsNotZeroCondition {
-    fn check(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, eclass: Id, subst: &Subst) -> bool {
+    fn check(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, _eclass: Id, subst: &Subst) -> bool {
         let zero = Math::Constant(0.0.into());
         !egraph[subst[self.v]].nodes.contains(&zero)
     }
@@ -194,8 +193,6 @@ fn is_not_zero(var: &str) -> impl Condition<Math, ConstantFold> {
     let var = var.parse().unwrap();
     IsNotZeroCondition { v: var }
 }
-
-use egg::conditions::AndCondition;
 
 #[rustfmt::skip]
 pub fn rules() -> Vec<Rewrite> { vec![

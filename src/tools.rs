@@ -4,8 +4,6 @@ pub mod tools {
 
     use itertools::MultiProduct;
     use itertools::Itertools;
-    use crate::{RecExpr, SymbolLang, Pattern, Language, Analysis, Subst, Id, ENodeOrVar, Searcher, EGraph};
-    use std::rc::Rc;
     use indexmap::IndexMap;
 
 // fn combinations<'a, T: 'a, I: Iterator<Item = &'a T> + Clone>(mut sets: impl Iterator<Item = I>) -> impl Iterator<Item = Vec<&'a T>> {
@@ -44,6 +42,7 @@ pub mod tools {
         return res;
     }
 
+    #[allow(dead_code)]
     pub(crate) fn combinations<T: Clone, I: Clone + Iterator<Item=T>>(iters: impl Iterator<Item=I>) -> MultiProduct<I> {
         iters.multi_cartesian_product()
     }

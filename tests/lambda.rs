@@ -1,7 +1,6 @@
 use egg::{rewrite as rw, *};
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
-use std::rc::Rc;
 use serde::{Deserialize, Serialize};
 
 define_language! {
@@ -111,7 +110,7 @@ struct IsNotSameVarCondition {
 }
 
 impl Condition<Lambda, LambdaAnalysis> for IsNotSameVarCondition {
-    fn check(&self, egraph: &mut egg::EGraph<Lambda, LambdaAnalysis>, eclass: Id, subst: &Subst) -> bool {
+    fn check(&self, egraph: &mut egg::EGraph<Lambda, LambdaAnalysis>, _eclass: Id, subst: &Subst) -> bool {
         egraph.find(subst[self.v1]) != egraph.find(subst[self.v2])
     }
 
@@ -133,11 +132,11 @@ struct IsConstCondition {
 }
 
 impl Condition<Lambda, LambdaAnalysis> for IsConstCondition {
-    fn check(&self, egraph: &mut egg::EGraph<Lambda, LambdaAnalysis>, eclass: Id, subst: &Subst) -> bool {
+    fn check(&self, egraph: &mut egg::EGraph<Lambda, LambdaAnalysis>, _eclass: Id, subst: &Subst) -> bool {
         egraph[subst[self.v]].data.constant.is_some()
     }
 
-    fn check_colored(&self, egraph: &mut egg::EGraph<Lambda, LambdaAnalysis>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
+    fn check_colored(&self, egraph: &mut egg::EGraph<Lambda, LambdaAnalysis>, _eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
         egraph[subst[self.v]].data.constant.as_ref().map(|_| vec![])
     }
 
@@ -212,7 +211,7 @@ impl Applier<Lambda, LambdaAnalysis> for CaptureAvoid {
 }
 
 impl Display for CaptureAvoid {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, _f: &mut Formatter<'_>) -> std::fmt::Result {
         todo!()
     }
 }

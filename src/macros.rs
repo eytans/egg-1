@@ -119,7 +119,6 @@ macro_rules! __define_language {
      $decl:tt $op_id:tt {$($matches:tt)*} $children:tt $children_mut:tt
      $display_op:tt {$($from_op_str:tt)*}
     ) => {
-        use $crate::macros::GetOp;
 
         $(#[$meta])*
         #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
@@ -193,7 +192,7 @@ macro_rules! __define_language {
             $(#[$meta])* $vis enum $name
             { $($variants)* } ->
             { $($decl)*          $variant($ids), }
-            { $($op_id)*         $name::$variant(ids) => count!($($op_id)*), }
+            { $($op_id)*         #[allow(unused_variables)] $name::$variant(ids) => count!($($op_id)*), }
             { $($matches)*       ($name::$variant(l), $name::$variant(r)) => $crate::LanguageChildren::len(l) == $crate::LanguageChildren::len(r), }
             { $($children)*      $name::$variant(ids) => $crate::LanguageChildren::as_slice(ids), }
             { $($children_mut)*  $name::$variant(ids) => $crate::LanguageChildren::as_mut_slice(ids), }

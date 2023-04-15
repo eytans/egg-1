@@ -1,20 +1,19 @@
 use std::collections::HashSet;
 use crate::{ImmutableCondition, Condition, EGraph, Var, Subst, Id, Language, Analysis, RcImmutableCondition, ToCondRc, ColorId};
 use itertools::Itertools;
-use std::fmt::Formatter;
-use std::io;
-use std::io::Write;
-use std::rc::Rc;
-use log::{debug, info, trace};
+use log::{trace};
 use crate::tools::tools::Grouped;
 
+/// A condition that is true if all of the conditions are true.
 pub struct AndCondition<L: Language, N: Analysis<L>> {
     conditions: Vec<RcImmutableCondition<L, N>>,
     #[cfg(debug_assertions)]
+    #[allow(dead_code)]
     names: Vec<String>,
 }
 
 impl<L: Language, N: Analysis<L>> AndCondition<L, N> {
+    /// Create a new AndCondition.
     pub fn new(conditions: Vec<RcImmutableCondition<L, N>>) -> AndCondition<L, N> {
         #[cfg(debug_assertions)]
         let names = conditions.iter().map(|c| c.describe()).collect();
@@ -47,7 +46,7 @@ impl<L: Language, N: Analysis<L>> ImmutableCondition<L, N> for AndCondition<L, N
                     } else {
                         Some(x.into_iter().chain(y.into_iter())
                             .grouped(|x| *x).into_iter()
-                            .filter(|(c, v)| v.len() > 1)
+                            .filter(|(_c, v)| v.len() > 1)
                             .map(|(c, _)| c).collect_vec())
                     }
                 }))).flatten();
@@ -64,11 +63,13 @@ impl<L: Language, N: Analysis<L>> ImmutableCondition<L, N> for AndCondition<L, N
     }
 }
 
+/// A condition that is true if any of the conditions are true.
 pub struct MutAndCondition<L: Language, N: Analysis<L>> {
     conditions: Vec<Box<dyn Condition<L, N>>>
 }
 
 impl<L: Language, N: Analysis<L>> MutAndCondition<L, N> {
+    /// Create a new MutAndCondition.
     pub fn new(conditions: Vec<Box<dyn Condition<L, N>>>) -> MutAndCondition<L, N> {
         MutAndCondition {conditions}
     }
@@ -96,7 +97,7 @@ impl<L: Language, N: Analysis<L>> Condition<L, N> for MutAndCondition<L, N> {
                     } else {
                         Some(x.into_iter().chain(y.into_iter())
                             .grouped(|x| *x).into_iter()
-                            .filter(|(c, v)| v.len() > 1)
+                            .filter(|(_c, v)| v.len() > 1)
                             .map(|(c, _)| c).collect_vec())
                     }
                 }))).flatten();
@@ -113,11 +114,13 @@ impl<L: Language, N: Analysis<L>> Condition<L, N> for MutAndCondition<L, N> {
     }
 }
 
+/// A condition that is true if any of the conditions are true.
 pub struct OrCondition<L: Language, N: Analysis<L>> {
     conditions: Vec<RcImmutableCondition<L, N>>
 }
 
 impl<L: Language, N: Analysis<L>> OrCondition<L, N> {
+    /// Create a new OrCondition.
     pub fn new(conditions: Vec<RcImmutableCondition<L, N>>) -> OrCondition<L, N> {
         OrCondition {conditions}
     }
@@ -167,7 +170,7 @@ impl<L: Language, N: Analysis<L>> ImmutableCondition<L, N> for OrCondition<L, N>
 mod test {
     use log::info;
     use crate::conditions::{AndCondition, OrCondition};
-    use crate::searchers::{MatcherContainsCondition, PatternMatcher, ToDyn, ToRc, VarMatcher};
+    use crate::searchers::{MatcherContainsCondition, PatternMatcher, ToRc, VarMatcher};
     use crate::{ColorId, EGraph, ImmutableCondition, init_logger, Pattern, Searcher, SymbolLang, ToCondRc};
     use crate::reconstruct::reconstruct;
 
@@ -190,10 +193,10 @@ mod test {
         let t = egraph.add_expr(&"true".parse().unwrap());
         let f = egraph.add_expr(&"false".parse().unwrap());
         let b = egraph.add_expr(&"b".parse().unwrap());
-        let a = egraph.add_expr(&"a".parse().unwrap());
-        let c = egraph.add_expr(&"c".parse().unwrap());
-        let and_exp1 = egraph.add_expr(&"(and false true)".parse().unwrap());
-        let and_exp2 = egraph.add_expr(&"(and false false)".parse().unwrap());
+        let _a = egraph.add_expr(&"a".parse().unwrap());
+        let _c = egraph.add_expr(&"c".parse().unwrap());
+        let _and_exp1 = egraph.add_expr(&"(and false true)".parse().unwrap());
+        let _and_exp2 = egraph.add_expr(&"(and false false)".parse().unwrap());
         let and_exp3 = egraph.add_expr(&"(and true true)".parse().unwrap());
         egraph.union(and_exp3, t);
         let and_exp4 = egraph.add_expr(&"(and a b)".parse().unwrap());
@@ -205,7 +208,7 @@ mod test {
         egraph.union(or_exp3, t);
         egraph.union(or_exp1, t);
         egraph.union(or_exp2, f);
-        let or_exp4 = egraph.add_expr(&"(or a b)".parse().unwrap());
+        let _or_exp4 = egraph.add_expr(&"(or a b)".parse().unwrap());
         let or_exp5 = egraph.add_expr(&"(or b b)".parse().unwrap());
         egraph.union(or_exp5, b);
         egraph.rebuild();
@@ -249,8 +252,7 @@ mod test {
                     (!colors.is_empty()) && {
                         let color = colors[0];
                         let fixed_eclass = egraph.colored_find(colors[0], sms.eclass);
-                        (fixed_eclass == egraph.colored_find(color, t)
-                            || fixed_eclass == egraph.colored_find(color, f))
+                        fixed_eclass == egraph.colored_find(color, t) || fixed_eclass == egraph.colored_find(color, f)
                     }
                 });
             }

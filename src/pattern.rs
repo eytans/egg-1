@@ -5,10 +5,8 @@ use std::fmt;
 use crate::{machine, Analysis, Applier, EGraph, Id, Language, RecExpr, Searcher, Subst, Var, OpId, ColorId};
 use std::fmt::Formatter;
 use std::str::FromStr;
-use indexmap::IndexSet;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use crate::eggstentions::expression_ops::{RecExpSlice, Tree};
 
 /// A pattern that can function as either a [`Searcher`] or [`Applier`].
 ///
@@ -281,7 +279,7 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
     /// the representative of eclass in color.
     fn colored_search_eclass(&self, egraph: &EGraph<L, A>, eclass: Id, color: ColorId) -> Option<SearchMatches> {
         let eq_classes = egraph.get_color(color).unwrap().black_ids(eclass);
-        let mut todo: Box<dyn Iterator<Item=Id>> = if let Some(ids) = eq_classes {
+        let todo: Box<dyn Iterator<Item=Id>> = if let Some(ids) = eq_classes {
             Box::new(ids.iter().copied())
         } else {
             Box::new(std::iter::once(eclass))
@@ -408,11 +406,11 @@ mod tests {
 
         let x = egraph.add(S::leaf("x"));
         let y = egraph.add(S::leaf("y"));
-        let plus = egraph.add(S::new("+", vec![x, y]));
+        let _plus = egraph.add(S::new("+", vec![x, y]));
 
         let z = egraph.add(S::leaf("z"));
         let w = egraph.add(S::leaf("w"));
-        let plus2 = egraph.add(S::new("+", vec![z, w]));
+        let _plus2 = egraph.add(S::new("+", vec![z, w]));
 
         let c = egraph.create_color();
         egraph.colored_union(c, y, z);

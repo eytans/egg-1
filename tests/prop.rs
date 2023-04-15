@@ -1,6 +1,4 @@
-use itertools::Itertools;
 use egg::*;
-use egg::reconstruct::reconstruct_all;
 
 define_language! {
     enum Prop {

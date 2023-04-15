@@ -44,6 +44,7 @@ impl<L, D> EClass<L, D> {
         self.nodes.iter()
     }
 
+    /// Returns the color of the EClass if exists. None means it's a black class.
     pub fn color(&self) -> Option<ColorId> {
         self.color
     }
