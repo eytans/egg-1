@@ -2,6 +2,7 @@ use std::cmp::{max, min};
 pub use crate::{Id, EGraph, Language, Analysis, ColorId};
 use crate::{Singleton, UnionFind};
 use crate::util::JoinDisp;
+use invariants::dassert;
 use itertools::Itertools;
 use std::fmt::Formatter;
 use bimap::BiMap;
@@ -78,7 +79,7 @@ impl Color {
             self.union_map.entry(rep).and_modify(|s| { s.remove(&max(id1, id2)); });
         }
         if self.union_map.get(&rep).map_or(false, |s| s.len() == 1) {
-            debug_assert!(self.union_map.get(&rep).unwrap().contains(&rep), "We should always have the representative in the map");
+            dassert!(self.union_map.get(&rep).unwrap().contains(&rep), "We should always have the representative in the map");
             self.union_map.remove(&rep);
         }
     }
@@ -181,13 +182,14 @@ impl Color {
     pub fn assert_black_ids<L, N>(&self, egraph: &EGraph<L, N>)
         where L: Language, N: Analysis<L> {
         // Check that black ids are actually black representatives
-        if cfg!(debug_assertions) {
+        dassert!({
             for (_, set) in &self.union_map {
                 for id in set {
-                    debug_assert!(egraph.find(*id) == *id, "black id {:?} is not black rep {:?}", id, egraph.find(*id));
+                    dassert!(egraph.find(*id) == *id, "black id {:?} is not black rep {:?}", id, egraph.find(*id));
                 }
             }
-        }
+            true
+        });
     }
 }
 

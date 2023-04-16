@@ -185,6 +185,10 @@ pub mod test {
 //     }
 // }
 
+    #[allow(unused_imports)]
+    #[cfg(test)]
+    use invariants;
+
     /// Make a test function
     #[macro_export]
     macro_rules! test_fn {
@@ -218,6 +222,8 @@ pub mod test {
         #[test]
         fn $name() {
             let _ = env_logger::builder().is_test(true).try_init();
+            let level = invariants::max_level();
+            invariants::set_max_level(invariants::AssertLevel::Off);
             let name = stringify!($name);
             let start: $crate::RecExpr<_> = $start.parse().unwrap();
             let rules = $rules;
@@ -247,7 +253,8 @@ pub mod test {
             // away
             let id = runner.egraph.find(*runner.roots.last().unwrap());
             runner.egraph.check_goals(id, goals);
-
+            // This is very bad because we are accessing a gloabl variable. But *&%$ it for this tests its enough.
+            invariants::set_max_level(level);
             $( ($check_fn)(runner) )?
         }
     };

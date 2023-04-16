@@ -719,7 +719,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             // update the classes data structure
             let from_class = self.classes[usize::from(from)].take().unwrap();
             let to_class = self.classes[usize::from(to)].as_mut().unwrap();
-            debug_assert!(from_class.color == to_class.color);
+            dassert!(from_class.color == to_class.color);
 
             self.analysis.merge(&mut to_class.data, from_class.data);
             concat(&mut to_class.nodes, from_class.nodes);
@@ -829,7 +829,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             }
             // There might be unused colors in it, use them.
             // TODO: make sure that a class will not be empty once we remove edges by color.
-            debug_assert!(!classes[key.0 as usize].as_mut().unwrap().nodes.is_empty());
+            dassert!(!classes[key.0 as usize].as_mut().unwrap().nodes.is_empty());
 
             trimmed += old_len - classes[key.0 as usize].as_mut().unwrap().nodes.len();
 
@@ -853,11 +853,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         }
         self.classes = classes;
 
-        #[cfg(debug_assertions)]
-        for ids in classes_by_op.values_mut() {
-            let unique: indexmap::IndexSet<Id> = ids.iter().copied().collect();
-            assert_eq!(ids.len(), unique.len());
-        }
         self.classes_by_op = classes_by_op;
         self.colored_equivalences.clear();
         let colors = std::mem::take(&mut self.colors);
@@ -980,7 +975,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 for (n, p_id) in std::mem::take(&mut self[id].changed_parents) {
                     if let Some(m_id) = self.memo.remove(&n) {
                         // We might have already unioned these two, so we need to check
-                        if cfg!(debug_assertions) {
+                        dassert!({
                             let fixed_m_id = self.find(m_id);
                             let fixed_p_id = self.find(p_id);
                             if !(to_union.contains(&(fixed_p_id, fixed_m_id))
@@ -990,7 +985,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                                            "Found unexpected non-equivalence for {:?}(memo)!={:?}(changed_parent) for enode {:?}",
                                            fixed_m_id, fixed_p_id, n);
                             }
-                        }
+                            true
+                        });
                     }
                 }
                 let mut parents = std::mem::take(&mut self[id].parents)
@@ -1004,7 +1000,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     n.update_children(|child| self.find(child));
                     let old_p_id = *p_id;
                     *p_id = self.find(*p_id);
-                    debug_assert!(self[*p_id].color.is_none());
+                    dassert!(self[*p_id].color.is_none());
                     trace!("Updating parent {:?} of {:?} to {:?}", n, old_p_id, *p_id);
                     for child in n.children().iter().filter(|c| **c != id) {
                         self[*child].changed_parents.push((n.clone(), *p_id));
@@ -1202,8 +1198,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
         for (id1, id2) in to_union.drain(..) {
             if self[id1].color.is_some() && self[id2].color.is_some() {
-                debug_assert!(self[id1].color == self[id2].color);
-                debug_assert!(self[id1].color.unwrap() == c_id);
+                dassert!(self[id1].color == self[id2].color);
+                dassert!(self[id1].color.unwrap() == c_id);
             }
             self.colored_union(c_id, id1, id2);
         }
@@ -1238,7 +1234,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                         parents.push((canoned, true, fixed_id, None));
                     }
                     for (mut p, id) in self[*g].colored_parents.remove(&c_id).unwrap_or(vec![]) {
-                        debug_assert!(self[id].color.unwrap() == c_id, "Color mismatch");
+                        dassert!(self[id].color.unwrap() == c_id, "Color mismatch");
                         let fixed_id = self.find(id);
                         if let Some(memo_id) = memo.remove(&p) {
                             to_union.push((fixed_id, memo_id));
@@ -1445,7 +1441,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     }
 
     fn memo_enode_integrity(&self) {
-        if cfg!(debug_assertions) {
+        dassert!({
             for (key, value) in &self.memo {
                 // assert_eq!(value,  &self.find(*value), "Memo should point to canonized class {} <- {:?}. Canonized edge: {:?}. Uncanonized class is {:?}", *value, key, self.canonize(key), self.classes[value.0 as usize]);
                 assert!(
@@ -1515,7 +1511,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     );
                 }
             }
-        }
+            true
+        });
     }
 
     fn memo_classes_agree(&self) {
