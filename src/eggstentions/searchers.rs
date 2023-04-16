@@ -273,19 +273,13 @@ impl<L: Language, N: Analysis<L>, A: Searcher<L, N> + Debug, B: Searcher<L, N> +
     }
 }
 
-fn sort_by_common_vars(patterns: &mut Vec<impl Searcher<SymbolLang, ()>>) -> IndexMap<Var, usize> {
+fn count_common_vars(patterns: &mut Vec<impl Searcher<SymbolLang, ()>>) -> IndexMap<Var, usize> {
     let common_vars = patterns.iter().flat_map(|p| p.vars())
         .grouped(|v| v.clone()).iter()
         .filter_map(|(k, v)|
             if v.len() <= 1 { None } else { Some((*k, v.len())) })
         .collect::<IndexMap<Var, usize>>();
 
-    fn count_commons(p: &impl Searcher<SymbolLang, ()>, common_vars: &IndexMap<Var, usize>) -> usize {
-        p.vars().iter().map(|v| common_vars.get(v).unwrap_or(&0)).sum()
-    }
-
-    patterns.sort_by_key(|p| count_commons(p, &common_vars));
-    patterns.reverse();
     common_vars
 }
 
@@ -346,7 +340,7 @@ impl<A: Searcher<SymbolLang, ()>> MultiDiffSearcher<A> {
      * Creates a new MultiDiffSearcher from a list of patterns.
      */
     pub fn new(mut patterns: Vec<A>) -> MultiDiffSearcher<A> {
-        let common_vars = sort_by_common_vars(&mut patterns);
+        let common_vars = count_common_vars(&mut patterns);
         assert!(!patterns.is_empty());
         MultiDiffSearcher { patterns, common_vars_priorities: common_vars }
     }
