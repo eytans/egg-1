@@ -146,6 +146,7 @@ pub struct DisjointMatcher<L: Language, N: Analysis<L>> {
 impl<L: Language + 'static, N: Analysis<L> + 'static> DisjointMatcher<L, N> {
     /// Creates a new DisjointMatcher.
     pub fn new(matcher1: Rc<dyn Matcher<L, N>>, matcher2: Rc<dyn Matcher<L, N>>) -> Self {
+        #[cfg(debug_assertions)]
         let desc = format!("{} != {}", matcher1.describe(), matcher2.describe());
         DisjointMatcher {
             matcher1,
@@ -500,6 +501,7 @@ pub struct DisjointMatchCondition<L: Language, N: Analysis<L>> {
 impl<L: Language + 'static, N: Analysis<L> + 'static> DisjointMatchCondition<L, N> {
     /// Create a new disjoint matcher condition.
     pub fn new(disjointer: DisjointMatcher<L, N>) -> Self {
+        #[cfg(debug_assertions)]
         let desc = disjointer.describe();
         DisjointMatchCondition {
             disjointer,
