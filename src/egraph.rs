@@ -1230,10 +1230,14 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     }
                 });
 
+                #[allow(unused_variables)]
                 for (n, is_black, e, orig_class) in parents {
                     if let Some(old) = memo.insert(n.clone(), e) {
                         to_union.push((old, e));
                     }
+
+                    #[allow(unused_attributes)]
+                    #[allow(unreachable_code)]
                     if !is_black {
                         #[cfg(feature = "colored_no_cmemo")]
                         panic!("Should not have colored enodes in no_cmemo mode");
