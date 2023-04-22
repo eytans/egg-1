@@ -255,10 +255,6 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
                 .filter_map(|e| self.search_eclass(egraph, e.id))
                 .collect(),
         };
-        if self.pretty(500) == "(= ?x ?x)" && res.iter().any(|m| m.substs.iter().any(|s| s.color().is_some())) {
-            warn!("Found colored matches for {}", self.pretty(500));
-            warn!("{:?}", res);
-        }
         res
     }
 
