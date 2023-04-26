@@ -9,7 +9,7 @@ use log::*;
 use std::iter::FromIterator;
 use std::rc::Rc;
 
-use crate::Analysis;
+use crate::{Analysis, Singleton};
 use crate::AstSize;
 use crate::Dot;
 use crate::EClass;
@@ -1217,14 +1217,17 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             assert!(!todo.is_empty());
 
             // rep to all contained
-            let all_groups: IndexMap<Id, IndexSet<Id>> =
-                self.get_color(c_id).unwrap().union_find.build_sets();
+            // let all_groups: IndexMap<Id, IndexSet<Id>> =
+            //     self.get_color(c_id).unwrap().union_find.build_sets();
             for id in todo {
+                let single_id: IndexSet<Id> = IndexSet::singleton(id);
+                let allids = self.get_color(c_id).unwrap().black_ids(id)
+                    .unwrap_or(&single_id).iter().copied().collect_vec();
                 // I need to build parents while aware what is a colored edge
                 // Colored edges might be deleted, and they need to be updated in colored_memo if not
                 let mut parents: Vec<(L, bool, Id, Option<Id>)> = vec![];
-                for g in all_groups.get(&id).unwrap() {
-                    for (p, id) in &self[*g].parents {
+                for g in allids {
+                    for (p, id) in &self[g].parents {
                         let canoned = self.colored_canonize(c_id, p);
                         let fixed_id = self.find(*id);
                         if let Some(memo_id) = memo.remove(&canoned) {
@@ -1233,7 +1236,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                         // I need bool and option for sorting
                         parents.push((canoned, true, fixed_id, None));
                     }
-                    for (mut p, id) in self[*g].colored_parents.remove(&c_id).unwrap_or(vec![]) {
+                    for (mut p, id) in self[g].colored_parents.remove(&c_id).unwrap_or(vec![]) {
                         dassert!(self[id].color.unwrap() == c_id, "Color mismatch");
                         let fixed_id = self.find(id);
                         if let Some(memo_id) = memo.remove(&p) {
@@ -1244,7 +1247,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                         if let Some(memo_id) = memo.remove(&p) {
                             to_union.push((fixed_id, memo_id));
                         }
-                        parents.push((p, false, fixed_id, Some(*g)));
+                        parents.push((p, false, fixed_id, Some(g)));
                     }
                 }
                 if let Some(pars) = self[id].colord_changed_parents.remove(&c_id) {
