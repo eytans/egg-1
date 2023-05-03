@@ -92,6 +92,22 @@ impl Subst {
     pub fn color(&self) -> Option<ColorId> {
         self.color
     }
+
+    pub fn merge(&self, sub2: Subst) -> Subst {
+        assert!(self.color.is_none() || sub2.color.is_none() || self.color == sub2.color);
+        let mut new = self.clone();
+        if new.color.is_none() && sub2.color.is_some() {
+            new.color = sub2.color.clone();
+        }
+        for (var, id) in sub2.vec {
+            if let Some(vid) = self.get(var) {
+                assert!(vid == &id);
+            } else {
+                new.insert(var, id);
+            }
+        }
+        new
+    }
 }
 
 impl std::ops::Index<Var> for Subst {
