@@ -284,6 +284,7 @@ fn count_common_vars(patterns: &mut Vec<impl Searcher<SymbolLang, ()>>) -> Index
     common_vars
 }
 
+#[allow(unused)]
 fn merge_substs(vars: &Vec<Var>, sub1: &Subst, sub2: &Subst) -> Subst {
     let mut res = Subst::colored_with_capacity(vars.len(), sub1.color().or_else(|| sub2.color()));
     for v in vars {
@@ -302,6 +303,7 @@ fn merge_substs(vars: &Vec<Var>, sub1: &Subst, sub2: &Subst) -> Subst {
 }
 
 // Aggregate product of equal common var substs
+#[allow(unused)]
 fn aggregate_substs(matches_by_subst: &[Vec<(Vec<Option<Id>>, Vec<(Id, Subst)>)>],
                     limits: Vec<Option<Id>>,
                     all_vars: &Vec<Var>) -> Vec<(Id, Subst)> {
@@ -333,6 +335,7 @@ fn aggregate_substs(matches_by_subst: &[Vec<(Vec<Option<Id>>, Vec<(Id, Subst)>)>
 /// Uses multiple searchers with results agreeing on vars but not on root
 pub struct MultiDiffSearcher<A: Searcher<SymbolLang, ()>> {
     patterns: Vec<A>,
+    #[allow(unused)]
     common_vars_priorities: IndexMap<Var, usize>,
 }
 
@@ -426,7 +429,7 @@ impl<A: 'static + Searcher<SymbolLang, ()>> Searcher<SymbolLang, ()> for MultiDi
                 let v = canonize_matches(egraph, c.get_id(), v);
                 // Now need to create cartesian product and filter by matching vars. We ignore eclass, but take the eclass from acc.
                 acc.into_iter().cartesian_product(v)
-                    .filter(|((eclass, sub1), (_, sub2))| egraph.subst_agrees(sub1, sub2, true))
+                    .filter(|((_eclass, sub1), (_, sub2))| egraph.subst_agrees(sub1, sub2, true))
                     .map(|((eclass, sub1), (_, sub2))| (eclass, sub1.merge(sub2)))
                     .collect_vec()
             });
