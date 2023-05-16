@@ -25,7 +25,7 @@ pub struct Color {
     pub(crate) parents: Vec<ColorId>,
     /// Translation for each parent color, from black_colored_class here to parents one. Useful for
     /// implementing case split logic and the like.
-    pub(crate) parents_classes: Vec<BiMap<Id, Id>>,
+    pub parents_classes: Vec<BiMap<Id, Id>>,
 }
 
 impl Color {
@@ -145,6 +145,10 @@ impl Color {
 
     pub fn black_reps(&self) -> impl Iterator<Item=&Id> {
         self.union_map.keys().into_iter()
+    }
+
+    pub fn black_colored_classes_size(&self) -> usize {
+        self.black_colored_classes.len()
     }
 
     pub fn parents(&self) -> &Vec<ColorId> {

@@ -176,6 +176,8 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     /// All the case splits that happened for this EGraph. They can be recursive for deeper cases.
     /// Will be updated by the user. The runner will run on all of them.
     pub all_splits: Vec<EGraph<L, N>>,
+    /// Collect how many e-nodes were deleted during rebuilds.
+    pub deleted_enodes: usize,
 }
 
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
@@ -234,6 +236,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             vacuity_ops: Default::default(),
             #[cfg(feature = "keep_splits")]
             all_splits: vec![],
+            deleted_enodes: 0,
         }
     }
 }
@@ -281,7 +284,13 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             vacuity_ops: Default::default(),
             #[cfg(feature = "keep_splits")]
             all_splits: vec![],
+            deleted_enodes: 0,
         }
+    }
+
+    /// Return total number of ids.
+    pub fn id_len(&self) -> usize {
+        self.classes.len()
     }
 
     /// Returns an iterator over the eclasses in the egraph.
@@ -882,6 +891,9 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         c: &ColorId,
         a: &mut L,
     ) {
+        #[cfg(feature = "stats")] {
+            self.deleted_enodes += 1;
+        }
         for id in a.children() {
             if let Some(ids) = self.get_color(*c).unwrap().black_ids(*id).cloned() {
                 for id in ids {
