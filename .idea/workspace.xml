@@ -12,14 +12,10 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Made colored union find separate from full union find and ready for hierarchy.&#10;&#10;It now supports multithreading, and has a partial representation of union of ids to better support future recursive splits">
+    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Fixed colored_union_find.rs remove, some warnings and better parameters for api">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/colored_union_find.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/colored_union_find.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/colors.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/colors.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/egraph.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/egraph.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rewrite.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/rewrite.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ser.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/ser.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/unionfind.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/unionfind.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -157,7 +153,7 @@
       <workItem from="1683051345822" duration="599000" />
       <workItem from="1687775369321" duration="35310000" />
       <workItem from="1688365694735" duration="4075000" />
-      <workItem from="1688382947288" duration="4222000" />
+      <workItem from="1688382947288" duration="5106000" />
     </task>
     <task id="LOCAL-00001" summary="Colored congruence should take less memory due to better implementation">
       <created>1682546837181</created>
@@ -173,7 +169,14 @@
       <option name="project" value="LOCAL" />
       <updated>1688383968245</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="Fixed colored_union_find.rs remove, some warnings and better parameters for api">
+      <created>1688388604985</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1688388604985</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -193,7 +196,8 @@
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Colored congruence should take less memory due to better implementation" />
     <MESSAGE value="Made colored union find separate from full union find and ready for hierarchy.&#10;&#10;It now supports multithreading, and has a partial representation of union of ids to better support future recursive splits" />
-    <option name="LAST_COMMIT_MESSAGE" value="Made colored union find separate from full union find and ready for hierarchy.&#10;&#10;It now supports multithreading, and has a partial representation of union of ids to better support future recursive splits" />
+    <MESSAGE value="Fixed colored_union_find.rs remove, some warnings and better parameters for api" />
+    <option name="LAST_COMMIT_MESSAGE" value="Fixed colored_union_find.rs remove, some warnings and better parameters for api" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

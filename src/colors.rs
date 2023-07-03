@@ -116,7 +116,7 @@ impl<L: Language, N: Analysis<L>> Color<L, N> {
     }
 
     // Assumes to and from canonised to black and !=
-    pub(crate) fn inner_black_union(&mut self, black_to: Id, black_from: Id) -> Option<(Id, Id)> {
+    pub(crate) fn inner_black_union(&mut self, egraph: &EGraph<L, N>, black_to: Id, black_from: Id) -> Option<(Id, Id)> {
         for pc in self.parents_classes.iter_mut() {
             // Remove the "childs" id (self) and update it.
             if let Some((left, _right)) = pc.remove_by_right(&black_from) {
@@ -139,13 +139,14 @@ impl<L: Language, N: Analysis<L>> Color<L, N> {
             (black_to, black_from)
         };
 
+        // We need to update black_ids.
+        self.update_equality_classes(black_to, black_from, colored_to, colored_from);
+
         // In case both were not colored union_find.remove will not have any effect which is good.
         if colored_to != colored_from {
             if from_existed {
-                // let ids = self.black_ids(egraph, colored_from).map(|x| x.iter().copied().collect_vec());
-                // self.union_find.remove(&black_from, ids.map(|x| x.into_iter()));
-                // TODO: fix Black ids seem to be broken. Temporarilty going through all ids.
-                self.union_find.remove(&black_from, None::<Vec<Id>>);
+                let ids = self.black_ids(egraph, colored_to).map(|x| x.iter().copied().collect_vec());
+                self.union_find.remove(&black_from, ids.map(|x| x.into_iter()));
             }
             self.dirty_unions.push(colored_to);
         }
@@ -153,8 +154,6 @@ impl<L: Language, N: Analysis<L>> Color<L, N> {
         // If both color classes existed it will update colored enodes classes.
         let g_todo = self.update_black_classes(colored_to, colored_from);
 
-        // We need to update black_ids.
-        self.update_equality_classes(black_to, black_from, colored_to, colored_from);
         g_todo
     }
 
