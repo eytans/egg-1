@@ -179,9 +179,9 @@ impl Machine {
         yield_fn(self, subst)
     }
 
-    fn run_colored_branches<L, N, F>(&mut self, egraph: &EGraph<L, N>, i: &Reg, run_matches: &mut F, c: &Color, old_reg: Id)
+    fn run_colored_branches<L, N, F>(&mut self, egraph: &EGraph<L, N>, i: &Reg, run_matches: &mut F, c: &Color<L, N>, old_reg: Id)
     where L: Language, N: Analysis<L>, F: FnMut(&mut Machine, &EClass<L, <N as Analysis<L>>::Data>){
-        let ids = c.black_ids(old_reg);
+        let ids = c.black_ids(egraph, old_reg);
         ids.iter().for_each(|&b_ids| { b_ids.iter().filter(|i| *i != &old_reg).for_each(|id| {
             self.reg[i.0 as usize] = *id;
             run_matches(self, &egraph[*id]);

@@ -430,7 +430,7 @@ define_language! {
 
 // in this case, our analysis itself doens't require any data, so we can just
 // use a unit struct and derive Default
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct ConstantFolding;
 impl Analysis<SimpleMath> for ConstantFolding {
     type Data = Option<i32>;

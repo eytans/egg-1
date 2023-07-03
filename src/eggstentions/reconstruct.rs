@@ -39,7 +39,7 @@ fn reconstruct_inner(graph: &EGraph<SymbolLang, ()>, class: Id, max_depth: usize
     check_class(graph, color, class, translations, &mut inner_ids, &cur_class);
     color.map(|c| {
         if let Some(x) = graph.get_color(c) {
-            let ids = x.black_ids(class);
+            let ids = x.black_ids(graph, class);
             if let Some(ids) = ids {
                 for id in ids {
                     let colorded_class = &graph[*id];
@@ -56,7 +56,7 @@ fn reconstruct_inner(graph: &EGraph<SymbolLang, ()>, class: Id, max_depth: usize
         }
         if edge.children.iter().all(|c| translations.contains_key(c) ||
             color.map_or(false, |c_id| graph.get_color(c_id).map_or(false, |x|
-                x.black_ids(class).map_or(false, |ids|
+                x.black_ids(graph, class).map_or(false, |ids|
                     ids.iter().find(|id| translations.contains_key(*id)).is_some())))) {
             build_translation(graph, color, translations, &edge, class);
             return;
@@ -82,7 +82,7 @@ fn build_translation(graph: &EGraph<SymbolLang, ()>, color: Option<ColorId>, tra
         let translation = translations.get(c).or_else(||
             color.map(|c_id|
                 graph.get_color(c_id).map(|x|
-                    x.black_ids(*c).map(|ids|
+                    x.black_ids(graph, *c).map(|ids|
                         // Build translation is only called when a translation exists
                         ids.iter().find_map(|id| translations.get(id)))))
                 .flatten().flatten().flatten()

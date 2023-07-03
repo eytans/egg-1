@@ -224,7 +224,7 @@ where
             let mut done = HashSet::new();
             // Collect all groups to put in subgraphs and filter classes using self.filter
             let mut groups = Vec::new();
-            for (black_id, ids) in &color.union_map {
+            for (black_id, ids) in &color.equality_classes {
                 let mut group = Vec::new();
                 for class in ids.iter().map(|id| &self.egraph[*id]) {
                     if !dropped.contains(&class.id) {

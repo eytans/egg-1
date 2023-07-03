@@ -26,6 +26,7 @@ be added later.
 The following macro invocation shows the the accepted forms of variants:
 ```
 # use egg::*;
+use crate::egg::macros::GetOp;
 define_language! {
     enum SimpleLanguage {
         // string variant with no children

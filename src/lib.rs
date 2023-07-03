@@ -129,4 +129,5 @@ pub mod test;
 mod colors;
 mod eggstentions;
 pub mod tools;
+mod colored_union_find;
 
