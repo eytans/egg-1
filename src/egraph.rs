@@ -696,7 +696,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 let mut colors = std::mem::take(&mut self.colors);
                 let todo = colors.iter_mut()
                     .filter_map(|c| c.as_mut())
-                    .filter_map(|color| color.inner_black_union(&self,to, from))
+                    .filter_map(|color| color.inner_black_union(to, from))
                     .collect_vec();
                 self.colors = colors;
                 for (id1, id2) in todo {

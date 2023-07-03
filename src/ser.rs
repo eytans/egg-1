@@ -78,7 +78,7 @@ impl Serialization for EGraph<SymbolLang, ()> {
                 };
             for id in color.black_reps() {
                 writeln!(out, "?~ {color_id} {members}",
-                         members = color.black_ids(*id).unwrap().iter().join(" "))?;
+                         members = color.black_ids(self, *id).unwrap().iter().join(" "))?;
             }
         }
         Ok(())

@@ -109,7 +109,7 @@ impl ColoredUnionFind {
 
     /// Remove a node from the union-find. It will not remove the group, but it will remove a single node.
     /// Fails if the node is a leader.
-    pub fn remove(&mut self, t: &Id, keys_to_check: Option<impl Iterator<Item = Id>>) -> Option<()> {
+    pub fn remove(&mut self, t: &Id, keys_to_check: Option<impl IntoIterator<Item = Id>>) -> Option<()> {
         let leader = self.inner_find(t)?;
         if leader == t.0 {
             return None;
@@ -121,7 +121,11 @@ impl ColoredUnionFind {
                 self.parents[&k].store(leader, Relaxed);
             }
         } else {
-            let keys = self.parents.keys().filter(|k| k.0 == t.0).copied().collect_vec();
+            let keys = self.parents.iter()
+                .filter(|(_k, v)| v.load(Relaxed) == t.0)
+                .map(|(k, _v)| k)
+                .copied()
+                .collect_vec();
             for k in keys {
                 self.parents[&k].store(leader, Relaxed);
             }

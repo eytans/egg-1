@@ -261,7 +261,7 @@ pub trait Searcher<L, N>: std::fmt::Display
 ///
 /// // Our metadata in this case will be size of the smallest
 /// // represented expression in the eclass.
-/// #[derive(Default)]
+/// #[derive(Default, Clone)]
 /// struct MinSize;
 /// impl Analysis<Math> for MinSize {
 ///     type Data = usize;

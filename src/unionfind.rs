@@ -67,6 +67,7 @@ impl UnionFind {
         }
     }
 
+    #[allow(dead_code)]
     pub fn build_sets(&self) -> IndexMap<Id, IndexSet<Id>> {
         let mut map: IndexMap<Id, IndexSet<Id>> = Default::default();
 
