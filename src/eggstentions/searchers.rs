@@ -622,6 +622,7 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> ImmutableCondition<L, N> f
 /**
  * A condition that is true when the matcher contains the id being checked.
  */
+#[derive(Clone)]
 pub struct MatcherContainsCondition<L: Language + 'static, N: Analysis<L> + 'static> {
     matcher: Rc<dyn Matcher<L, N>>,
 }
@@ -657,11 +658,11 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> ImmutableCondition<L, N> f
                 return res;
             }
             if subst.color().is_none() {
-                if let Some(eqs) = egraph.colored_equivalences.get(&id) {
+                if let Some(eqs) = egraph.get_colored_equalities(id) {
                     for (c, id) in eqs {
-                        if egraph.colored_find(*c, *id) == egraph.colored_find(*c, eclass) {
-                            if !colors.contains(c) {
-                                colors.push(*c);
+                        if egraph.colored_find(c, id) == egraph.colored_find(c, eclass) {
+                            if !colors.contains(&c) {
+                                colors.push(c);
                             }
                         }
                     }
@@ -948,7 +949,7 @@ mod tests {
         crate::init_logger();
         let mut egraph: EGraph<SymbolLang, ()> = EGraph::default();
 
-        let matcher:VarMatcher<SymbolLang, ()> = VarMatcher::new(Var::from_str("?a").unwrap());
+        let matcher: VarMatcher<SymbolLang, ()> = VarMatcher::new(Var::from_str("?a").unwrap());
         // add x + y expression
         let x = egraph.add(SymbolLang::leaf("x"));
         let y = egraph.add(SymbolLang::leaf("y"));
@@ -980,7 +981,7 @@ mod tests {
         let results = searcher.search(&egraph);
         assert_eq!(results.len(), 1);
         let sm = results.first().unwrap().clone();
-        assert_eq!(sm.substs.len(), 1);
+        assert_eq!(sm.substs.len(), 1, "substs: {:?}", sm.substs);
         let subst = sm.substs[0].clone();
         assert!(subst.color().is_some());
         assert_eq!(subst.color().unwrap(), color);

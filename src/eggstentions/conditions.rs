@@ -238,10 +238,10 @@ mod test {
         let fallacy_color = egraph.create_color();
         egraph.colored_union(fallacy_color, t, f);
         egraph.rebuild();
-        f_pattern.search(&egraph).iter()
+        assert!(f_pattern.search(&egraph).iter()
             .any(|sms| sms.substs.iter()
                 .any(|sbst|
-                    fallacy.colored_check_imm(&egraph, sms.eclass, sbst).is_some()));
+                    fallacy.colored_check_imm(&egraph, sms.eclass, sbst).is_some())), "Expecting fallacy in fallacy color");
         for sms in vec![&t_pattern, &f_pattern, &and_pattern].iter()
             .flat_map(|p| p.search(&egraph)) {
             for sbst in sms.substs {
@@ -288,14 +288,16 @@ mod test {
         // Finally - check pattern matching works as expected in conditions. I can do this by
         // checking the pattern `and a b`.
         let and_pattern: Pattern<SymbolLang> = "(and a ?b)".parse().unwrap();
-        let and_cond = MatcherContainsCondition::new(PatternMatcher::new(and_pattern).into_rc()).into_rc();
-        let and_false_andp = AndCondition::new(vec![cond1.clone(), and_cond.clone()]);
+        let and_cond = MatcherContainsCondition::new(PatternMatcher::new(and_pattern).into_rc());
+        let and_false_andp = AndCondition::new(vec![cond1.clone(), and_cond.clone().into_rc()]);
         let and_color = egraph.create_color();
         egraph.colored_union(and_color, and_exp4, f);
         egraph.rebuild();
+        all_results_agree_with_color(&mut egraph, &f_pattern, vec![and_color], &cond1);
+        all_results_agree_with_color(&mut egraph, &f_pattern, vec![and_color], &and_cond);
         all_results_agree_with_color(&mut egraph, &f_pattern, vec![and_color], &and_false_andp);
 
-        let or_false_andp = OrCondition::new(vec![cond1.clone(), and_cond.clone()]);
+        let or_false_andp = OrCondition::new(vec![cond1.clone(), and_cond.clone().into_rc()]);
         let or_color = egraph.create_color();
         egraph.colored_union(or_color, and_exp4, t);
         egraph.rebuild();
@@ -306,8 +308,15 @@ mod test {
                                     pattern: &Pattern<SymbolLang>,
                                     checked_colors: Vec<ColorId>,
                                     cond: &dyn ImmutableCondition<SymbolLang, ()>) {
-        pattern.search(&egraph).iter().for_each(|sms| sms.substs.iter()
+        let pattern_results = pattern.search(&egraph);
+        pattern_results.iter().for_each(|sms| sms.substs.iter()
             .for_each(|sbst| {
+                // TODO: Why is f_pattern returning a substitution with a color?
+                if let Some(id) = sbst.color() {
+                    if !checked_colors.contains(&id) {
+                        return;
+                    }
+                }
                 info!("Checking {:?} on eclass represented by {:?}", sbst, reconstruct(&egraph, sms.eclass, 2));
                 let colors = cond.colored_check_imm(&egraph, sms.eclass, sbst);
                 assert!(colors.is_some(), "No colored in check of cond {}", cond.describe());

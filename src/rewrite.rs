@@ -705,9 +705,9 @@ impl<L, N, A1, A2> Condition<L, N> for ConditionEqual<A1, A2>
         let a2 = self.1.apply_one(egraph, eclass, subst)[0];
         let eqs = egraph.get_colored_equalities(a1);
         eqs.map(|eqs| {
-            let res = eqs.iter()
+            let res = eqs.into_iter()
                 .filter(|(c, id)| egraph.opt_colored_find(Some(*c), a2) == egraph.opt_colored_find(Some(*c), *id))
-                .map(|(c, _)| c).copied().collect_vec();
+                .map(|(c, _)| c).collect_vec();
             (!res.is_empty()).then(|| res)
         }).flatten()
     }

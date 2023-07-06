@@ -2,6 +2,7 @@ use std::{
     borrow::BorrowMut,
     fmt::{self, Debug},
 };
+use std::collections::BTreeSet;
 
 use indexmap::{IndexMap, IndexSet};
 use invariants::{dassert, iassert, tassert, wassert, AssertConfig, AssertLevel};
@@ -166,7 +167,7 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     pub(crate) colored_memo: IndexMap<ColorId, IndexMap<L, Id>>,
     /// For each id in the egraph, what are the ids that are equivalent to it, and in what color.
     #[cfg(feature = "colored")]
-    pub colored_equivalences: IndexMap<Id, IndexSet<(ColorId, Id)>>,
+    colored_equivalences: IndexMap<Id, BTreeSet<ColorId>>,
     /// A filter function used when creating dots.
     #[serde(skip_serializing, skip_deserializing)]
     pub filterer: Option<Rc<dyn Fn(&EGraph<L, N>, Id) -> bool + 'static>>,
@@ -231,7 +232,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             #[cfg(feature = "colored")]
             colored_memo: IndexMap::new(),
             #[cfg(feature = "colored")]
-            colored_equivalences: IndexMap::new(),
+            colored_equivalences: Default::default(),
             filterer: None,
             vacuity_ops: Default::default(),
             #[cfg(feature = "keep_splits")]
@@ -690,7 +691,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         tassert!(to == self.find(id2));
         if changed {
             if cfg!(feature = "colored") {
-                // warn!("union: {} {}", to, from);
                 // An unsafe hack that is fine because we only use the union find of the egraph in inner
                 // black union:
                 let mut colors = std::mem::take(&mut self.colors);
@@ -701,6 +701,24 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 self.colors = colors;
                 for (id1, id2) in todo {
                     self.union(id1, id2);
+                }
+            }
+
+            // I still have equalities for from in the datastructure
+            // For each color a colored equality was deleted, so go through the colors and check
+            // which to keep.
+            if let Some(eqs) = self.colored_equivalences.remove(&from) {
+                for c_id in eqs {
+                    let eq_classes = &self.get_color_mut(c_id).unwrap().equality_classes;
+                    if eq_classes.contains_key(&to) {
+                        assert!(eq_classes[&to].len() > 1);
+                        if self.colored_equivalences.contains_key(&to) {
+                            self.colored_equivalences[&to].remove(&c_id);
+                            if self.colored_equivalences[&to].is_empty() {
+                                self.colored_equivalences.remove(&to);
+                            }
+                        }
+                    }
                 }
             }
 
@@ -863,25 +881,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         self.classes = classes;
 
         self.classes_by_op = classes_by_op;
-        self.colored_equivalences.clear();
-        let colors = std::mem::take(&mut self.colors);
-        for c in colors.iter().filter_map(|x| x.as_ref()) {
-            for (_, ids) in &c.equality_classes {
-                dassert!(ids.len() > 1);
-                for id in ids {
-                    for id1 in ids {
-                        if id1 == id {
-                            continue;
-                        }
-                        self.colored_equivalences
-                            .entry(*id)
-                            .or_default()
-                            .insert((c.get_id(), *id1));
-                    }
-                }
-            }
-        }
-        self.colors = colors;
         trimmed
     }
 
@@ -1629,27 +1628,23 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         assert!(self.dirty_unions.is_empty());
         // TODO: Remove from parents and children
         let color = std::mem::replace(&mut self.colors[c_id.0], None).unwrap();
-        for (colored, black) in color.black_colored_classes {
+        for (_colored, black) in color.black_colored_classes {
             let class = std::mem::replace(&mut self.classes[black.0 as usize], None).unwrap();
             for n in &class.nodes {
                 self.classes_by_op
                     .get_mut(&n.op_id())
                     .map(|x| x.remove(&class.id));
             }
-            self.colored_equivalences[&black].remove(&(c_id, colored));
-            if self.colored_equivalences[&black].is_empty() {
-                self.colored_equivalences.remove(&black);
-            }
-            self.colored_equivalences[&colored].remove(&(c_id, black));
-            if self.colored_equivalences[&colored].is_empty() {
-                self.colored_equivalences.remove(&colored);
-            }
         }
+        color.equality_classes.iter().for_each(|(_, ids)| {
+            for id in ids {
+                self.colored_equivalences[id].remove(&c_id);
+            }
+        });
         self.colored_memo.remove(&c_id);
-        dassert!(self.colored_equivalences.iter().all(|(id, ids)| ids
-            .iter()
-            .chain([(c_id, *id)].iter())
-            .all(|(c_id, id)| self[*id].color.iter().all(|c| c != c_id))));
+        // TODO: I think this assert makes no sense, and id will always be black
+        dassert!(self.colored_equivalences.iter().all(|(id, color_ids)|
+            color_ids.iter().all(|c_id| self[*id].color.iter().all(|c| c == c_id))));
     }
 
     #[allow(missing_docs)]
@@ -1677,6 +1672,11 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             self[fixed].color.is_none() || self[fixed].color().unwrap() == color
         });
         if changed {
+            // I need to updated colored_equivalences to include the color_id for both id1 and id2
+            // Other ids in the equality class will already have the color
+            self.colored_equivalences.entry(id1).or_default().insert(color);
+            self.colored_equivalences.entry(id2).or_default().insert(color);
+
             let from_cp = self[from]
                 .colord_changed_parents
                 .remove(&color)
@@ -1736,8 +1736,16 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         self.colors[usize::from(color)].as_mut()
     }
 
-    pub fn get_colored_equalities(&self, id: Id) -> Option<&IndexSet<(ColorId, Id)>> {
-        self.colored_equivalences.get(&id)
+    pub fn get_colored_equalities(&self, id: Id) -> Option<impl IntoIterator<Item = (ColorId, Id)> + '_> {
+        return if let Some(color_ids) = self.colored_equivalences.get(&id) {
+            Some(color_ids.iter().flat_map(|c| {
+                // Unwrap should be safe as long as colored_equivalences is kept up to date
+                let ids = self.get_color(*c).unwrap().black_ids(self, id).unwrap();
+                ids.iter().map(move |id| (*c, *id))
+            }).collect_vec())
+        } else {
+            None
+        }
     }
 
     pub fn color_sizes(&self) -> impl Iterator<Item = (ColorId, usize)> + '_ {
@@ -1853,6 +1861,10 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 .parents
                 .push((enode.clone(), parent))
         });
+    }
+
+    pub fn colored_equivalences_size(&self) -> usize {
+        self.colored_equivalences.iter().map(|(_, v)| v.len()).sum()
     }
 }
 

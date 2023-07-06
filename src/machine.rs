@@ -32,8 +32,8 @@ pub struct Program<L> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Instruction<L> {
-    Bind { node: L, i: Reg, out: Reg },
-    Compare { i: Reg, j: Reg },
+    Bind { node: L, eclass_reg: Reg, out: Reg },
+    Compare { reg1: Reg, reg2: Reg },
 }
 
 #[inline(always)]
@@ -91,7 +91,7 @@ impl Machine {
         let mut instructions = instructions.iter();
         while let Some(instruction) = instructions.next() {
             match instruction {
-                Instruction::Bind { i, out, node } => {
+                Instruction::Bind { eclass_reg: i, out, node } => {
                     let remaining_instructions = instructions.as_slice();
                     for_each_matching_node(&egraph[self.reg(*i)], node,
                                            |matched| {
@@ -101,7 +101,7 @@ impl Machine {
                     });
                     return;
                 }
-                Instruction::Compare { i, j } => {
+                Instruction::Compare { reg1: i, reg2: j } => {
                     if egraph.find(self.reg(*i)) != egraph.find(self.reg(*j)) {
                         return;
                     }
@@ -125,7 +125,7 @@ impl Machine {
         let mut instructions = instructions.iter();
         while let Some(instruction) = instructions.next() {
             match instruction {
-                Instruction::Bind { i, out, node } => {
+                Instruction::Bind { eclass_reg, out, node } => {
                     let remaining_instructions = instructions.as_slice();
                     let mut run_matches = |machine: &mut Machine,
                                            eclass: &EClass<L, N::Data>| {
@@ -139,33 +139,37 @@ impl Machine {
                     // Collect colors that should be run on next instruction. Foreach color
                     // keep which eclasses it needs to run on (all except current reg).
                     // If we are already colored we need all ids.
-                    run_matches(self, &egraph[self.reg(*i)]);
-                    let old_reg = self.reg(*i);
+                    run_matches(self, &egraph[self.reg(*eclass_reg)]);
+                    let old_reg = egraph.find(self.reg(*eclass_reg));
                     if self.color.is_some() {
                         let c = &egraph.get_color(self.color.unwrap()).unwrap();
-                        self.run_colored_branches(&egraph, i, &mut run_matches, c, old_reg);
+                        self.run_colored_branches(&egraph, eclass_reg, &mut run_matches, c, old_reg);
                     } else {
-                        for (c, id) in egraph.colored_equivalences.get(&self.reg(*i)).unwrap_or(&EMPTY_SET) {
-                            self.reg[i.0 as usize] = *id;
-                            self.color = Some(*c);
-                            run_matches(self, &egraph[*id]);
+                        if let Some(eqs) = egraph.get_colored_equalities(self.reg(*eclass_reg)) {
+                            for (c, id) in eqs {
+                                self.reg[eclass_reg.0 as usize] = egraph.find(id);
+                                self.color = Some(c);
+                                run_matches(self, &egraph[id]);
+                            }
                         }
                         self.color = None;
                     }
-                    self.reg[i.0 as usize] = old_reg;
+                    self.reg[eclass_reg.0 as usize] = old_reg;
                     return;
                 }
-                Instruction::Compare { i, j } => {
+                Instruction::Compare { reg1: i, reg2: j } => {
                     if egraph.find(self.reg(*i)) != egraph.find(self.reg(*j)) {
                         if let Some(c) = self.color {
                             if egraph.colored_find(c, self.reg(*i)) != egraph.colored_find(c, self.reg(*j)) {
                                 return;
                             }
                         } else {
-                            for (c, id) in egraph.colored_equivalences.get(&self.reg(*i)).unwrap_or(&EMPTY_SET) {
-                                if *id == self.reg(*j) {
-                                    self.color = Some(*c);
-                                    self.run_colored(egraph, instructions.as_slice(), subst, yield_fn);
+                            if let Some(eqs) = egraph.get_colored_equalities(self.reg(*i)) {
+                                for (c, id) in eqs {
+                                    if id == self.reg(*j) {
+                                        self.color = Some(c);
+                                        self.run_colored(egraph, instructions.as_slice(), subst, yield_fn);
+                                    }
                                 }
                             }
                             self.color = None;
@@ -195,7 +199,7 @@ type TodoList<L> = std::collections::BinaryHeap<Todo<L>>;
 
 #[derive(PartialEq, Eq)]
 struct Todo<L> {
-    reg: Reg,
+    result_reg: Reg,
     pat: ENodeOrVar<L>,
 }
 
@@ -224,7 +228,7 @@ struct Compiler<'a, L> {
     pattern: &'a [ENodeOrVar<L>],
     v2r: VarToReg,
     todo: TodoList<L>,
-    out: Reg,
+    next_out: Reg,
 }
 
 impl<'a, L: Language> Compiler<'a, L> {
@@ -234,10 +238,10 @@ impl<'a, L: Language> Compiler<'a, L> {
             pattern,
             v2r: Default::default(),
             todo: Default::default(),
-            out: Reg(1),
+            next_out: Reg(1),
         };
         compiler.todo.push(Todo {
-            reg: Reg(0),
+            result_reg: Reg(0),
             pat: last.clone(),
         });
         compiler.go()
@@ -245,23 +249,23 @@ impl<'a, L: Language> Compiler<'a, L> {
 
     fn go(&mut self) -> Program<L> {
         let mut instructions = vec![];
-        while let Some(Todo { reg: i, pat }) = self.todo.pop() {
+        while let Some(Todo { result_reg: todo_reg, pat }) = self.todo.pop() {
             match pat {
                 ENodeOrVar::Var(v) => {
-                    if let Some(&j) = self.v2r.get(&v) {
-                        instructions.push(Instruction::Compare { i, j })
+                    if let Some(&existing_binding) = self.v2r.get(&v) {
+                        instructions.push(Instruction::Compare { reg1: todo_reg, reg2: existing_binding })
                     } else {
-                        self.v2r.insert(v, i);
+                        self.v2r.insert(v, todo_reg);
                     }
                 }
                 ENodeOrVar::ENode(node, name) => {
-                    let out = self.out;
-                    self.out.0 += node.len() as u32;
+                    let out = self.next_out;
+                    self.next_out.0 += node.len() as u32;
 
-                    for (id, &child) in node.children().iter().enumerate() {
-                        let r = Reg(out.0 + id as u32);
+                    for (index, &child) in node.children().iter().enumerate() {
+                        let child_out = Reg(out.0 + index as u32);
                         self.todo.push(Todo {
-                            reg: r,
+                            result_reg: child_out,
                             pat: self.pattern[usize::from(child)].clone(),
                         });
                     }
@@ -269,9 +273,9 @@ impl<'a, L: Language> Compiler<'a, L> {
                     // zero out the children so Bind can use it to sort
                     let node = node.map_children(|_| Id::from(0));
                     if let Some(name) = name {
-                        self.v2r.insert(name.parse().unwrap(), i);
+                        self.v2r.insert(name.parse().unwrap(), todo_reg);
                     }
-                    instructions.push(Instruction::Bind { i, node, out })
+                    instructions.push(Instruction::Bind { eclass_reg: todo_reg, node, out })
                 }
             }
         }
