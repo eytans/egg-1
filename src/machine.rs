@@ -1,6 +1,7 @@
 use crate::*;
 use std::result;
 use indexmap::{IndexMap, IndexSet};
+use invariants::dassert;
 use itertools::Either;
 use itertools::Either::{Right, Left};
 
@@ -128,6 +129,8 @@ impl Machine {
         while let Some(instruction) = instructions.next() {
             match instruction {
                 Instruction::Bind { eclass, out, node } => {
+                    let class_color = egraph[self.reg(*eclass)].color();
+                    dassert!(class_color.is_none() || class_color == self.color);
                     let remaining_instructions = instructions.as_slice();
                     return for_each_matching_node(&egraph[self.reg(*eclass)], node, |matched| {
                         self.reg.truncate(out.0 as usize);
@@ -138,9 +141,17 @@ impl Machine {
                 Instruction::Scan { out, top_pat } => {
                     let remaining_instructions = instructions.as_slice();
                     let mut run = |machine: &mut Machine, id| {
+                        let cur_color = machine.color.clone();
+                        let class_color = egraph[id].color();
+                        if cur_color.is_some() && cur_color != class_color {
+                            return Ok(());
+                        }
+                        machine.color = class_color;
                         machine.reg.truncate(out.0 as usize);
                         machine.reg.push(id);
-                        machine.inner_run(egraph, remaining_instructions, subst, colored_jumps, yield_fn)
+                        machine.inner_run(egraph, remaining_instructions, subst, colored_jumps, yield_fn)?;
+                        machine.color = cur_color;
+                        Ok(())
                     };
 
                     match top_pat {
@@ -487,6 +498,12 @@ impl<L: Language> Program<L> {
         assert_eq!(machine.reg.len(), 0);
         machine.reg.push(eclass);
 
+        let class_color = egraph[eclass].color();
+        dassert!(opt_color.is_none() || class_color.is_none() || opt_color == class_color,
+                 "Tried to run a colored program on an eclass with a different color: {:?} vs {:?}",
+                 opt_color, class_color);
+        machine.color = class_color;
+
         let mut matches = Vec::new();
         let mut yield_fn = |machine: &Machine, subst: &Subst| {
             let subst_vec = subst
@@ -500,7 +517,6 @@ impl<L: Language> Program<L> {
         };
 
         if run_color {
-            machine.color = opt_color;
             machine.colored_run(
                 egraph,
                 &self.instructions,
