@@ -212,8 +212,7 @@ impl Machine {
                     self.colored_run(egraph, remaining_instructions, subst, yield_fn)?;
 
                     let mut run_jump = |machine: &mut Machine, jump_id| {
-                        machine.reg.truncate(orig.0 as usize);
-                        machine.reg.push(jump_id);
+                        machine.reg[orig.0 as usize] = jump_id;
                         machine.colored_run(egraph, remaining_instructions, subst, yield_fn)
                     };
                     let id = egraph.find(self.reg(*orig));
