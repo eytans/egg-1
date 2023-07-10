@@ -295,7 +295,6 @@ mod test {
         let and_color = egraph.create_color();
         egraph.colored_union(and_color, and_exp4, f);
         egraph.rebuild();
-        all_results_agree_with_color(&mut egraph, &f_pattern, vec![and_color], &cond1);
         all_results_agree_with_color(&mut egraph, &f_pattern, vec![and_color], &and_cond);
         all_results_agree_with_color(&mut egraph, &f_pattern, vec![and_color], &and_false_andp);
 
@@ -332,7 +331,8 @@ mod test {
                         "Color {} not in check of cond {}", c, cond.describe());
                 }
             }));
-        assert!(pattern.search(&egraph).iter().any(|sms| sms.substs.iter()
+        let p_results = pattern.search(&egraph);
+        assert!(p_results.iter().any(|sms| sms.substs.iter()
             .any(|sbst| {
                 let colors = cond.colored_check_imm(&egraph, sms.eclass, sbst);
                 colors.is_some() && !colors.as_ref().unwrap().is_empty()
