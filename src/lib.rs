@@ -22,11 +22,6 @@ pub mod macros;
 #[macro_use]
 extern crate global_counter;
 
-extern crate core;
-
-#[macro_use]
-extern crate lazy_static;
-
 pub mod tutorials;
 
 mod dot;
@@ -62,6 +57,18 @@ impl From<usize> for Id {
 impl From<Id> for usize {
     fn from(id: Id) -> usize {
         id.0 as usize
+    }
+}
+
+impl Into<Id> for u32 {
+    fn into(self) -> Id {
+        Id(self)
+    }
+}
+
+impl Into<Id> for i32 {
+    fn into(self) -> Id {
+        Id(self as u32)
     }
 }
 
@@ -110,6 +117,7 @@ pub use {
     extract::*,
     language::*,
     pattern::{ENodeOrVar, Pattern, PatternAst, SearchMatches},
+    multipattern::MultiPattern,
     rewrite::{Applier, ImmutableCondition, Condition, ConditionEqual, ConditionalApplier, Rewrite, Searcher, RcImmutableCondition, ToCondRc},
     // rewrite::{Applier, ImmutableCondition, ImmutableFunctionCondition, Condition, ConditionEqual, ConditionalApplier, Rewrite, Searcher, RcImmutableCondition, ToCondRc},
     run::*,
@@ -130,4 +138,5 @@ mod colors;
 mod eggstentions;
 pub mod tools;
 mod colored_union_find;
+mod multipattern;
 

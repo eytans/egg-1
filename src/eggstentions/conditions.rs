@@ -240,8 +240,10 @@ mod test {
         egraph.rebuild();
         assert!(f_pattern.search(&egraph).iter()
             .any(|sms| sms.substs.iter()
-                .any(|sbst|
-                    fallacy.colored_check_imm(&egraph, sms.eclass, sbst).is_some())), "Expecting fallacy in fallacy color");
+                .any(|sbst| {
+                    let res = fallacy.colored_check_imm(&egraph, sms.eclass, sbst);
+                    res.is_some() && !res.unwrap().is_empty()
+                })), "Expecting fallacy in fallacy color");
         for sms in vec![&t_pattern, &f_pattern, &and_pattern].iter()
             .flat_map(|p| p.search(&egraph)) {
             for sbst in sms.substs {

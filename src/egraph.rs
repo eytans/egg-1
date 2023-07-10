@@ -182,6 +182,12 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
 }
 
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
+    pub(crate) fn is_clean(&self) -> bool {
+        self.dirty_unions.is_empty() && self.colors().all(|c| !c.is_dirty())
+    }
+}
+
+impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     pub(crate) fn inner_new(
         uf: UnionFind,
         classes: Vec<Option<Box<EClass<SymbolLang, ()>>>>,

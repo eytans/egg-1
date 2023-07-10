@@ -2,11 +2,12 @@ use log::*;
 use std::convert::TryFrom;
 use std::fmt;
 
-use crate::{machine, Analysis, Applier, EGraph, Id, Language, RecExpr, Searcher, Subst, Var, OpId, ColorId};
+use crate::{machine, Analysis, Applier, EGraph, Id, Language, RecExpr, Searcher, Subst, Var, OpId, ColorId, FromOp, RecExprParseError};
 use std::fmt::Formatter;
 use std::str::FromStr;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 /// A pattern that can function as either a [`Searcher`] or [`Applier`].
 ///
@@ -177,9 +178,39 @@ impl<L: Language> Language for ENodeOrVar<L> {
         }
     }
 }
+#[derive(Debug, Error)]
+pub enum ENodeOrVarParseError<E> {
+    #[error(transparent)]
+    BadVar(<Var as FromStr>::Err),
 
-impl<L: Language> std::str::FromStr for Pattern<L> {
-    type Err = String;
+    #[error("tried to parse pattern variable {0:?} as an operator")]
+    UnexpectedVar(String),
+
+    #[error(transparent)]
+    BadOp(E),
+}
+
+impl<L: FromOp> FromOp for ENodeOrVar<L> {
+    type Error = ENodeOrVarParseError<L::Error>;
+
+    fn from_op(op: &str, children: Vec<Id>) -> Result<Self, Self::Error> {
+        use ENodeOrVarParseError::*;
+
+        if op.starts_with('?') && op.len() > 1 {
+            if children.is_empty() {
+                op.parse().map(Self::Var).map_err(BadVar)
+            } else {
+                Err(UnexpectedVar(op.to_owned()))
+            }
+        } else {
+            L::from_op(op, children).map(|x| ENodeOrVar::ENode(x, None)).map_err(BadOp)
+        }
+    }
+}
+
+impl<L: FromOp> std::str::FromStr for Pattern<L> {
+    type Err = RecExprParseError<ENodeOrVarParseError<L::Error>>;
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         PatternAst::from_str(s).map(Self::from)
     }
@@ -316,7 +347,7 @@ where
     }
 }
 
-fn apply_pat<L: Language, A: Analysis<L>>(
+pub(crate) fn apply_pat<L: Language, A: Analysis<L>>(
     pat: &[ENodeOrVar<L>],
     egraph: &mut EGraph<L, A>,
     subst: &Subst,
@@ -346,6 +377,7 @@ fn apply_pat<L: Language, A: Analysis<L>>(
 mod tests {
     use std::str::FromStr;
     use crate::{SymbolLang as S, *};
+    use crate::multipattern::MultiPattern;
 
     type EGraph = crate::EGraph<S, ()>;
 
@@ -425,14 +457,14 @@ mod tests {
     #[test]
     fn named_subpattern_is_var() {
         crate::init_logger();
-        let p: Pattern<SymbolLang> = Pattern::from_str("(|@|?root|@|+ ?x ?y)").unwrap();
-        assert_eq!(p.vars().len(), 3);
+        let p: MultiPattern<SymbolLang> = MultiPattern::from_str("?root = (+ ?x ?y)").unwrap();
+        assert_eq!(Searcher::<SymbolLang, ()>::vars(&p).len(), 3);
     }
 
     #[test]
     fn name_enode_matches_correctly() {
         crate::init_logger();
-        let p: Pattern<SymbolLang> = Pattern::from_str("(|@|?root|@|+ ?x ?y)").unwrap();
+        let p: MultiPattern<SymbolLang> = "?root = (+ ?x ?y)".parse().unwrap();
         let mut egraph = EGraph::default();
         let x = egraph.add(S::leaf("x"));
         let y = egraph.add(S::leaf("y"));

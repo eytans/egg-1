@@ -1,7 +1,7 @@
 use std::fmt;
 use std::rc::Rc;
 
-use crate::{Analysis, EGraph, Id, Language, Pattern, SearchMatches, Subst, Var, ColorId};
+use crate::{Analysis, EGraph, Id, Language, Pattern, SearchMatches, Subst, Var, ColorId, FromOp};
 use std::fmt::{Formatter, Debug};
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -228,6 +228,11 @@ pub trait Searcher<L, N>: std::fmt::Display
 
     /// Returns a list of the variables bound by this Searcher
     fn vars(&self) -> Vec<Var>;
+
+    /// Returns the number of matches in the e-graph
+    fn n_matches(&self, egraph: &EGraph<L, N>) -> usize {
+        self.search(egraph).iter().map(|m| m.substs.len()).sum()
+    }
 }
 
 /// The righthand side of a [`Rewrite`].
@@ -441,8 +446,7 @@ pub struct ConditionalApplier<C, A, L, N> {
     ///
     /// [`Applier`]: trait.Applier.html
     pub applier: A,
-    pub phantom_l: PhantomData<L>,
-    pub phantom_n: PhantomData<N>,
+    pub phantom: PhantomData<(L, N)>,
 }
 
 impl<L, N, C, A> ConditionalApplier<C, A, L, N> where
@@ -458,8 +462,7 @@ impl<L, N, C, A> ConditionalApplier<C, A, L, N> where
         ConditionalApplier {
             condition,
             applier,
-            phantom_l: PhantomData,
-            phantom_n: PhantomData,
+            phantom: PhantomData::default(),
         }
     }
 
@@ -670,7 +673,7 @@ impl<L, N> Condition<L, N> for Box<dyn Condition<L, N>> where
 /// [`Condition`]: trait.Condition.html
 pub struct ConditionEqual<A1, A2>(pub A1, pub A2);
 
-impl<L: Language> ConditionEqual<Pattern<L>, Pattern<L>> {
+impl<L: Language + FromOp> ConditionEqual<Pattern<L>, Pattern<L>> {
     /// Create a ConditionEqual by parsing two pattern strings.
     ///
     /// This panics if the parsing fails.
@@ -905,10 +908,10 @@ mod tests {
         let y = egraph.add(S::leaf("2"));
         let mul = egraph.add(S::new("*", vec![x, y]));
 
-        let true_pat = Pattern::from_str("TRUE").unwrap();
+        let true_pat: Pattern<SymbolLang> = Pattern::from_str("TRUE").unwrap();
         let true_id = egraph.add(S::leaf("TRUE"));
 
-        let pow2b = Pattern::from_str("(is-power2 ?b)").unwrap();
+        let pow2b: Pattern<SymbolLang> = Pattern::from_str("(is-power2 ?b)").unwrap();
         let mul_to_shift = rewrite!(
             "mul_to_shift";
             "(* ?a ?b)" => "(>> ?a (log2 ?b))"

@@ -1,5 +1,6 @@
 use std::fmt;
 use std::str::FromStr;
+use thiserror::Error;
 
 use crate::{Id, Symbol};
 use crate::ColorId;
@@ -17,14 +18,22 @@ use serde::{Deserialize, Serialize};
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Var(Symbol);
 
+#[derive(Debug, Error)]
+pub enum VarParseError {
+    #[error("pattern variable {0:?} should have a leading question mark")]
+    MissingQuestionMark(String),
+}
+
 impl FromStr for Var {
-    type Err = String;
+    type Err = VarParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        use VarParseError::*;
+
         if s.starts_with('?') && s.len() > 1 {
             Ok(Var(s.into()))
         } else {
-            Err(format!("{} doesn't start with '?'", s))
+            Err(MissingQuestionMark(s.to_owned()))
         }
     }
 }

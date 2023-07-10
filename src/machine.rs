@@ -1,24 +1,18 @@
-use crate::{Analysis, EClass, EGraph, ENodeOrVar, Id, Language, PatternAst, Subst, Var};
-use std::cmp::Ordering;
-use indexmap::IndexSet;
-use crate::ColorId;
-use crate::colors::Color;
+use crate::*;
+use std::result;
+use indexmap::{IndexMap, IndexSet};
+use itertools::Either;
+use itertools::Either::{Right, Left};
 
+type Result = result::Result<(), ()>;
 
-lazy_static!{
-    static ref EMPTY_SET: IndexSet<(ColorId, Id)> = IndexSet::new();
-}
-
+#[derive(Default)]
 struct Machine {
     reg: Vec<Id>,
+    // a buffer to re-use for lookups
+    lookup: Vec<Id>,
     #[cfg(feature = "colored")]
     color: Option<ColorId>,
-}
-
-impl Default for Machine {
-    fn default() -> Self {
-        Self { reg: vec![], color: Default::default() }
-    }
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -32,43 +26,57 @@ pub struct Program<L> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Instruction<L> {
-    Bind { node: L, eclass_reg: Reg, out: Reg },
-    Compare { reg1: Reg, reg2: Reg },
+    Bind { node: L, eclass: Reg, out: Reg },
+    Compare { i: Reg, j: Reg },
+    Lookup { term: Vec<ENodeOrReg<L>>, i: Reg },
+    Scan { out: Reg, top_pat: Either<L, Option<Reg>> },
+    ColorJump { orig: Reg },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ENodeOrReg<L> {
+    ENode(L),
+    Reg(Reg),
 }
 
 #[inline(always)]
-fn for_each_matching_node<L, D>(eclass: &EClass<L, D>,
-                                node: &L,
-                                f: impl FnMut(&L))
+fn for_each_matching_node<L, D>(
+    eclass: &EClass<L, D>,
+    node: &L,
+    mut f: impl FnMut(&L) -> Result,
+) -> Result
     where
         L: Language,
 {
-    let filterer = |n: &L| { node.matches(n) };
+    #[allow(enum_intrinsics_non_enums)]
     if eclass.nodes.len() < 50 {
-        eclass.nodes.iter().filter(|x| filterer(x))
-            .for_each(f)
+        eclass
+            .nodes
+            .iter()
+            .filter(|n| node.matches(n))
+            .try_for_each(f)
     } else {
-        debug_assert!(node.children().iter().all(|&id| id == Id::from(0)));
+        debug_assert!(node.children().iter().all(|id| *id == Id::from(0)));
         debug_assert!(eclass.nodes.windows(2).all(|w| w[0] < w[1]));
         let start = eclass.nodes.binary_search(node).unwrap_or_else(|i| i);
-        let matching = eclass.nodes[..start].iter().rev()
-            .take_while(|x| filterer(x))
-            .chain(eclass.nodes[start..].iter().take_while(|x| filterer(x)));
+        let mut matching = eclass.nodes[..start].iter().rev()
+            .take_while(|x| node.matches(x))
+            .chain(eclass.nodes[start..].iter().take_while(|x| node.matches(x)));
         debug_assert_eq!(
             matching.clone().count(),
-            eclass.nodes.iter().filter(|x| filterer(x)).count(),
+            eclass.nodes.iter().filter(|n| node.matches(n)).count(),
             "matching node {:?}\nstart={}\n{:?} != {:?}\nnodes: {:?}",
             node,
             start,
-            matching.clone().collect::<indexmap::IndexSet<_>>(),
+            matching.clone().collect::<IndexSet<_>>(),
             eclass
                 .nodes
                 .iter()
-                .filter(|x| filterer(x))
-                .collect::<indexmap::IndexSet<_>>(),
+                .filter(|n| node.matches(n))
+                .collect::<IndexSet<_>>(),
             eclass.nodes
         );
-        matching.for_each(f);
+        matching.try_for_each(&mut f)
     }
 }
 
@@ -78,103 +86,161 @@ impl Machine {
         self.reg[reg.0 as usize]
     }
 
-    fn run<L, N>(
-        &mut self,
-        egraph: &EGraph<L, N>,
-        instructions: &[Instruction<L>],
-        subst: &Subst,
-        yield_fn: &mut impl FnMut(&Self, &Subst),
-    ) where
-        L: Language,
-        N: Analysis<L>,
+    fn run<L, N>(&mut self,
+                 egraph: &EGraph<L, N>,
+                 instructions: &[Instruction<L>],
+                 subst: &Subst,
+                 yield_fn: &mut impl FnMut(&Self, &Subst) -> Result,
+    ) -> Result
+        where
+            L: Language,
+            N: Analysis<L>,
     {
-        let mut instructions = instructions.iter();
-        while let Some(instruction) = instructions.next() {
-            match instruction {
-                Instruction::Bind { eclass_reg: i, out, node } => {
-                    let remaining_instructions = instructions.as_slice();
-                    for_each_matching_node(&egraph[self.reg(*i)], node,
-                                           |matched| {
-                        self.reg.truncate(out.0 as usize);
-                        self.reg.extend_from_slice(matched.children());
-                        self.run(egraph, remaining_instructions, subst, yield_fn)
-                    });
-                    return;
-                }
-                Instruction::Compare { reg1: i, reg2: j } => {
-                    if egraph.find(self.reg(*i)) != egraph.find(self.reg(*j)) {
-                        return;
-                    }
-                }
-            }
-        }
-
-        yield_fn(self, subst)
+        self.inner_run(egraph, instructions, subst, false, yield_fn)
     }
 
-    fn run_colored<L, N>(
+    fn colored_run<L, N>(&mut self,
+                 egraph: &EGraph<L, N>,
+                 instructions: &[Instruction<L>],
+                 subst: &Subst,
+                 yield_fn: &mut impl FnMut(&Self, &Subst) -> Result,
+    ) -> Result
+        where
+            L: Language,
+            N: Analysis<L>,
+    {
+        self.inner_run(egraph, instructions, subst, true, yield_fn)
+    }
+
+    fn inner_run<L, N>(
         &mut self,
         egraph: &EGraph<L, N>,
         instructions: &[Instruction<L>],
         subst: &Subst,
-        yield_fn: &mut impl FnMut(&Self, &Subst),
-    ) where
-        L: Language,
-        N: Analysis<L>,
+        colored_jumps: bool,
+        yield_fn: &mut impl FnMut(&Self, &Subst) -> Result,
+    ) -> Result
+        where
+            L: Language,
+            N: Analysis<L>,
     {
         let mut instructions = instructions.iter();
         while let Some(instruction) = instructions.next() {
             match instruction {
-                Instruction::Bind { eclass_reg, out, node } => {
+                Instruction::Bind { eclass, out, node } => {
                     let remaining_instructions = instructions.as_slice();
-                    let mut run_matches = |machine: &mut Machine,
-                                           eclass: &EClass<L, N::Data>| {
-                        for_each_matching_node(eclass, node, |matched| {
-                            machine.reg.truncate(out.0 as usize);
-                            machine.reg.extend_from_slice(matched.children());
-                            machine.run_colored(egraph, remaining_instructions, subst, yield_fn);
-                        });
+                    return for_each_matching_node(&egraph[self.reg(*eclass)], node, |matched| {
+                        self.reg.truncate(out.0 as usize);
+                        matched.for_each(|id| self.reg.push(id));
+                        self.inner_run(egraph, remaining_instructions, subst, colored_jumps, yield_fn)
+                    });
+                }
+                Instruction::Scan { out, top_pat } => {
+                    let remaining_instructions = instructions.as_slice();
+                    let mut run = |machine: &mut Machine, id| {
+                        machine.reg.truncate(out.0 as usize);
+                        machine.reg.push(id);
+                        machine.inner_run(egraph, remaining_instructions, subst, colored_jumps, yield_fn)
                     };
 
-                    // Collect colors that should be run on next instruction. Foreach color
-                    // keep which eclasses it needs to run on (all except current reg).
-                    // If we are already colored we need all ids.
-                    run_matches(self, &egraph[self.reg(*eclass_reg)]);
-                    let old_reg = egraph.find(self.reg(*eclass_reg));
-                    if self.color.is_some() {
-                        let c = &egraph.get_color(self.color.unwrap()).unwrap();
-                        self.run_colored_branches(&egraph, eclass_reg, &mut run_matches, c, old_reg);
-                    } else {
-                        if let Some(eqs) = egraph.get_colored_equalities(self.reg(*eclass_reg)) {
-                            for (c, id) in eqs {
-                                self.reg[eclass_reg.0 as usize] = egraph.find(id);
-                                self.color = Some(c);
-                                run_matches(self, &egraph[id]);
-                            }
-                        }
-                        self.color = None;
-                    }
-                    self.reg[eclass_reg.0 as usize] = old_reg;
-                    return;
-                }
-                Instruction::Compare { reg1: i, reg2: j } => {
-                    if egraph.find(self.reg(*i)) != egraph.find(self.reg(*j)) {
-                        if let Some(c) = self.color {
-                            if egraph.colored_find(c, self.reg(*i)) != egraph.colored_find(c, self.reg(*j)) {
-                                return;
-                            }
-                        } else {
-                            if let Some(eqs) = egraph.get_colored_equalities(self.reg(*i)) {
-                                for (c, id) in eqs {
-                                    if id == self.reg(*j) {
-                                        self.color = Some(c);
-                                        self.run_colored(egraph, instructions.as_slice(), subst, yield_fn);
-                                    }
+                    match top_pat {
+                        Either::Left(node) => {
+                            if let Some(ids) = egraph.classes_by_op_id().get(&node.op_id()) {
+                                for class in ids {
+                                    run(self, *class)?;
                                 }
                             }
-                            self.color = None;
-                            return;
                         }
+                        Either::Right(opt_reg_var) => {
+                            if let Some(reg_var) = opt_reg_var {
+                                run(self, self.reg(*reg_var))?;
+                            } else {
+                                for class in egraph.classes() {
+                                    run(self, class.id)?;
+                                }
+                            }
+                        }
+                    }
+                    return Ok(());
+                }
+                Instruction::Compare { i, j } => {
+                    let fixed_i = egraph.opt_colored_find(self.color.clone(), self.reg(*i));
+                    let fixed_j = egraph.opt_colored_find(self.color.clone(), self.reg(*j));
+                    if fixed_i != fixed_j {
+                        if colored_jumps && self.color.is_none() {
+                            if let Some(eqs) = egraph.get_colored_equalities(fixed_i) {
+                                for (cid, _id) in eqs.into_iter().filter(|(_cid, id)| *id == fixed_j) {
+                                    self.color = Some(cid);
+                                    self.inner_run(egraph, instructions.as_slice(), subst, colored_jumps, yield_fn)?;
+                                    self.color = None;
+                                }
+                            }
+                        }
+                        return Ok(());
+                    }
+                }
+                Instruction::Lookup { term, i } => {
+                    assert!(self.color.is_none(), "Lookup instruction is an optimization for non colored search");
+                    assert!(!colored_jumps, "Lookup instruction is an optimization for non colored search");
+                    self.lookup.clear();
+                    for node in term {
+                        match node {
+                            ENodeOrReg::ENode(node) => {
+                                let look = |i| self.lookup[usize::from(i)];
+                                match egraph.lookup(node.clone().map_children(look)) {
+                                    Some(id) => self.lookup.push(id),
+                                    None => return Ok(()),
+                                }
+                            }
+                            ENodeOrReg::Reg(r) => {
+                                self.lookup.push(egraph.find(self.reg(*r)));
+                            }
+                        }
+                    }
+
+                    let id = egraph.find(self.reg(*i));
+                    if self.lookup.last().copied() != Some(id) {
+                        return Ok(());
+                    }
+                }
+                Instruction::ColorJump { orig } => {
+                    let remaining_instructions = instructions.as_slice();
+                    if !colored_jumps {
+                        return self.run(egraph, remaining_instructions, subst, yield_fn);
+                    }
+                    // Doing this now to later close yield_fn in a closure.
+                    self.colored_run(egraph, remaining_instructions, subst, yield_fn)?;
+
+                    let mut run_jump = |machine: &mut Machine, jump_id| {
+                        machine.reg.truncate(orig.0 as usize);
+                        machine.reg.push(jump_id);
+                        machine.colored_run(egraph, remaining_instructions, subst, yield_fn)
+                    };
+                    let id = egraph.find(self.reg(*orig));
+                    return if let Some(color) = self.color.as_ref() {
+                        // Will also run id as it is part of black_ids
+                        if let Some(eqs) = egraph.get_color(*color).unwrap().black_ids(egraph, id) {
+                            for jump_id in eqs {
+                                if *jump_id == id {
+                                    continue;
+                                }
+                                run_jump(self, *jump_id)?;
+                            }
+                        }
+                        Ok(())
+                    } else {
+                        if let Some(eqs) = egraph.get_colored_equalities(id) {
+                            for (c_id, jumped_id) in eqs {
+                                let jumped_id = egraph.find(jumped_id);
+                                if jumped_id == id {
+                                    continue;
+                                }
+                                self.color = Some(c_id);
+                                run_jump(self, jumped_id)?;
+                                self.color = None;
+                            }
+                        }
+                        Ok(())
                     }
                 }
             }
@@ -182,110 +248,186 @@ impl Machine {
 
         yield_fn(self, subst)
     }
-
-    fn run_colored_branches<L, N, F>(&mut self, egraph: &EGraph<L, N>, i: &Reg, run_matches: &mut F, c: &Color<L, N>, old_reg: Id)
-    where L: Language, N: Analysis<L>, F: FnMut(&mut Machine, &EClass<L, <N as Analysis<L>>::Data>){
-        let ids = c.black_ids(egraph, old_reg);
-        ids.iter().for_each(|&b_ids| { b_ids.iter().filter(|i| *i != &old_reg).for_each(|id| {
-            self.reg[i.0 as usize] = *id;
-            run_matches(self, &egraph[*id]);
-        })});
-        self.reg[i.0 as usize] = old_reg;
-    }
 }
 
-type VarToReg = indexmap::IndexMap<Var, Reg>;
-type TodoList<L> = std::collections::BinaryHeap<Todo<L>>;
-
-#[derive(PartialEq, Eq)]
-struct Todo<L> {
-    result_reg: Reg,
-    pat: ENodeOrVar<L>,
+struct Compiler<L> {
+    v2r: IndexMap<Var, Reg>,
+    free_vars: Vec<IndexSet<Var>>,
+    subtree_size: Vec<usize>,
+    todo_nodes: IndexMap<(Id, Reg), L>,
+    instructions: Vec<Instruction<L>>,
+    next_reg: Reg,
 }
 
-impl<L: Language> PartialOrd for Todo<L> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<L: Language> Ord for Todo<L> {
-    // TodoList is a max-heap, so we greater is higher priority
-    fn cmp(&self, other: &Self) -> Ordering {
-        use ENodeOrVar::*;
-        match (&self.pat, &other.pat) {
-            // fewer children means higher priority
-            (ENode(e1, _), ENode(e2, _)) => e2.len().cmp(&e1.len()),
-            // Var is higher prio than enode
-            (ENode(_, _), Var(_)) => Ordering::Less,
-            (Var(_), ENode(_, _)) => Ordering::Greater,
-            (Var(_), Var(_)) => Ordering::Equal,
+impl<L: Language> Compiler<L> {
+    fn new() -> Self {
+        Self {
+            free_vars: Default::default(),
+            subtree_size: Default::default(),
+            v2r: Default::default(),
+            todo_nodes: Default::default(),
+            instructions: Default::default(),
+            next_reg: Reg(0),
         }
     }
-}
 
-struct Compiler<'a, L> {
-    pattern: &'a [ENodeOrVar<L>],
-    v2r: VarToReg,
-    todo: TodoList<L>,
-    next_out: Reg,
-}
-
-impl<'a, L: Language> Compiler<'a, L> {
-    fn compile(pattern: &'a [ENodeOrVar<L>]) -> Program<L> {
-        let last = pattern.last().unwrap();
-        let mut compiler = Self {
-            pattern,
-            v2r: Default::default(),
-            todo: Default::default(),
-            next_out: Reg(1),
-        };
-        compiler.todo.push(Todo {
-            result_reg: Reg(0),
-            pat: last.clone(),
-        });
-        compiler.go()
+    fn add_todo(&mut self, pattern: &PatternAst<L>, id: Id, reg: Reg) {
+        match &pattern.as_ref()[id.0 as usize] {
+            ENodeOrVar::Var(v) => {
+                if let Some(&j) = self.v2r.get(v) {
+                    self.instructions.push(Instruction::Compare { i: reg, j })
+                } else {
+                    self.v2r.insert(*v, reg);
+                }
+            }
+            ENodeOrVar::ENode(pat, _name) => {
+                self.todo_nodes.insert((id, reg), pat.clone());
+            }
+        }
     }
 
-    fn go(&mut self) -> Program<L> {
-        let mut instructions = vec![];
-        while let Some(Todo { result_reg: todo_reg, pat }) = self.todo.pop() {
-            match pat {
-                ENodeOrVar::Var(v) => {
-                    if let Some(&existing_binding) = self.v2r.get(&v) {
-                        instructions.push(Instruction::Compare { reg1: todo_reg, reg2: existing_binding })
-                    } else {
-                        self.v2r.insert(v, todo_reg);
+    fn load_pattern(&mut self, pattern: &PatternAst<L>) {
+        let len = pattern.as_ref().len();
+        self.free_vars = Vec::with_capacity(len);
+        self.subtree_size = Vec::with_capacity(len);
+
+        for node in pattern.as_ref() {
+            let mut free = IndexSet::default();
+            let mut size = 0;
+            match node {
+                ENodeOrVar::ENode(n, _) => {
+                    size = 1;
+                    for &child in n.children() {
+                        free.extend(&self.free_vars[usize::from(child)]);
+                        size += self.subtree_size[usize::from(child)];
                     }
                 }
-                ENodeOrVar::ENode(node, name) => {
-                    let out = self.next_out;
-                    self.next_out.0 += node.len() as u32;
+                ENodeOrVar::Var(v) => {
+                    free.insert(*v);
+                }
+            }
+            self.free_vars.push(free);
+            self.subtree_size.push(size);
+        }
+    }
 
-                    for (index, &child) in node.children().iter().enumerate() {
-                        let child_out = Reg(out.0 + index as u32);
-                        self.todo.push(Todo {
-                            result_reg: child_out,
-                            pat: self.pattern[usize::from(child)].clone(),
-                        });
-                    }
+    fn next(&mut self) -> Option<((Id, Reg), L)> {
+        // we take the max todo according to this key
+        // - prefer grounded
+        // - prefer more free variables
+        // - prefer smaller term
+        let key = |(id, _): &&(Id, Reg)| {
+            let i = usize::from(*id);
+            let n_bound = self.free_vars[i]
+                .iter()
+                .filter(|v| self.v2r.contains_key(*v))
+                .count();
+            let n_free = self.free_vars[i].len() - n_bound;
+            let size = self.subtree_size[i] as isize;
+            (n_free == 0, n_free, -size)
+        };
 
-                    // zero out the children so Bind can use it to sort
-                    let node = node.map_children(|_| Id::from(0));
-                    if let Some(name) = name {
-                        self.v2r.insert(name.parse().unwrap(), todo_reg);
-                    }
-                    instructions.push(Instruction::Bind { eclass_reg: todo_reg, node, out })
+        self.todo_nodes
+            .keys()
+            .max_by_key(key)
+            .copied()
+            .map(|k| (k, self.todo_nodes.remove(&k).unwrap()))
+    }
+
+    /// check to see if this e-node corresponds to a term that is grounded by
+    /// the variables bound at this point
+    fn is_ground_now(&self, id: Id) -> bool {
+        self.free_vars[usize::from(id)]
+            .iter()
+            .all(|v| self.v2r.contains_key(v))
+    }
+
+    fn compile(&mut self, patternbinder: Option<Var>, pattern: &PatternAst<L>) {
+        self.load_pattern(pattern);
+        let last_i = pattern.as_ref().len() - 1;
+
+        let mut next_out = self.next_reg;
+
+        // Check if patternbinder already bound in v2r
+        // Behavior common to creating a new pattern
+        let add_new_pattern = |comp: &mut Compiler<L>| {
+            if !comp.instructions.is_empty() {
+                // After first pattern needs scan
+                let last = pattern.as_ref().last().unwrap();
+                let top_pat = match last {
+                    ENodeOrVar::ENode(node, _) => { Left(node.clone()) }
+                    ENodeOrVar::Var(v) => { Right(comp.v2r.get(v).copied()) }
+                };
+                comp.instructions.push(Instruction::Scan { out: comp.next_reg, top_pat });
+            }
+            comp.add_todo(pattern, Id::from(last_i), comp.next_reg);
+        };
+
+        if let Some(v) = patternbinder {
+            if let Some(&i) = self.v2r.get(&v) {
+                // patternbinder already bound
+                self.add_todo(pattern, Id::from(last_i), i);
+            } else {
+                // patternbinder is new variable
+                next_out.0 += 1;
+                add_new_pattern(self);
+                self.v2r.insert(v, self.next_reg); //add to known variables.
+            }
+        } else {
+            // No pattern binder
+            next_out.0 += 1;
+            add_new_pattern(self);
+        }
+
+        let mut first_bind = true;
+        while let Some(((id, reg), node)) = self.next() {
+            if self.is_ground_now(id) && (!node.is_leaf()) && !cfg!(feature = "colored") {
+                let extracted = pattern.extract(id);
+                self.instructions.push(Instruction::Lookup {
+                    i: reg,
+                    term: extracted
+                        .as_ref()
+                        .iter()
+                        .map(|n| match n {
+                            ENodeOrVar::ENode(n, _name) => ENodeOrReg::ENode(n.clone()),
+                            ENodeOrVar::Var(v) => ENodeOrReg::Reg(self.v2r[v]),
+                        })
+                        .collect(),
+                });
+            } else {
+                let out = next_out;
+                next_out.0 += node.len() as u32;
+
+                // zero out the children so Bind can use it to sort
+                let op = node.clone().map_children(|_| Id::from(0));
+                if !first_bind {
+                    self.instructions.push(Instruction::ColorJump {
+                        orig: reg,
+                    });
+                } else {
+                    first_bind = false;
+                }
+                self.instructions.push(Instruction::Bind {
+                    eclass: reg,
+                    node: op,
+                    out,
+                });
+
+                for (i, &child) in node.children().iter().enumerate() {
+                    self.add_todo(pattern, child, Reg(out.0 + i as u32));
                 }
             }
         }
+        self.next_reg = next_out;
+    }
 
+    fn extract(self) -> Program<L> {
         let mut subst = Subst::default();
-        for (v, r) in &self.v2r {
-            subst.insert(*v, Id::from(r.0 as usize));
+        for (v, r) in self.v2r {
+            subst.insert(v, Id::from(r.0 as usize));
         }
         Program {
-            instructions,
+            instructions: self.instructions,
             subst,
         }
     }
@@ -293,74 +435,90 @@ impl<'a, L: Language> Compiler<'a, L> {
 
 impl<L: Language> Program<L> {
     pub(crate) fn compile_from_pat(pattern: &PatternAst<L>) -> Self {
-        let program = Compiler::compile(pattern.as_ref());
+        let mut compiler = Compiler::new();
+        compiler.compile(None, pattern);
+        let program = compiler.extract();
         log::debug!("Compiled {:?} to {:?}", pattern.as_ref(), program);
         program
     }
 
-    pub fn run<A>(&self, egraph: &EGraph<L, A>, eclass: Id) -> Vec<Subst>
-        where
-            A: Analysis<L>,
-    {
-        let mut machine = Machine::default();
-
-        assert_eq!(machine.reg.len(), 0);
-        machine.reg.push(eclass);
-
-        let mut substs = Vec::new();
-        machine.run(
-            egraph,
-            &self.instructions,
-            &self.subst,
-            &mut |machine, subst| {
-                let subst_vec = subst.vec.iter()
-                    // HACK we are reusing Ids here, this is bad
-                    .map(|(v, reg_id)| (*v, machine.reg(Reg(usize::from(*reg_id) as u32))))
-                    .collect();
-                substs.push(Subst { vec: subst_vec, color: machine.color.clone() })
-            },
-        );
-
-        log::trace!("Ran program, found {:?}", substs);
-        substs
+    pub(crate) fn compile_from_multi_pat(patterns: &[(Var, PatternAst<L>)]) -> Self {
+        let mut compiler = Compiler::new();
+        for (var, pattern) in patterns {
+            compiler.compile(Some(*var), pattern);
+        }
+        compiler.extract()
     }
 
-    pub fn colored_run<A>(&self, egraph: &EGraph<L, A>, eclass: Id, color: Option<ColorId>) -> Vec<Subst>
+    pub fn run<A>(
+        &self,
+        egraph: &EGraph<L, A>,
+        eclass: Id,
+    ) -> Vec<Subst>
         where
             A: Analysis<L>,
     {
-        let mut machine = Machine::default();
+        self.inner_run(egraph, eclass, None, false)
+    }
 
+    pub fn colored_run<A>(&self,
+                       egraph: &EGraph<L, A>,
+                       eclass: Id,
+                       color: Option<ColorId>,
+    ) -> Vec<Subst>
+        where
+            A: Analysis<L>,
+    {
+        self.inner_run(egraph, eclass, color, true)
+    }
+
+    fn inner_run<A>(
+        &self,
+        egraph: &EGraph<L, A>,
+        eclass: Id,
+        opt_color: Option<ColorId>,
+        run_color: bool,
+    ) -> Vec<Subst>
+        where
+            A: Analysis<L>,
+    {
+        assert!(egraph.is_clean(), "Tried to search a dirty e-graph!");
+
+        let mut machine = Machine::default();
         assert_eq!(machine.reg.len(), 0);
         machine.reg.push(eclass);
-        if let Some(c) = egraph[eclass].color {
-            machine.color = Some(c);
-            if let Some(c1) = color.as_ref() {
-                if c != *c1 {
-                    return vec![];
-                }
-            }
-            color.as_ref().map(|c1| assert_eq!(c1, &c));
-        }
-        if let Some(c) = color {
-            machine.color = Some(c);
+
+        let mut matches = Vec::new();
+        let mut yield_fn = |machine: &Machine, subst: &Subst| {
+            let subst_vec = subst
+                .vec
+                .iter()
+                // HACK we are reusing Ids here, this is bad
+                .map(|(v, reg_id)| (*v, machine.reg(Reg(usize::from(*reg_id) as u32))))
+                .collect();
+            matches.push(Subst { vec: subst_vec, color: machine.color.clone() });
+            Ok(())
+        };
+
+        if run_color {
+            machine.color = opt_color;
+            machine.colored_run(
+                egraph,
+                &self.instructions,
+                &self.subst,
+                &mut yield_fn,
+            ).unwrap_or_default();
+        } else {
+            assert!(opt_color.is_none());
+            machine.run(
+                egraph,
+                &self.instructions,
+                &self.subst,
+                &mut yield_fn,
+            ).unwrap_or_default();
         }
 
-        let mut substs = Vec::new();
-        machine.run_colored(
-            egraph,
-            &self.instructions,
-            &self.subst,
-            &mut |machine, subst| {
-                let subst_vec = subst.vec.iter()
-                    // HACK we are reusing Ids here, this is bad
-                    .map(|(v, reg_id)| (*v, egraph.opt_colored_find(subst.color(), machine.reg(Reg(usize::from(*reg_id) as u32)))))
-                    .collect();
-                substs.push(Subst { vec: subst_vec, color: machine.color.clone() })
-            },
-        );
-
-        log::trace!("Ran program, found {:?}", substs);
-        substs
+        log::trace!("Ran program, found {:?}", matches);
+        matches
     }
 }

@@ -12,10 +12,19 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Fixed colored_union_find.rs remove, some warnings and better parameters for api">
+    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Fixed colored_equivalences to only hold what colors, and using equality classes for getter.">
+      <change afterPath="$PROJECT_DIR$/src/multipattern.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/colors.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/colors.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/eggstentions/conditions.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/eggstentions/conditions.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/egraph.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/egraph.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/language.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/language.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/machine.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/machine.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/macros.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/macros.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/pattern.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/pattern.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rewrite.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/rewrite.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/subst.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/subst.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -74,9 +83,9 @@
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
-  <component name="RunManager" selected="Cargo.test">
-    <configuration name="Test colored_union_find::tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package egg --lib colored_union_find::tests" />
+  <component name="RunManager" selected="Cargo.Test eggstentions::conditions::test::test_simple_and_cond">
+    <configuration name="Test eggstentions::conditions::test::test_simple_and_cond" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib eggstentions::conditions::test::test_simple_and_cond -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <option name="emulateTerminal" value="false" />
       <option name="channel" value="DEFAULT" />
@@ -92,8 +101,59 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test egraph::tests::black_merge_color_congruent" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package egg --lib egraph::tests::black_merge_color_congruent -- --exact" />
+    <configuration name="Test multipattern::tests::unbound_rhs" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib multipattern::tests::unbound_rhs -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="emulateTerminal" value="false" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test pattern::tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib pattern::tests" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="emulateTerminal" value="false" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test pattern::tests::named_subpattern_is_var" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib pattern::tests::named_subpattern_is_var -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="emulateTerminal" value="false" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test pattern::tests::single_colored_find" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib pattern::tests::single_colored_find -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <option name="emulateTerminal" value="false" />
       <option name="channel" value="DEFAULT" />
@@ -128,8 +188,11 @@
     </configuration>
     <recent_temporary>
       <list>
-        <item itemvalue="Cargo.Test egraph::tests::black_merge_color_congruent" />
-        <item itemvalue="Cargo.Test colored_union_find::tests" />
+        <item itemvalue="Cargo.Test eggstentions::conditions::test::test_simple_and_cond" />
+        <item itemvalue="Cargo.Test pattern::tests::single_colored_find" />
+        <item itemvalue="Cargo.Test pattern::tests" />
+        <item itemvalue="Cargo.Test pattern::tests::named_subpattern_is_var" />
+        <item itemvalue="Cargo.Test multipattern::tests::unbound_rhs" />
       </list>
     </recent_temporary>
   </component>
@@ -153,7 +216,7 @@
       <workItem from="1683051345822" duration="599000" />
       <workItem from="1687775369321" duration="35310000" />
       <workItem from="1688365694735" duration="4075000" />
-      <workItem from="1688382947288" duration="5106000" />
+      <workItem from="1688382947288" duration="65894000" />
     </task>
     <task id="LOCAL-00001" summary="Colored congruence should take less memory due to better implementation">
       <created>1682546837181</created>
@@ -176,7 +239,28 @@
       <option name="project" value="LOCAL" />
       <updated>1688388604985</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="Fixed colored_union_find.rs remove black_ids set optimization">
+      <created>1688389439474</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1688389439474</updated>
+    </task>
+    <task id="LOCAL-00005" summary="Fixed colored_equivalences to only hold what colors, and using equality classes for getter.">
+      <created>1688640478519</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1688640478519</updated>
+    </task>
+    <task id="LOCAL-00006" summary="Temporary change trying to be 0.9.5">
+      <created>1688662479102</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1688662479102</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -197,37 +281,30 @@
     <MESSAGE value="Colored congruence should take less memory due to better implementation" />
     <MESSAGE value="Made colored union find separate from full union find and ready for hierarchy.&#10;&#10;It now supports multithreading, and has a partial representation of union of ids to better support future recursive splits" />
     <MESSAGE value="Fixed colored_union_find.rs remove, some warnings and better parameters for api" />
-    <option name="LAST_COMMIT_MESSAGE" value="Fixed colored_union_find.rs remove, some warnings and better parameters for api" />
+    <MESSAGE value="Fixed colored_union_find.rs remove black_ids set optimization" />
+    <MESSAGE value="Fixed colored_equivalences to only hold what colors, and using equality classes for getter." />
+    <MESSAGE value="Temporary change trying to be 0.9.5" />
+    <option name="LAST_COMMIT_MESSAGE" value="Temporary change trying to be 0.9.5" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
           <url>file://$PROJECT_DIR$/src/egraph.rs</url>
-          <line>1184</line>
-          <option name="timeStamp" value="10" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
-          <url>file://$PROJECT_DIR$/src/egraph.rs</url>
-          <line>1210</line>
-          <option name="timeStamp" value="11" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
-          <url>file://$PROJECT_DIR$/src/egraph.rs</url>
-          <line>1228</line>
-          <option name="timeStamp" value="14" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
-          <url>file://$PROJECT_DIR$/src/egraph.rs</url>
-          <line>1264</line>
-          <option name="timeStamp" value="15" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
-          <url>file://$PROJECT_DIR$/src/egraph.rs</url>
-          <line>2166</line>
+          <line>2184</line>
           <option name="timeStamp" value="20" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
+          <url>file://$PROJECT_DIR$/src/eggstentions/searchers.rs</url>
+          <line>980</line>
+          <option name="timeStamp" value="31" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
+    <watches-manager>
+      <configuration name="CargoCommandRunConfiguration">
+        <watch expression="self" />
+      </configuration>
+    </watches-manager>
   </component>
 </project>
