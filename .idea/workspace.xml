@@ -12,19 +12,9 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Fixed colored_equivalences to only hold what colors, and using equality classes for getter.">
-      <change afterPath="$PROJECT_DIR$/src/multipattern.rs" afterDir="false" />
+    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Mostly working multipattern.rs for colored egraphs. Still needs special tests&#10;&#10;Using thiserror for parse error handling&#10;Added some helper functions in Language to help rec expression work with multipatterns&#10;Updated Machine to work for multipatterns. This includes:&#10; * A new Scan command for multipatterns&#10; * Updated compiler from egraphs-good/egg that supports MultiPatterns but also inserts ColorJump between Binds&#10; * A lookup command that is mostly disabled. It is an optimization that cannot work with colors&#10; Updated macros to support multipattern and changes to Language&#10; Added MultiPattern struct itself (as opposed to machine implementation)">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/eggstentions/conditions.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/eggstentions/conditions.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/egraph.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/egraph.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/language.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/language.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/machine.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/machine.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/macros.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/macros.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/pattern.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/pattern.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rewrite.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/rewrite.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/subst.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/subst.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -83,7 +73,7 @@
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
-  <component name="RunManager" selected="Cargo.Test eggstentions::conditions::test::test_simple_and_cond">
+  <component name="RunManager" selected="Cargo.test">
     <configuration name="Test eggstentions::conditions::test::test_simple_and_cond" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package egg --lib eggstentions::conditions::test::test_simple_and_cond -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -216,7 +206,7 @@
       <workItem from="1683051345822" duration="599000" />
       <workItem from="1687775369321" duration="35310000" />
       <workItem from="1688365694735" duration="4075000" />
-      <workItem from="1688382947288" duration="65894000" />
+      <workItem from="1688382947288" duration="66882000" />
     </task>
     <task id="LOCAL-00001" summary="Colored congruence should take less memory due to better implementation">
       <created>1682546837181</created>
@@ -260,7 +250,14 @@
       <option name="project" value="LOCAL" />
       <updated>1688662479102</updated>
     </task>
-    <option name="localTasksCounter" value="7" />
+    <task id="LOCAL-00007" summary="Mostly working multipattern.rs for colored egraphs. Still needs special tests&#10;&#10;Using thiserror for parse error handling&#10;Added some helper functions in Language to help rec expression work with multipatterns&#10;Updated Machine to work for multipatterns. This includes:&#10; * A new Scan command for multipatterns&#10; * Updated compiler from egraphs-good/egg that supports MultiPatterns but also inserts ColorJump between Binds&#10; * A lookup command that is mostly disabled. It is an optimization that cannot work with colors&#10; Updated macros to support multipattern and changes to Language&#10; Added MultiPattern struct itself (as opposed to machine implementation)">
+      <created>1688975760607</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1688975760607</updated>
+    </task>
+    <option name="localTasksCounter" value="8" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -284,7 +281,8 @@
     <MESSAGE value="Fixed colored_union_find.rs remove black_ids set optimization" />
     <MESSAGE value="Fixed colored_equivalences to only hold what colors, and using equality classes for getter." />
     <MESSAGE value="Temporary change trying to be 0.9.5" />
-    <option name="LAST_COMMIT_MESSAGE" value="Temporary change trying to be 0.9.5" />
+    <MESSAGE value="Mostly working multipattern.rs for colored egraphs. Still needs special tests&#10;&#10;Using thiserror for parse error handling&#10;Added some helper functions in Language to help rec expression work with multipatterns&#10;Updated Machine to work for multipatterns. This includes:&#10; * A new Scan command for multipatterns&#10; * Updated compiler from egraphs-good/egg that supports MultiPatterns but also inserts ColorJump between Binds&#10; * A lookup command that is mostly disabled. It is an optimization that cannot work with colors&#10; Updated macros to support multipattern and changes to Language&#10; Added MultiPattern struct itself (as opposed to machine implementation)" />
+    <option name="LAST_COMMIT_MESSAGE" value="Mostly working multipattern.rs for colored egraphs. Still needs special tests&#10;&#10;Using thiserror for parse error handling&#10;Added some helper functions in Language to help rec expression work with multipatterns&#10;Updated Machine to work for multipatterns. This includes:&#10; * A new Scan command for multipatterns&#10; * Updated compiler from egraphs-good/egg that supports MultiPatterns but also inserts ColorJump between Binds&#10; * A lookup command that is mostly disabled. It is an optimization that cannot work with colors&#10; Updated macros to support multipattern and changes to Language&#10; Added MultiPattern struct itself (as opposed to machine implementation)" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

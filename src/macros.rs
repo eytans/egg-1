@@ -75,7 +75,7 @@ define_language! {
 #[macro_export]
 macro_rules! define_language {
     ($(#[$meta:meta])* $vis:vis enum $name:ident $variants:tt) => {
-        $crate::__define_language!($(#[$meta])* $vis enum $name $variants -> {} {} {} {} {} {} {});
+        $crate::__define_language!($(#[$meta])* $vis enum $name $variants -> {} {} {} {} {} {} {} {});
     };
 }
 
@@ -112,7 +112,7 @@ impl<T: Float> GetOp for NotNan<T> { }
 macro_rules! __define_language {
     ($(#[$meta:meta])* $vis:vis enum $name:ident {} ->
      $decl:tt $op_id:tt {$($matches:tt)*} $children:tt $children_mut:tt
-     $display:tt {$($from_op:tt)*}
+     $display:tt {$($from_op:tt)*} $display_op:tt
     ) => {
         $(#[$meta])*
         #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
@@ -132,6 +132,10 @@ macro_rules! __define_language {
 
             fn children(&self) -> &[Id] { match self $children }
             fn children_mut(&mut self) -> &mut [Id] { match self $children_mut }
+
+            fn display_op(&self) -> &dyn ::std::fmt::Display {
+                match self $display_op
+            }
         }
 
         impl ::std::fmt::Display for $name {
@@ -160,7 +164,7 @@ macro_rules! __define_language {
          $($variants:tt)*
      } ->
      { $($decl:tt)* } { $($op_id:tt)* } { $($matches:tt)* } { $($children:tt)* } { $($children_mut:tt)* }
-     { $($display:tt)* } { $($from_op:tt)* }
+     { $($display:tt)* } { $($from_op:tt)* } { $($display_op:tt)* }
     ) => {
         $crate::__define_language!(
             $(#[$meta])* $vis enum $name
@@ -172,6 +176,7 @@ macro_rules! __define_language {
             { $($children_mut)*  $name::$variant => &mut [], }
             { $($display)*       ($name::$variant, f) => f.write_str($string), }
             { $($from_op)*       ($string, children) if children.is_empty() => Ok($name::$variant), }
+            { $($display_op)*    $name::$variant => &$string, }
         );
     };
 
@@ -181,7 +186,7 @@ macro_rules! __define_language {
          $($variants:tt)*
      } ->
      { $($decl:tt)* } { $($op_id:tt)* } { $($matches:tt)* } { $($children:tt)* } { $($children_mut:tt)* }
-     { $($display:tt)* } { $($from_op:tt)* }
+     { $($display:tt)* } { $($from_op:tt)* } { $($display_op:tt)* }
     ) => {
         $crate::__define_language!(
             $(#[$meta])* $vis enum $name
@@ -197,6 +202,7 @@ macro_rules! __define_language {
                   Ok($name::$variant(children))
               },
             }
+            { $($display_op)*    $name::$variant(..) => &$string, }
         );
     };
 
@@ -206,7 +212,7 @@ macro_rules! __define_language {
          $($variants:tt)*
      } ->
      { $($decl:tt)* } { $($op_id:tt)* } { $($matches:tt)* } { $($children:tt)* } { $($children_mut:tt)* }
-     { $($display:tt)* } { $($from_op:tt)* }
+     { $($display:tt)* } { $($from_op:tt)* } { $($display_op:tt)* }
     ) => {
         $crate::__define_language!(
             $(#[$meta])* $vis enum $name
@@ -218,6 +224,7 @@ macro_rules! __define_language {
             { $($children_mut)*  $name::$variant(_data) => &mut [], }
             { $($display)*       ($name::$variant(data), f) => ::std::fmt::Display::fmt(data, f), }
             { $($from_op)*       (op, children) if op.parse::<$data>().is_ok() && children.is_empty() => Ok($name::$variant(op.parse().unwrap())), }
+            { $($display_op)*    $name::$variant(data) => data, }
         );
     };
 
@@ -227,7 +234,7 @@ macro_rules! __define_language {
          $($variants:tt)*
      } ->
      { $($decl:tt)* } { $($matches:tt)* } { $($children:tt)* } { $($children_mut:tt)* }
-     { $($display:tt)* } { $($from_op:tt)* }
+     { $($display:tt)* } { $($from_op:tt)* } { $($display_op:tt)* }
     ) => {
         $crate::__define_language!(
             $(#[$meta])* $vis enum $name
@@ -243,6 +250,7 @@ macro_rules! __define_language {
                   Ok($name::$variant(data, children))
               },
             }
+            { $($display_op)*    $name::$variant(data, _) => data, }
         );
     };
 }
