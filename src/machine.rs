@@ -376,6 +376,9 @@ impl<L: Language> Compiler<L> {
         if let Some(v) = patternbinder {
             if let Some(&i) = self.v2r.get(&v) {
                 // patternbinder already bound
+                if matches!(pattern.as_ref()[last_i], ENodeOrVar::ENode(_, _)) {
+                    self.instructions.push(Instruction::ColorJump { orig: i });
+                }
                 self.add_todo(pattern, Id::from(last_i), i);
             } else {
                 // patternbinder is new variable

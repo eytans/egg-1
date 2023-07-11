@@ -115,7 +115,7 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for MultiPattern<L> {
         egraph: &EGraph<L, A>,
         eclass: Id,
     ) -> Option<SearchMatches> {
-        let substs = self.program.run(egraph, eclass);
+        let substs = self.program.colored_run(egraph, eclass, None);
         if substs.is_empty() {
             None
         } else {
@@ -313,4 +313,51 @@ mod tests {
         assert_ne!(runner.egraph.find(y1), runner.egraph.find(z1));
         assert_ne!(runner.egraph.find(x1), runner.egraph.find(z1));
     }
+
+    #[test]
+    fn multipattern_works_middle_colored() {
+        let mut egraph = EGraph::default();
+        let l = egraph.add_expr(&"l".parse().unwrap());
+        let y = egraph.add_expr(&"y".parse().unwrap());
+        let f = egraph.add_expr(&"(f (p x) l)".parse().unwrap());
+        let g = egraph.add_expr(&"(g y (and b a))".parse().unwrap());
+        egraph.rebuild();
+
+        // Going to test 2 cases:
+        // 1. "Big" pattern is colored as sub of small one
+        // 2. "Small" pattern is colored as sub of big one
+
+        let pattern: MultiPattern<SymbolLang> = "?x = (f ?a ?b), ?b = (g ?c (and ?d ?k))".parse().unwrap();
+        let sms = pattern.search(&egraph);
+        assert!(sms.is_empty());
+
+        let small_big_color = egraph.create_color();
+        egraph.colored_union(small_big_color, l, g);
+        egraph.rebuild();
+
+        let sms = pattern.search(&egraph);
+        assert_eq!(sms.len(), 1);
+        let sm = &sms[0];
+        assert_eq!(sm.substs.len(), 1);
+        assert_eq!(sm.substs[0].color(), Some(small_big_color));
+
+        let big_small_color = egraph.create_color();
+        egraph.colored_union(big_small_color, y, f);
+        egraph.rebuild();
+
+        let pattern2: MultiPattern<SymbolLang> = "?x = (f (p ?a) ?l), ?b = (g ?x (and ?d ?k))".parse().unwrap();
+        let sms = pattern2.search(&egraph);
+        assert_eq!(sms.len(), 1);
+        let subst = sms.into_iter()
+            .flat_map(|sm| sm.substs)
+            .filter(|subst| subst.color() == Some(big_small_color))
+            .collect::<Vec<_>>();
+        assert_eq!(subst.len(), 1);
+        assert_eq!(subst[0].color(), Some(big_small_color));
+    }
+
+    // Tests to do:
+    // multiPattern matches over colored nodes
+    // After it is a "black" match no more colored matches
+    // Colored Applier tests
 }
