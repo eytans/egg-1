@@ -582,8 +582,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// [`add_expr`]: struct.EGraph.html#method.add_expr
     /// [`colored_add_expr`]: struct.EGraph.html#method.colored_add_expr
     pub fn colored_add_expr(&mut self, color: ColorId, expr: &RecExpr<L>) -> Id {
-        let id = self.add_expr_rec(expr.as_ref(), Some(color));
-        self.colored_find(color, id)
+        self.add_expr_rec(expr.as_ref(), Some(color))
     }
 
     /// Adds an enode to the [`EGraph`], but only for a specific color.

@@ -441,7 +441,8 @@ mod tests {
         egraph.verify_colored_uf_minimal();
         egraph.rebuild();
         egraph.verify_colored_uf_minimal();
-        assert_eq!(egraph.colored_add_expr(color, &"false".parse().unwrap()),
+        let colored_false_class = egraph.colored_add_expr(color, &"false".parse().unwrap());
+        assert_eq!(egraph.colored_find(color, colored_false_class),
                    egraph.colored_find(color, t));
         assert_eq!(egraph.colored_find(color, root), egraph.colored_find(color, g));
         assert_ne!(egraph.find(root), egraph.find(g));
