@@ -217,6 +217,7 @@ impl<L: Language + 'static, A: Analysis<L> + 'static> Applier<L, A> for MultiPat
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
     use crate::{SymbolLang as S, *};
     use crate::multipattern::MultiPattern;
 
@@ -316,6 +317,7 @@ mod tests {
 
     #[test]
     fn multipattern_works_middle_colored() {
+        init_logger();
         let mut egraph = EGraph::default();
         let l = egraph.add_expr(&"l".parse().unwrap());
         let y = egraph.add_expr(&"y".parse().unwrap());
@@ -340,6 +342,11 @@ mod tests {
         let sm = &sms[0];
         assert_eq!(sm.substs.len(), 1);
         assert_eq!(sm.substs[0].color(), Some(small_big_color));
+        assert!(sm.substs[0].get("?a".parse().unwrap()).is_some());
+        assert!(sm.substs[0].get("?b".parse().unwrap()).is_some());
+        assert!(sm.substs[0].get("?c".parse().unwrap()).is_some());
+        assert!(sm.substs[0].get("?d".parse().unwrap()).is_some());
+        assert!(sm.substs[0].get("?k".parse().unwrap()).is_some());
 
         let big_small_color = egraph.create_color();
         egraph.colored_union(big_small_color, y, f);
@@ -356,8 +363,89 @@ mod tests {
         assert_eq!(subst[0].color(), Some(big_small_color));
     }
 
-    // Tests to do:
-    // multiPattern matches over colored nodes
+    #[test]
+    fn test_search_colored_nodes() {
+        init_logger();
+        let mut egraph = EGraph::default();
+
+        let k = egraph.add_expr(&"k".parse().unwrap());
+        let _f = egraph.add_expr(&"(f (p k) l)".parse().unwrap());
+
+        let color = egraph.create_color();
+        let t = egraph.colored_add_expr(color, &"true".parse().unwrap());
+        egraph.colored_union(color, k, t);
+        egraph.rebuild();
+        egraph.verify_colored_uf_minimal();
+
+        let pattern: MultiPattern<SymbolLang> = "?x = (f (p ?y) ?b), ?y = true".parse().unwrap();
+        let pattern2: MultiPattern<SymbolLang> = "?x = (f (p true) ?b)".parse().unwrap();
+        let sms = pattern.search(&egraph);
+        let sms2 = pattern2.search(&egraph);
+        assert_eq!(sms.len(), 1);
+        assert_eq!(sms2.len(), 1);
+        let sm = &sms[0];
+        let sm2 = &sms2[0];
+        assert_eq!(sm.substs.len(), 1);
+        assert_eq!(sm2.substs.len(), 1);
+        assert_eq!(sm.substs[0].color(), Some(color));
+        assert_eq!(sm2.substs[0].color(), Some(color));
+    }
+
     // After it is a "black" match no more colored matches
-    // Colored Applier tests
+    #[test]
+    fn test_black_only_match() {
+        init_logger();
+        let mut egraph = EGraph::default();
+        let yz = egraph.add_expr(&"(y z)".parse().unwrap());
+        let t = egraph.add_expr(&"true".parse().unwrap());
+        egraph.add_expr(&"(f (g x) true)".parse().unwrap());
+        let color = egraph.create_color();
+        egraph.colored_union(color, yz, t);
+        egraph.verify_colored_uf_minimal();
+        egraph.rebuild();
+        egraph.verify_colored_uf_minimal();
+
+        let pattern: MultiPattern<SymbolLang> = "?x = (f (g ?y) ?z), ?z = true".parse().unwrap();
+        let sms = pattern.search(&egraph);
+        assert_eq!(sms.len(), 1, "sms: {:?}", sms);
+        let sm = &sms[0];
+        assert_eq!(sm.substs.len(), 1);
+        assert_eq!(sm.substs[0].color(), None);
+    }
+
+    #[test]
+    fn test_apply_colored_multi_match() {
+        init_logger();
+        let mut egraph = EGraph::default();
+
+        let searcher = MultiPattern::from_str("?x = true, ?g = (f ?l ?k), ?k = (foo ?x)").unwrap();
+        let applier: MultiPattern<SymbolLang> = MultiPattern::from_str("?x = false, ?k = ?g").unwrap();
+
+        let root = egraph.add_expr(&"(f l (foo b))".parse().unwrap());
+        let g = egraph.add_expr(&"(foo b)".parse().unwrap());
+        let b = egraph.add_expr(&"b".parse().unwrap());
+        let color = egraph.create_color();
+        let t = egraph.colored_add_expr(color, &"true".parse().unwrap());
+        egraph.colored_union(color, b, t);
+        egraph.verify_colored_uf_minimal();
+        egraph.rebuild();
+
+        let sms = searcher.search(&egraph);
+        assert_eq!(sms.len(), 1);
+        let sm = &sms[0];
+        assert_eq!(sm.substs.len(), 1);
+        assert_eq!(sm.substs[0].color(), Some(color));
+        assert!(sm.substs[0].get("?k".parse().unwrap()).is_some());
+        assert!(sm.substs[0].get("?g".parse().unwrap()).is_some());
+        let _matches = applier.apply_matches(&mut egraph, &sms);
+        egraph.verify_colored_uf_minimal();
+        egraph.rebuild();
+        egraph.verify_colored_uf_minimal();
+        assert_eq!(egraph.colored_add_expr(color, &"false".parse().unwrap()),
+                   egraph.colored_find(color, t));
+        assert_eq!(egraph.colored_find(color, root), egraph.colored_find(color, g));
+        assert_ne!(egraph.find(root), egraph.find(g));
+        assert_ne!(egraph.add_expr(&"false".parse().unwrap()), egraph.add_expr(&"true".parse().unwrap()));
+
+    }
 }

@@ -355,7 +355,7 @@ pub(crate) fn apply_pat<L: Language, A: Analysis<L>>(
     trace!("apply_rec {:2?} {:?}", pat, subst);
 
     let result = match pat.last().unwrap() {
-        ENodeOrVar::Var(w) => subst[*w],
+        ENodeOrVar::Var(w) => egraph.opt_colored_find(subst.color, subst[*w]),
         ENodeOrVar::ENode(e, _) => {
             let n = e
                 .clone()

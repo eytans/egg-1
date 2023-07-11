@@ -142,11 +142,14 @@ impl Machine {
                     let remaining_instructions = instructions.as_slice();
                     let mut run = |machine: &mut Machine, id| {
                         let cur_color = machine.color.clone();
-                        let class_color = egraph[id].color();
-                        if cur_color.is_some() && cur_color != class_color {
+                        let cls_color = egraph[id].color();
+                        if (cur_color.is_some() && cls_color.is_some() && cur_color != cls_color) ||
+                            (cls_color.is_some() && !colored_jumps) {
                             return Ok(());
                         }
-                        machine.color = class_color;
+                        if cls_color.is_some() {
+                            machine.color = cls_color;
+                        }
                         machine.reg.truncate(out.0 as usize);
                         machine.reg.push(id);
                         machine.inner_run(egraph, remaining_instructions, subst, colored_jumps, yield_fn)?;

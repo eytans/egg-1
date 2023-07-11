@@ -32,6 +32,19 @@ pub struct Color<L: Language, N: Analysis<L>> {
 }
 
 impl<L: Language, N: Analysis<L>> Color<L, N> {
+    pub(crate) fn verify_uf_minimal(&self, egraph: &EGraph<L, N>) {
+        let mut parents: IndexMap<Id, usize> = IndexMap::default();
+        for (k, _v) in self.union_find.iter() {
+            let v = self.find(egraph, k);
+            *parents.entry(v).or_default() += 1;
+        }
+        for (k, v) in parents {
+            assert!(v >= 1, "Found {} parents for {}", v, k);
+        }
+    }
+}
+
+impl<L: Language, N: Analysis<L>> Color<L, N> {
     pub(crate) fn new(new_id: ColorId) -> Color<L, N> {
         Color {
             color_id: new_id,

@@ -46,6 +46,12 @@ pub(crate) struct ColoredUnionFind {
 }
 
 impl ColoredUnionFind {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (Id, Id)> + '_ {
+        self.parents.iter().map(|(k, v)| (k.clone(), Id(v.load(Relaxed))))
+    }
+}
+
+impl ColoredUnionFind {
     #[allow(dead_code)]
     pub fn size(&self) -> usize {
         self.parents.len()

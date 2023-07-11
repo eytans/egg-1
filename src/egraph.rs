@@ -182,6 +182,14 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
 }
 
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
+    pub(crate) fn verify_colored_uf_minimal(&self) {
+        for color in self.colors() {
+            color.verify_uf_minimal(self);
+        }
+    }
+}
+
+impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     pub(crate) fn is_clean(&self) -> bool {
         self.dirty_unions.is_empty() && self.colors().all(|c| !c.is_dirty())
     }
@@ -574,7 +582,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// [`add_expr`]: struct.EGraph.html#method.add_expr
     /// [`colored_add_expr`]: struct.EGraph.html#method.colored_add_expr
     pub fn colored_add_expr(&mut self, color: ColorId, expr: &RecExpr<L>) -> Id {
-        self.add_expr_rec(expr.as_ref(), Some(color))
+        let id = self.add_expr_rec(expr.as_ref(), Some(color));
+        self.colored_find(color, id)
     }
 
     /// Adds an enode to the [`EGraph`], but only for a specific color.

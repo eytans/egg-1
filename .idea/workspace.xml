@@ -12,9 +12,14 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Mostly working multipattern.rs for colored egraphs. Still needs special tests&#10;&#10;Using thiserror for parse error handling&#10;Added some helper functions in Language to help rec expression work with multipatterns&#10;Updated Machine to work for multipatterns. This includes:&#10; * A new Scan command for multipatterns&#10; * Updated compiler from egraphs-good/egg that supports MultiPatterns but also inserts ColorJump between Binds&#10; * A lookup command that is mostly disabled. It is an optimization that cannot work with colors&#10; Updated macros to support multipattern and changes to Language&#10; Added MultiPattern struct itself (as opposed to machine implementation)">
+    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="MultiPattern colored test + search_eclass bug fix + machine compile bug fix&#10;&#10;Added test for searching in multipattern.rs where there is a colored jump between two patterns.&#10;Fixed a bug where the colored jump was not inserted when the pattern was bound to a var&#10;Fixed a bug in multipattern.rs search eclass where the machine was not colored_run">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/macros.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/macros.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/colored_union_find.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/colored_union_find.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/colors.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/colors.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/egraph.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/egraph.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/machine.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/machine.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/multipattern.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/multipattern.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/pattern.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/pattern.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -73,9 +78,9 @@
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
-  <component name="RunManager" selected="Cargo.test">
-    <configuration name="Test eggstentions::conditions::test::test_simple_and_cond" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package egg --lib eggstentions::conditions::test::test_simple_and_cond -- --exact" />
+  <component name="RunManager" selected="Cargo.Test multipattern::tests">
+    <configuration name="Test multipattern::tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib multipattern::tests" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <option name="emulateTerminal" value="false" />
       <option name="channel" value="DEFAULT" />
@@ -91,8 +96,8 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test multipattern::tests::unbound_rhs" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package egg --lib multipattern::tests::unbound_rhs -- --exact" />
+    <configuration name="Test multipattern::tests::multipattern_works_middle_colored" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib multipattern::tests::multipattern_works_middle_colored -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <option name="emulateTerminal" value="false" />
       <option name="channel" value="DEFAULT" />
@@ -108,8 +113,8 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test pattern::tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package egg --lib pattern::tests" />
+    <configuration name="Test multipattern::tests::test_apply_colored_multi_match" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib multipattern::tests::test_apply_colored_multi_match -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <option name="emulateTerminal" value="false" />
       <option name="channel" value="DEFAULT" />
@@ -125,8 +130,8 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test pattern::tests::named_subpattern_is_var" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package egg --lib pattern::tests::named_subpattern_is_var -- --exact" />
+    <configuration name="Test multipattern::tests::test_black_only_match" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib multipattern::tests::test_black_only_match -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <option name="emulateTerminal" value="false" />
       <option name="channel" value="DEFAULT" />
@@ -142,8 +147,8 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test pattern::tests::single_colored_find" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package egg --lib pattern::tests::single_colored_find -- --exact" />
+    <configuration name="Test multipattern::tests::test_search_colored_nodes" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib multipattern::tests::test_search_colored_nodes -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <option name="emulateTerminal" value="false" />
       <option name="channel" value="DEFAULT" />
@@ -178,11 +183,11 @@
     </configuration>
     <recent_temporary>
       <list>
-        <item itemvalue="Cargo.Test eggstentions::conditions::test::test_simple_and_cond" />
-        <item itemvalue="Cargo.Test pattern::tests::single_colored_find" />
-        <item itemvalue="Cargo.Test pattern::tests" />
-        <item itemvalue="Cargo.Test pattern::tests::named_subpattern_is_var" />
-        <item itemvalue="Cargo.Test multipattern::tests::unbound_rhs" />
+        <item itemvalue="Cargo.Test multipattern::tests" />
+        <item itemvalue="Cargo.Test multipattern::tests::test_apply_colored_multi_match" />
+        <item itemvalue="Cargo.Test multipattern::tests::test_black_only_match" />
+        <item itemvalue="Cargo.Test multipattern::tests::test_search_colored_nodes" />
+        <item itemvalue="Cargo.Test multipattern::tests::multipattern_works_middle_colored" />
       </list>
     </recent_temporary>
   </component>
@@ -257,7 +262,14 @@
       <option name="project" value="LOCAL" />
       <updated>1688975760607</updated>
     </task>
-    <option name="localTasksCounter" value="8" />
+    <task id="LOCAL-00008" summary="MultiPattern colored test + search_eclass bug fix + machine compile bug fix&#10;&#10;Added test for searching in multipattern.rs where there is a colored jump between two patterns.&#10;Fixed a bug where the colored jump was not inserted when the pattern was bound to a var&#10;Fixed a bug in multipattern.rs search eclass where the machine was not colored_run">
+      <created>1689064550950</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1689064550950</updated>
+    </task>
+    <option name="localTasksCounter" value="9" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -282,14 +294,15 @@
     <MESSAGE value="Fixed colored_equivalences to only hold what colors, and using equality classes for getter." />
     <MESSAGE value="Temporary change trying to be 0.9.5" />
     <MESSAGE value="Mostly working multipattern.rs for colored egraphs. Still needs special tests&#10;&#10;Using thiserror for parse error handling&#10;Added some helper functions in Language to help rec expression work with multipatterns&#10;Updated Machine to work for multipatterns. This includes:&#10; * A new Scan command for multipatterns&#10; * Updated compiler from egraphs-good/egg that supports MultiPatterns but also inserts ColorJump between Binds&#10; * A lookup command that is mostly disabled. It is an optimization that cannot work with colors&#10; Updated macros to support multipattern and changes to Language&#10; Added MultiPattern struct itself (as opposed to machine implementation)" />
-    <option name="LAST_COMMIT_MESSAGE" value="Mostly working multipattern.rs for colored egraphs. Still needs special tests&#10;&#10;Using thiserror for parse error handling&#10;Added some helper functions in Language to help rec expression work with multipatterns&#10;Updated Machine to work for multipatterns. This includes:&#10; * A new Scan command for multipatterns&#10; * Updated compiler from egraphs-good/egg that supports MultiPatterns but also inserts ColorJump between Binds&#10; * A lookup command that is mostly disabled. It is an optimization that cannot work with colors&#10; Updated macros to support multipattern and changes to Language&#10; Added MultiPattern struct itself (as opposed to machine implementation)" />
+    <MESSAGE value="MultiPattern colored test + search_eclass bug fix + machine compile bug fix&#10;&#10;Added test for searching in multipattern.rs where there is a colored jump between two patterns.&#10;Fixed a bug where the colored jump was not inserted when the pattern was bound to a var&#10;Fixed a bug in multipattern.rs search eclass where the machine was not colored_run" />
+    <option name="LAST_COMMIT_MESSAGE" value="MultiPattern colored test + search_eclass bug fix + machine compile bug fix&#10;&#10;Added test for searching in multipattern.rs where there is a colored jump between two patterns.&#10;Fixed a bug where the colored jump was not inserted when the pattern was bound to a var&#10;Fixed a bug in multipattern.rs search eclass where the machine was not colored_run" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
           <url>file://$PROJECT_DIR$/src/egraph.rs</url>
-          <line>2184</line>
+          <line>2193</line>
           <option name="timeStamp" value="20" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
