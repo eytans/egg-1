@@ -115,7 +115,7 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for MultiPattern<L> {
         egraph: &EGraph<L, A>,
         eclass: Id,
     ) -> Option<SearchMatches> {
-        let substs = self.program.colored_run(egraph, eclass, None);
+        let substs = self.program.colored_run(egraph, eclass, None).into_iter().unique().collect_vec();
         if substs.is_empty() {
             None
         } else {
