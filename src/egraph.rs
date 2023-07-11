@@ -724,8 +724,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             // which to keep.
             if let Some(eqs) = self.colored_equivalences.remove(&from) {
                 for c_id in eqs {
-                    let eq_classes = &self.get_color_mut(c_id).unwrap().equality_classes;
-                    if !eq_classes.contains_key(&to) {
+                    let eq_classes = &self.get_color(c_id).unwrap().equality_classes;
+                    if !eq_classes.contains_key(&self.colored_find(c_id, to)) {
                         if self.colored_equivalences.contains_key(&to) {
                             self.colored_equivalences[&to].remove(&c_id);
                             if self.colored_equivalences[&to].is_empty() {
