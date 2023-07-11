@@ -129,7 +129,8 @@ pub use {
 
 #[cfg(test)]
 fn init_logger() {
-    let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Info).try_init();
+    invariants::set_max_level(log::LevelFilter::Debug);
+    let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Debug).try_init();
 }
 
 #[doc(hidden)]

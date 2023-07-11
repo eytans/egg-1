@@ -182,6 +182,7 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
 }
 
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
+    #[allow(dead_code)]
     pub(crate) fn verify_colored_uf_minimal(&self) {
         for color in self.colors() {
             color.verify_uf_minimal(self);
@@ -724,8 +725,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             if let Some(eqs) = self.colored_equivalences.remove(&from) {
                 for c_id in eqs {
                     let eq_classes = &self.get_color_mut(c_id).unwrap().equality_classes;
-                    if eq_classes.contains_key(&to) {
-                        assert!(eq_classes[&to].len() > 1);
+                    if !eq_classes.contains_key(&to) {
                         if self.colored_equivalences.contains_key(&to) {
                             self.colored_equivalences[&to].remove(&c_id);
                             if self.colored_equivalences[&to].is_empty() {
@@ -735,6 +735,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     }
                 }
             }
+            tassert!({self.verify_colored_equivalences(); true});
 
             #[cfg(feature = "colored_no_cmemo")]
             iassert!(self[to].color().is_none());
@@ -1690,6 +1691,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             // Other ids in the equality class will already have the color
             self.colored_equivalences.entry(id1).or_default().insert(color);
             self.colored_equivalences.entry(id2).or_default().insert(color);
+            tassert!({self.verify_colored_equivalences(); true});
 
             let from_cp = self[from]
                 .colord_changed_parents
@@ -1879,6 +1881,17 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
     pub fn colored_equivalences_size(&self) -> usize {
         self.colored_equivalences.iter().map(|(_, v)| v.len()).sum()
+    }
+
+    pub(crate) fn verify_colored_equivalences(&self) {
+        for (id, colors) in &self.colored_equivalences {
+            for color in colors {
+                if self.get_color(*color).unwrap().black_ids(self, *id).is_none() {
+                    println!("{} {:?}", id, self[*id]);
+                }
+                assert!(self.get_color(*color).unwrap().black_ids(self, *id).is_some());
+            }
+        }
     }
 }
 

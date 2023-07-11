@@ -12,10 +12,11 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="More multipattern tests. Fixed bug in Scan setting machine color">
+    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="colored_add_expr should actually return black id">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/colors.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/colors.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/egraph.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/egraph.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/multipattern.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/multipattern.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -74,9 +75,9 @@
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
-  <component name="RunManager" selected="Cargo.Test multipattern::tests">
-    <configuration name="Test multipattern::tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package egg --lib multipattern::tests" />
+  <component name="RunManager" selected="Cargo.test">
+    <configuration name="Test dot::test::draw_max" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib dot::test::draw_max -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <option name="emulateTerminal" value="false" />
       <option name="channel" value="DEFAULT" />
@@ -92,8 +93,25 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test multipattern::tests::multipattern_works_middle_colored" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package egg --lib multipattern::tests::multipattern_works_middle_colored -- --exact" />
+    <configuration name="Test egraph::tests::colored_drop_take" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib egraph::tests::colored_drop_take -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="emulateTerminal" value="false" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test multipattern::tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib multipattern::tests" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <option name="emulateTerminal" value="false" />
       <option name="channel" value="DEFAULT" />
@@ -143,23 +161,6 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test multipattern::tests::test_search_colored_nodes" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package egg --lib multipattern::tests::test_search_colored_nodes -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
-      <option name="emulateTerminal" value="false" />
-      <option name="channel" value="DEFAULT" />
-      <option name="requiredFeatures" value="true" />
-      <option name="allFeatures" value="false" />
-      <option name="withSudo" value="false" />
-      <option name="buildTarget" value="REMOTE" />
-      <option name="backtrace" value="SHORT" />
-      <envs />
-      <option name="isRedirectInput" value="false" />
-      <option name="redirectInputPath" value="" />
-      <method v="2">
-        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
-      </method>
-    </configuration>
     <configuration name="test" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
       <option name="command" value="test" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -179,11 +180,11 @@
     </configuration>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test dot::test::draw_max" />
+        <item itemvalue="Cargo.Test egraph::tests::colored_drop_take" />
         <item itemvalue="Cargo.Test multipattern::tests" />
         <item itemvalue="Cargo.Test multipattern::tests::test_apply_colored_multi_match" />
         <item itemvalue="Cargo.Test multipattern::tests::test_black_only_match" />
-        <item itemvalue="Cargo.Test multipattern::tests::test_search_colored_nodes" />
-        <item itemvalue="Cargo.Test multipattern::tests::multipattern_works_middle_colored" />
       </list>
     </recent_temporary>
   </component>
@@ -272,7 +273,14 @@
       <option name="project" value="LOCAL" />
       <updated>1689080954209</updated>
     </task>
-    <option name="localTasksCounter" value="10" />
+    <task id="LOCAL-00010" summary="colored_add_expr should actually return black id">
+      <created>1689081086898</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1689081086899</updated>
+    </task>
+    <option name="localTasksCounter" value="11" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -299,20 +307,31 @@
     <MESSAGE value="Mostly working multipattern.rs for colored egraphs. Still needs special tests&#10;&#10;Using thiserror for parse error handling&#10;Added some helper functions in Language to help rec expression work with multipatterns&#10;Updated Machine to work for multipatterns. This includes:&#10; * A new Scan command for multipatterns&#10; * Updated compiler from egraphs-good/egg that supports MultiPatterns but also inserts ColorJump between Binds&#10; * A lookup command that is mostly disabled. It is an optimization that cannot work with colors&#10; Updated macros to support multipattern and changes to Language&#10; Added MultiPattern struct itself (as opposed to machine implementation)" />
     <MESSAGE value="MultiPattern colored test + search_eclass bug fix + machine compile bug fix&#10;&#10;Added test for searching in multipattern.rs where there is a colored jump between two patterns.&#10;Fixed a bug where the colored jump was not inserted when the pattern was bound to a var&#10;Fixed a bug in multipattern.rs search eclass where the machine was not colored_run" />
     <MESSAGE value="More multipattern tests. Fixed bug in Scan setting machine color" />
-    <option name="LAST_COMMIT_MESSAGE" value="More multipattern tests. Fixed bug in Scan setting machine color" />
+    <MESSAGE value="colored_add_expr should actually return black id" />
+    <option name="LAST_COMMIT_MESSAGE" value="colored_add_expr should actually return black id" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
           <url>file://$PROJECT_DIR$/src/egraph.rs</url>
-          <line>2192</line>
+          <line>2205</line>
           <option name="timeStamp" value="20" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
           <url>file://$PROJECT_DIR$/src/eggstentions/searchers.rs</url>
           <line>980</line>
           <option name="timeStamp" value="31" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
+          <url>file://$PROJECT_DIR$/src/egraph.rs</url>
+          <line>1889</line>
+          <option name="timeStamp" value="69" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
+          <url>file://$PROJECT_DIR$/src/colors.rs</url>
+          <line>86</line>
+          <option name="timeStamp" value="74" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
