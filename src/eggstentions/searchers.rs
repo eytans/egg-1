@@ -1,11 +1,7 @@
-use std::iter::FromIterator;
-use std::str::FromStr;
-
 // use crate::{EGraph, Id, Pattern, Searcher, SearchMatches, Subst, SymbolLang, Var, Language, Analysis, Condition, ImmutableCondition, ENodeOrVar, ImmutableFunctionCondition, RcImmutableCondition, ToCondRc, ColorId};
-use crate::{EGraph, Id, Pattern, Searcher, SearchMatches, Subst, SymbolLang, Var, Language, Analysis, Condition, ImmutableCondition, RcImmutableCondition, ToCondRc, ColorId};
+use crate::{EGraph, Id, Pattern, Searcher, SearchMatches, Subst, Var, Language, Analysis, Condition, ImmutableCondition, RcImmutableCondition, ToCondRc, ColorId};
 use itertools::{Itertools, Either};
 
-use crate::tools::tools::Grouped;
 use crate::eggstentions::pretty_string::PrettyString;
 use std::fmt::{Debug, Display};
 use smallvec::alloc::fmt::Formatter;
@@ -14,7 +10,7 @@ use std::ops::Deref;
 
 use std::rc::Rc;
 use std::time::Instant;
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexSet;
 use log::{trace, warn};
 
 
@@ -274,16 +270,6 @@ impl<L: Language, N: Analysis<L>, A: Searcher<L, N> + Debug, B: Searcher<L, N> +
     }
 }
 
-fn count_common_vars(patterns: &mut Vec<impl Searcher<SymbolLang, ()>>) -> IndexMap<Var, usize> {
-    let common_vars = patterns.iter().flat_map(|p| p.vars())
-        .grouped(|v| v.clone()).iter()
-        .filter_map(|(k, v)|
-            if v.len() <= 1 { None } else { Some((*k, v.len())) })
-        .collect::<IndexMap<Var, usize>>();
-
-    common_vars
-}
-
 #[allow(unused)]
 fn merge_substs(vars: &Vec<Var>, sub1: &Subst, sub2: &Subst) -> Subst {
     let mut res = Subst::colored_with_capacity(vars.len(), sub1.color().or_else(|| sub2.color()));
@@ -329,245 +315,6 @@ fn aggregate_substs(matches_by_subst: &[Vec<(Vec<Option<Id>>, Vec<(Id, Subst)>)>
     } else {
         // TODO: I changed this from merge_substs(s, s). Might get an error later on missing vars.
         matches.flat_map(|(_, v)| v.iter().map(|(id, s)| (*id, s.clone()))).collect()
-    }
-}
-
-/// Uses multiple searchers with results agreeing on vars but not on root
-pub struct MultiDiffSearcher<A: Searcher<SymbolLang, ()>> {
-    patterns: Vec<A>,
-    #[allow(unused)]
-    common_vars_priorities: IndexMap<Var, usize>,
-}
-
-impl<A: Searcher<SymbolLang, ()>> MultiDiffSearcher<A> {
-    /** 
-     * Creates a new MultiDiffSearcher from a list of patterns.
-     */
-    pub fn new(mut patterns: Vec<A>) -> MultiDiffSearcher<A> {
-        let common_vars = count_common_vars(&mut patterns);
-        assert!(!patterns.is_empty());
-        MultiDiffSearcher { patterns, common_vars_priorities: common_vars }
-    }
-}
-
-impl<S: Searcher<SymbolLang, ()> + 'static> ToDyn<SymbolLang, ()> for MultiDiffSearcher<S> {
-    fn into_rc_dyn(self) -> Rc<dyn Searcher<SymbolLang, ()>> {
-        let dyn_s: Rc<dyn Searcher<SymbolLang, ()>> = Rc::new(self);
-        dyn_s
-    }
-}
-
-impl<S: Searcher<SymbolLang, ()> + 'static> std::fmt::Display for MultiDiffSearcher<S> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.patterns.iter().map(|x| x.to_string()).join(" ||| "))
-    }
-}
-
-// impl PrettyString for MultiDiffSearcher {
-//     fn pretty_string(&self) -> String {
-//         self.patterns.iter().map(|p| p.pretty_string()).intersperse(" |||| ".to_string()).collect()
-//     }
-// }
-
-impl<A: 'static + Searcher<SymbolLang, ()>> Searcher<SymbolLang, ()> for MultiDiffSearcher<A> {
-    fn search_eclass(&self, _: &EGraph<SymbolLang, ()>, _: Id) -> Option<SearchMatches> {
-        unimplemented!()
-    }
-
-    fn search(&self, egraph: &EGraph<SymbolLang, ()>) -> Vec<SearchMatches> {
-        if self.patterns.len() == 1 {
-            return self.patterns[0].search(egraph);
-        }
-
-        fn canonize_matches(egraph: &EGraph<SymbolLang, ()>, color_id: ColorId, matches: &[SearchMatches]) -> Vec<(Id, Subst)> {
-            let mut res = Vec::new();
-            for m in matches {
-                let mut new_matches = Vec::new();
-                for subst in &m.substs {
-                    if let Some(s_color) = subst.color() {
-                        if s_color != color_id {
-                            continue;
-                        }
-                    }
-                    let new_subst = Subst {
-                        // I am canonizing the substs here, so they must be colored
-                        color: Some(color_id),
-                        vec: subst.vec.iter().map(|(v, s)| (*v, egraph.colored_find(color_id, *s))).collect(),
-                    };
-                    new_matches.push(new_subst);
-                }
-                res.push((egraph.colored_find(color_id, m.eclass), new_matches));
-            }
-            res.sort_unstable_by_key(|x| x.0);
-            res.dedup_by(|a, b| {
-                a.0 == b.0 && {
-                    b.1.extend(std::mem::take(&mut a.1));
-                    true
-                }
-            });
-            res.into_iter().flat_map(|(eclass, mut substs)| {
-                substs.sort_unstable();
-                substs.dedup();
-                substs.into_iter().map(move |subst| (eclass, subst))
-            }).collect()
-        }
-
-        // Reimplementing search as follows:
-        //  For each searcher find all matches
-        //  For each color:
-        //      Fold searcher results:
-        //          Canonize substitutions by color
-        //          Create cartesian product of all matches in color
-        //          Filter out those that don't agree on common vars
-        let first_result = self.patterns.first().unwrap().search(egraph);
-        let other_results = self.patterns.iter().skip(1).map(|p| p.search(egraph)).collect_vec();
-        let mut res = vec![];
-        for c in egraph.colors() {
-            let init = canonize_matches(egraph, c.get_id(), &first_result);
-            let c_res = other_results.iter().fold(init, |acc, v| {
-                // In diff searcher it is ok to have different eclasses. Only need first eclass matched.
-                let v = canonize_matches(egraph, c.get_id(), v);
-                // Now need to create cartesian product and filter by matching vars. We ignore eclass, but take the eclass from acc.
-                acc.into_iter().cartesian_product(v)
-                    .filter(|((_eclass, sub1), (_, sub2))| egraph.subst_agrees(sub1, sub2, true))
-                    .map(|((eclass, sub1), (_, sub2))| (eclass, sub1.merge(sub2)))
-                    .collect_vec()
-            });
-            res.extend(c_res);
-        }
-
-        let init = first_result.into_iter()
-            .flat_map(|mut sms| std::mem::take(&mut sms.substs).into_iter()
-                .filter(|s| s.color().is_none())
-                .map(move |s| (sms.eclass, s))
-            ).collect_vec();
-        let temp = other_results.into_iter().fold(init, |acc, v| {
-            let v = v.into_iter().flat_map(|sms| 
-                sms.substs.into_iter().filter(|x| x.color().is_none()))
-                .collect_vec();
-            // Now need to create cartesian product and filter by matching vars. We ignore eclass, but take the eclass from acc.
-            acc.into_iter().cartesian_product(v)
-                .filter(|((_eclass, sub1), sub2)| egraph.subst_agrees(sub1, sub2, true))
-                .map(|((eclass, sub1), sub2)| (eclass, sub1.merge(sub2)))
-                .collect_vec()
-        });
-        res.extend(temp);
-        res.sort_unstable_by_key(|x| x.0);
-        res.dedup();
-        res.into_iter().group_by(|x| x.0).into_iter()
-            .map(|(k, group)| 
-            SearchMatches {eclass: k, substs: group.map(|x| x.1).collect()}
-        ).collect_vec()
-
-        // let search_results =
-        //     self.patterns.iter().map(|p| {
-        //         // For each color collect all substitutions by common var assignments
-        //         let mut res: IndexMap<Option<ColorId>, Vec<_>> = IndexMap::new();
-        //         for m in p.search(egraph) {
-        //             let class = m.eclass;
-        //             let by_vars = {
-        //                 let groups = m.substs.into_iter()
-        //                     .map(|s|
-        //                         (self.common_vars_priorities.keys().map(|v| s.get(*v)
-        //                             .map(|id| egraph.opt_colored_find(s.color(), *id))).collect_vec(),
-        //                          class,
-        //                          s))
-        //                     .sorted()
-        //                     .group_by(|(v, _c, s)| (s.color(), v.clone()));
-        //                 groups.into_iter().map(|(k, v)| (k, v.collect_vec())).grouped(|x| x.0.0)
-        //             };
-        //             for (color, vars) in by_vars {
-        //                 res.entry(color).or_default().extend(vars.into_iter().map(|((_c, vars), g)| {
-        //                     (vars, g.into_iter().map(|(_var, c, s)| (c, s)).collect_vec())
-        //                 }));
-        //             }
-        //         }
-        //         res
-        //     }).collect_vec();
-
-        // // To reuse group_by_common_vars we will merge all results to a single searchmatches.
-        // // We don't really care which eclass we use so we will choose the first one.
-        // // It is a really stupid way to do it but we will run the grouping for each eclass from
-        // // the first one.
-        // egraph.colors().map(|c| Some(c.get_id()))
-        //     .chain(std::iter::once(None)).flat_map(|c_id| {
-        //     let empty = vec![];
-        //     let collect_results: Box<dyn Fn(&IndexMap<Option<ColorId>, Vec<(Vec<Option<Id>>, Vec<(Id, Subst)>)>>)
-        //         -> Vec<(Vec<Option<Id>>, Vec<(Id, Subst)>)>> = Box::new(|map: &IndexMap<Option<ColorId>, Vec<(Vec<Option<Id>>, Vec<(Id, Subst)>)>>| {
-        //         let mut res = map.get(&c_id).unwrap_or_else(|| &empty).iter().map(|(vars, g)|
-        //             ((*vars).clone(), g.clone())).collect_vec();
-        //         if c_id.is_some() {
-        //             for (vars, g) in map.get(&None).unwrap_or_else(|| &empty).iter() {
-        //                 let new_vars = vars.iter()
-        //                     .map(|opt_id| opt_id.map(|id|
-        //                         egraph.opt_colored_find(c_id, id)))
-        //                     .collect_vec();
-        //                 res.push((new_vars, g.clone()));
-        //             }
-        //         }
-        //         res.sort_by(|(vars1, _), (vars2, _)| vars1.cmp(vars2));
-        //         res.dedup_by(|(vars, g1), (vars2, g2)|
-        //             vars == vars2 && {
-        //                 g2.extend(std::mem::take(g1));
-        //                 true
-        //             });
-        //         res
-        //     });
-
-        //     let all_combinations = search_results.iter().map(|res| (*collect_results)(res)).collect_vec();
-        //     let initial_limits = self.common_vars_priorities.iter().map(|_| None).collect_vec();
-        //     let res = aggregate_substs(&all_combinations[..], initial_limits, &self.vars());
-        //     if res.is_empty() {
-        //         vec![]
-        //     } else {
-        //         res.into_iter().group_by(|x| x.0).into_iter()
-        //             .map(|(id, s)| SearchMatches {
-        //                 eclass: id,
-        //                 substs: s.into_iter().map(|(_, s)| s).unique().collect(),
-        //             }).collect_vec()
-        //     }
-        // }).collect()
-    }
-
-    fn colored_search_eclass(&self, _egraph: &EGraph<SymbolLang, ()>, _eclass: Id, _color: ColorId) -> Option<SearchMatches> {
-        unimplemented!()
-    }
-
-    fn vars(&self) -> Vec<Var> {
-        Vec::from_iter(self.patterns.iter().flat_map(|p| p.vars()).sorted().dedup())
-    }
-}
-
-impl FromStr for MultiDiffSearcher<Pattern<SymbolLang>> {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let patterns = s.split("||||")
-            .map(|p| Pattern::from_str(p).unwrap())
-            .collect::<Vec<Pattern<SymbolLang>>>();
-        if patterns.len() == 1 {
-            Err(String::from("Need at least two patterns"))
-        } else {
-            Ok(MultiDiffSearcher::new(patterns))
-        }
-    }
-}
-
-impl<A: Searcher<SymbolLang, ()> + Clone> Clone for MultiDiffSearcher<A> {
-    fn clone(&self) -> Self {
-        MultiDiffSearcher::new(self.patterns.clone())
-    }
-}
-
-impl<A: Searcher<SymbolLang, ()> + Debug> Debug for MultiDiffSearcher<A> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_list().entries(&self.patterns).finish()
-    }
-}
-
-impl<A: Searcher<SymbolLang, ()> + PrettyString> PrettyString for MultiDiffSearcher<A> {
-    fn pretty_string(&self) -> String {
-        itertools::Itertools::intersperse(self.patterns.iter().map(|p| p.pretty_string()), " ||| ".to_string()).collect()
     }
 }
 
@@ -842,7 +589,7 @@ mod tests {
 
     use crate::{EGraph, RecExpr, Searcher, SymbolLang, Pattern, Var, ImmutableCondition, ToCondRc, MultiPattern};
 
-    use crate::eggstentions::searchers::{MultiDiffSearcher, FilteringSearcher, ToDyn, Matcher, PatternMatcher};
+    use crate::eggstentions::searchers::{FilteringSearcher, ToDyn, Matcher, PatternMatcher};
     use crate::searchers::{MatcherContainsCondition, ToRc, VarMatcher};
     // use crate::system_case_splits;
 
@@ -864,7 +611,7 @@ mod tests {
 
     #[test]
     fn diff_two_trees_one_common() {
-        let searcher = MultiDiffSearcher::from_str("(a ?b ?c) |||| (a ?c ?d)").unwrap();
+        let searcher = MultiPattern::from_str("?v1 = (a ?b ?c), ?v2 = (a ?c ?d)").unwrap();
         let mut egraph: EGraph<SymbolLang, ()> = EGraph::default();
         let _x = egraph.add_expr(&RecExpr::from_str("x").unwrap());
         let _z = egraph.add_expr(&RecExpr::from_str("z").unwrap());
@@ -885,7 +632,7 @@ mod tests {
         let _ltwf = egraph.add_expr(&"(ltwf p0 (S p0))".parse().unwrap());
         egraph.union(full_pl, after_pl);
         egraph.rebuild();
-        let searcher = MultiDiffSearcher::from_str("(ltwf ?x ind_var) |||| (pl ?x Z)").unwrap();
+        let searcher = MultiPattern::from_str("?v1 = (ltwf ?x ind_var), ?v2 = (pl ?x Z)").unwrap();
         assert!(!searcher.search(&egraph).is_empty());
     }
 

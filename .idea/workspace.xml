@@ -12,8 +12,9 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Bug fix in colored_equivalence update. Added invariant">
-      <change beforePath="$PROJECT_DIR$/src/multipattern.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/multipattern.rs" afterDir="false" />
+    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Fixed multipattern to string and cleanup">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/eggstentions/searchers.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/eggstentions/searchers.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -90,6 +91,23 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
+    <configuration name="Test eggstentions::searchers::tests::eq_two_trees_one_common" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib eggstentions::searchers::tests::eq_two_trees_one_common -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="emulateTerminal" value="false" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
     <configuration name="Test egraph::tests::colored_drop_take" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package egg --lib egraph::tests::colored_drop_take -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -141,23 +159,6 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test multipattern::tests::test_black_only_match" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package egg --lib multipattern::tests::test_black_only_match -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
-      <option name="emulateTerminal" value="false" />
-      <option name="channel" value="DEFAULT" />
-      <option name="requiredFeatures" value="true" />
-      <option name="allFeatures" value="false" />
-      <option name="withSudo" value="false" />
-      <option name="buildTarget" value="REMOTE" />
-      <option name="backtrace" value="SHORT" />
-      <envs />
-      <option name="isRedirectInput" value="false" />
-      <option name="redirectInputPath" value="" />
-      <method v="2">
-        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
-      </method>
-    </configuration>
     <configuration name="test" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
       <option name="command" value="test" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -177,11 +178,11 @@
     </configuration>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test eggstentions::searchers::tests::eq_two_trees_one_common" />
         <item itemvalue="Cargo.Test dot::test::draw_max" />
         <item itemvalue="Cargo.Test egraph::tests::colored_drop_take" />
         <item itemvalue="Cargo.Test multipattern::tests" />
         <item itemvalue="Cargo.Test multipattern::tests::test_apply_colored_multi_match" />
-        <item itemvalue="Cargo.Test multipattern::tests::test_black_only_match" />
       </list>
     </recent_temporary>
   </component>
@@ -207,7 +208,8 @@
       <workItem from="1688365694735" duration="4075000" />
       <workItem from="1688382947288" duration="66882000" />
       <workItem from="1689101046726" duration="20000" />
-      <workItem from="1689104536158" duration="245000" />
+      <workItem from="1689104536158" duration="908000" />
+      <workItem from="1689168992285" duration="6113000" />
     </task>
     <task id="LOCAL-00001" summary="Colored congruence should take less memory due to better implementation">
       <created>1682546837181</created>
@@ -286,7 +288,21 @@
       <option name="project" value="LOCAL" />
       <updated>1689096456271</updated>
     </task>
-    <option name="localTasksCounter" value="12" />
+    <task id="LOCAL-00012" summary="Added uniquify for multipattern results">
+      <created>1689104810983</created>
+      <option name="number" value="00012" />
+      <option name="presentableId" value="LOCAL-00012" />
+      <option name="project" value="LOCAL" />
+      <updated>1689104810983</updated>
+    </task>
+    <task id="LOCAL-00013" summary="Fixed multipattern to string and cleanup">
+      <created>1689241453946</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1689241453946</updated>
+    </task>
+    <option name="localTasksCounter" value="14" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -315,7 +331,9 @@
     <MESSAGE value="More multipattern tests. Fixed bug in Scan setting machine color" />
     <MESSAGE value="colored_add_expr should actually return black id" />
     <MESSAGE value="Bug fix in colored_equivalence update. Added invariant" />
-    <option name="LAST_COMMIT_MESSAGE" value="Bug fix in colored_equivalence update. Added invariant" />
+    <MESSAGE value="Added uniquify for multipattern results" />
+    <MESSAGE value="Fixed multipattern to string and cleanup" />
+    <option name="LAST_COMMIT_MESSAGE" value="Fixed multipattern to string and cleanup" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -327,7 +345,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
           <url>file://$PROJECT_DIR$/src/eggstentions/searchers.rs</url>
-          <line>980</line>
+          <line>694</line>
           <option name="timeStamp" value="31" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
