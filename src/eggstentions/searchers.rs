@@ -720,15 +720,6 @@ impl<'a, L: Language + 'static, N: Analysis<L> + 'static> FilteringSearcher<L, N
         DisjointMatchCondition::new(dis_matcher).into_rc()
     }
 
-    /// Create a new Pattern matcher condition that will check a pattern exists in the graph.
-    pub fn create_exists_pattern_filterer(searcher: Pattern<L>) -> RcImmutableCondition<L, N> {
-        // TODO: partially fill pattern and if not all vars have values then search by eclass
-        //       In practice, create special searcher that will take the constant part from
-        //       subst and check existence for each subpattern over eclasses found in subst
-        let matcher = PatternMatcher::new(searcher);
-        MatcherContainsCondition::new(matcher.into_rc()).into_rc()
-    }
-
     /// Create a new FilteringSearcher.
     pub fn new(searcher: Rc<dyn Searcher<L, N>>,
                predicate: RcImmutableCondition<L, N>, ) -> Self {
@@ -743,26 +734,6 @@ impl<'a, L: Language + 'static, N: Analysis<L> + 'static> FilteringSearcher<L, N
     pub fn from<S: Searcher<L, N> + 'static>(s: S, predicate: RcImmutableCondition<L, N>) -> Self {
         let dyn_searcher: Rc<dyn Searcher<L, N>> = Rc::new(s);
         Self::new(dyn_searcher, predicate)
-    }
-}
-
-impl FilteringSearcher<SymbolLang, ()> {
-    /// Create a new FilteringSearcher that will filter out all EClasses that are not equal to `true`.
-    pub fn searcher_is_true<S: Searcher<SymbolLang, ()> + 'static>(s: S) -> Self {
-        Self::searcher_is_pattern(s, "true".parse().unwrap())
-    }
-
-    /// Create a new FilteringSearcher that will filter out all EClasses that are not equal to `false`.
-    pub fn searcher_is_false<S: Searcher<SymbolLang, ()> + 'static>(s: S) -> Self {
-        Self::searcher_is_pattern(s, "false".parse().unwrap())
-    }
-
-    /// Create a new FilteringSearcher that will filter out all EClasses also match with `p`.
-    pub fn searcher_is_pattern<S: Searcher<SymbolLang, ()> + 'static>(s: S, p: Pattern<SymbolLang>) -> Self {
-        FilteringSearcher::new(
-            Rc::new(s),
-            MatcherContainsCondition::new(PatternMatcher::new(p).into_rc()).into_rc()
-        )
     }
 }
 
@@ -869,7 +840,7 @@ impl<L: Language, N: Analysis<L>> Searcher<L, N> for PointerSearcher<L, N> {
 mod tests {
     use std::str::FromStr;
 
-    use crate::{EGraph, RecExpr, Searcher, SymbolLang, Pattern, Var, ImmutableCondition, ToCondRc};
+    use crate::{EGraph, RecExpr, Searcher, SymbolLang, Pattern, Var, ImmutableCondition, ToCondRc, MultiPattern};
 
     use crate::eggstentions::searchers::{MultiDiffSearcher, FilteringSearcher, ToDyn, Matcher, PatternMatcher};
     use crate::searchers::{MatcherContainsCondition, ToRc, VarMatcher};
@@ -877,11 +848,7 @@ mod tests {
 
     #[test]
     fn eq_two_trees_one_common() {
-        let matcher = FilteringSearcher::create_exists_pattern_filterer("(a ?c ?d)".parse().unwrap());
-        let searcher = {
-            let pattern: Pattern<SymbolLang> = "(a ?b ?c)".parse().unwrap();
-            FilteringSearcher::new(pattern.into_rc_dyn(), matcher)
-        };
+        let searcher: MultiPattern<SymbolLang> =  "?x = (a ?b ?c), ?x = (a ?c ?d)".parse().unwrap();
         let mut egraph: EGraph<SymbolLang, ()> = EGraph::default();
         let x = egraph.add_expr(&RecExpr::from_str("x").unwrap());
         let z = egraph.add_expr(&RecExpr::from_str("z").unwrap());

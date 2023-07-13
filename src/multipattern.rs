@@ -1,10 +1,13 @@
 use std::fmt::{Display, Formatter};
+use std::rc::Rc;
 use std::str::FromStr;
 use indexmap::IndexSet;
 use itertools::Itertools;
 use thiserror::Error;
 
 use crate::*;
+use crate::pretty_string::PrettyString;
+use crate::searchers::ToDyn;
 
 /// A set of open expressions bound to variables.
 ///
@@ -105,7 +108,19 @@ impl<L: Language + FromOp> FromStr for MultiPattern<L> {
 
 impl<L: Language> Display for MultiPattern<L> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        self.to_string().fmt(f)
+        write!(f, "[{}]", self.asts.iter().map(|(v, ast)| format!("{} = {}", v, ast)).join(", "))
+    }
+}
+
+impl<L: Language> PrettyString for MultiPattern<L> {
+    fn pretty_string(&self) -> String {
+        format!("{}", self)
+    }
+}
+
+impl<L: Language + 'static, N: Analysis<L>> ToDyn<L, N> for MultiPattern<L> {
+    fn into_rc_dyn(self) -> Rc<dyn Searcher<L, N>> {
+        Rc::new(self)
     }
 }
 
