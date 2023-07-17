@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use crate::*;
 use std::result;
 use indexmap::{IndexMap, IndexSet};
@@ -44,8 +45,8 @@ enum ENodeOrReg<L> {
 fn for_each_matching_node<L, D>(
     eclass: &EClass<L, D>,
     node: &L,
-    mut f: impl FnMut(&L) -> Result,
-) -> Result
+    mut f: impl FnMut(&L) -> (),
+)
     where
         L: Language,
 {
@@ -55,7 +56,7 @@ fn for_each_matching_node<L, D>(
             .nodes
             .iter()
             .filter(|n| node.matches(n))
-            .try_for_each(f)
+            .for_each(f)
     } else {
         debug_assert!(node.children().iter().all(|id| *id == Id::from(0)));
         debug_assert!(eclass.nodes.windows(2).all(|w| w[0] < w[1]));
@@ -77,7 +78,25 @@ fn for_each_matching_node<L, D>(
                 .collect::<IndexSet<_>>(),
             eclass.nodes
         );
-        matching.try_for_each(&mut f)
+        matching.for_each(&mut f);
+    }
+}
+
+type RunAction = Box<dyn FnMut(&mut Machine) -> ()>;
+
+struct MachineContext {
+    instruction_index: usize,
+    color: Option<ColorId>,
+    prep: RunAction,
+}
+
+impl MachineContext {
+    fn new(instruction_index: usize, color: Option<ColorId>, prep: RunAction) -> Self {
+        Self {
+            instruction_index,
+            color,
+            prep,
+        }
     }
 }
 
@@ -125,141 +144,157 @@ impl Machine {
             L: Language,
             N: Analysis<L>,
     {
-        let mut instructions = instructions.iter();
-        while let Some(instruction) = instructions.next() {
-            match instruction {
-                Instruction::Bind { eclass, out, node } => {
-                    let class_color = egraph[self.reg(*eclass)].color();
-                    dassert!(class_color.is_none() || class_color == self.color);
-                    let remaining_instructions = instructions.as_slice();
-                    return for_each_matching_node(&egraph[self.reg(*eclass)], node, |matched| {
-                        self.reg.truncate(out.0 as usize);
-                        matched.for_each(|id| self.reg.push(id));
-                        self.inner_run(egraph, remaining_instructions, subst, colored_jumps, yield_fn)
-                    });
-                }
-                Instruction::Scan { out, top_pat } => {
-                    let remaining_instructions = instructions.as_slice();
-                    let mut run = |machine: &mut Machine, id| {
-                        let cur_color = machine.color.clone();
-                        let cls_color = egraph[id].color();
-                        if (cur_color.is_some() && cls_color.is_some() && cur_color != cls_color) ||
-                            (cls_color.is_some() && !colored_jumps) {
-                            return Ok(());
-                        }
-                        if cls_color.is_some() {
-                            machine.color = cls_color;
-                        }
-                        machine.reg.truncate(out.0 as usize);
-                        machine.reg.push(id);
-                        machine.inner_run(egraph, remaining_instructions, subst, colored_jumps, yield_fn)?;
-                        machine.color = cur_color;
-                        Ok(())
-                    };
-
-                    match top_pat {
-                        Either::Left(node) => {
-                            if let Some(ids) = egraph.classes_by_op_id().get(&node.op_id()) {
-                                for class in ids {
-                                    run(self, *class)?;
-                                }
+        let mut stack: Vec<MachineContext> = vec![MachineContext::new(0, self.color, Box::new(|_| {}))];
+        while !stack.is_empty() {
+            let mut current_state = stack.pop().unwrap();
+            (current_state.prep)(self);
+            self.color = current_state.color;
+            let mut index = current_state.instruction_index;
+            while index < instructions.len() {
+                let instruction = &instructions[index];
+                match instruction {
+                    Instruction::Bind { eclass, out, node } => {
+                        let class_color = egraph[self.reg(*eclass)].color();
+                        dassert!(class_color.is_none() || class_color == self.color);
+                        for_each_matching_node(&egraph[self.reg(*eclass)], node, |matched| {
+                            let matched = matched.clone();
+                            let out = *out;
+                            let action = move |machine: &mut Machine| {
+                                machine.reg.truncate(out.0 as usize);
+                                matched.for_each(|id| machine.reg.push(id));
+                            };
+                            stack.push(MachineContext::new(index + 1, self.color, Box::new(action)));
+                        });
+                        break;
+                    }
+                    Instruction::Scan { out, top_pat } => {
+                        // Doesn't work with Or because we don't sort root color to be first
+                        let mut run = |machine: &mut Machine, id| {
+                            let cur_color = machine.color;
+                            let cls_color = egraph[id].color();
+                            if (cur_color.is_some() && cls_color.is_some() && cur_color != cls_color) ||
+                                (cls_color.is_some() && !colored_jumps) {
+                                return;
                             }
-                        }
-                        Either::Right(opt_reg_var) => {
-                            if let Some(reg_var) = opt_reg_var {
-                                run(self, self.reg(*reg_var))?;
+                            let new_color = if cls_color.is_none() {
+                                machine.color
                             } else {
-                                for class in egraph.classes() {
-                                    run(self, class.id)?;
-                                }
-                            }
-                        }
-                    }
-                    return Ok(());
-                }
-                Instruction::Compare { i, j } => {
-                    let fixed_i = egraph.opt_colored_find(self.color.clone(), self.reg(*i));
-                    let fixed_j = egraph.opt_colored_find(self.color.clone(), self.reg(*j));
-                    if fixed_i != fixed_j {
-                        if colored_jumps && self.color.is_none() {
-                            if let Some(eqs) = egraph.get_colored_equalities(fixed_i) {
-                                for (cid, _id) in eqs.into_iter().filter(|(_cid, id)| *id == fixed_j) {
-                                    self.color = Some(cid);
-                                    self.inner_run(egraph, instructions.as_slice(), subst, colored_jumps, yield_fn)?;
-                                    self.color = None;
-                                }
-                            }
-                        }
-                        return Ok(());
-                    }
-                }
-                Instruction::Lookup { term, i } => {
-                    assert!(self.color.is_none(), "Lookup instruction is an optimization for non colored search");
-                    assert!(!colored_jumps, "Lookup instruction is an optimization for non colored search");
-                    self.lookup.clear();
-                    for node in term {
-                        match node {
-                            ENodeOrReg::ENode(node) => {
-                                let look = |i| self.lookup[usize::from(i)];
-                                match egraph.lookup(node.clone().map_children(look)) {
-                                    Some(id) => self.lookup.push(id),
-                                    None => return Ok(()),
-                                }
-                            }
-                            ENodeOrReg::Reg(r) => {
-                                self.lookup.push(egraph.find(self.reg(*r)));
-                            }
-                        }
-                    }
+                                cls_color
+                            };
+                            let out = *out;
+                            let action = Box::new(move |machine: &mut Machine| {
+                                machine.reg.truncate(out.0 as usize);
+                                machine.reg.push(id);
+                            });
+                            stack.push(MachineContext::new(index + 1, new_color, action));
+                        };
 
-                    let id = egraph.find(self.reg(*i));
-                    if self.lookup.last().copied() != Some(id) {
-                        return Ok(());
+                        match top_pat {
+                            Either::Left(node) => {
+                                if let Some(ids) = egraph.classes_by_op_id().get(&node.op_id()) {
+                                    for class in ids {
+                                        run(self, *class);
+                                    }
+                                }
+                            }
+                            Either::Right(opt_reg_var) => {
+                                if let Some(reg_var) = opt_reg_var {
+                                    run(self, self.reg(*reg_var));
+                                } else {
+                                    for class in egraph.classes() {
+                                        run(self, class.id);
+                                    }
+                                }
+                            }
+                        }
+                        break;
                     }
-                }
-                Instruction::ColorJump { orig } => {
-                    let remaining_instructions = instructions.as_slice();
-                    if !colored_jumps {
-                        return self.run(egraph, remaining_instructions, subst, yield_fn);
+                    Instruction::Compare { i, j } => {
+                        let fixed_i = egraph.opt_colored_find(self.color.clone(), self.reg(*i));
+                        let fixed_j = egraph.opt_colored_find(self.color.clone(), self.reg(*j));
+                        if fixed_i != fixed_j {
+                            if colored_jumps && self.color.is_none() {
+                                if let Some(eqs) = egraph.get_colored_equalities(fixed_i) {
+                                    for (cid, _id) in eqs.into_iter().filter(|(_cid, id)| *id == fixed_j) {
+                                        stack.push(MachineContext::new(index + 1, Some(cid), Box::new(|_| {})));
+                                    }
+                                }
+                            }
+                            break;
+                        }
                     }
-                    // Doing this now to later close yield_fn in a closure.
-                    self.colored_run(egraph, remaining_instructions, subst, yield_fn)?;
+                    Instruction::Lookup { term, i } => {
+                        assert!(self.color.is_none(), "Lookup instruction is an optimization for non colored search");
+                        assert!(!colored_jumps, "Lookup instruction is an optimization for non colored search");
+                        self.lookup.clear();
+                        for node in term {
+                            match node {
+                                ENodeOrReg::ENode(node) => {
+                                    let look = |i| self.lookup[usize::from(i)];
+                                    match egraph.lookup(node.clone().map_children(look)) {
+                                        Some(id) => self.lookup.push(id),
+                                        None => return Ok(()),
+                                    }
+                                }
+                                ENodeOrReg::Reg(r) => {
+                                    self.lookup.push(egraph.find(self.reg(*r)));
+                                }
+                            }
+                        }
 
-                    let mut run_jump = |machine: &mut Machine, jump_id| {
-                        machine.reg[orig.0 as usize] = jump_id;
-                        machine.colored_run(egraph, remaining_instructions, subst, yield_fn)
-                    };
-                    let id = egraph.find(self.reg(*orig));
-                    return if let Some(color) = self.color.as_ref() {
-                        // Will also run id as it is part of black_ids
-                        if let Some(eqs) = egraph.get_color(*color).unwrap().black_ids(egraph, id) {
-                            for jump_id in eqs {
-                                if *jump_id == id {
-                                    continue;
-                                }
-                                run_jump(self, *jump_id)?;
-                            }
+                        let id = egraph.find(self.reg(*i));
+                        if self.lookup.last().copied() != Some(id) {
+                            break;
                         }
-                        Ok(())
-                    } else {
-                        if let Some(eqs) = egraph.get_colored_equalities(id) {
-                            for (c_id, jumped_id) in eqs {
-                                let jumped_id = egraph.find(jumped_id);
-                                if jumped_id == id {
-                                    continue;
-                                }
-                                self.color = Some(c_id);
-                                run_jump(self, jumped_id)?;
-                                self.color = None;
-                            }
-                        }
-                        Ok(())
                     }
-                }
+                    Instruction::ColorJump { orig } => {
+                        if !colored_jumps {
+                            index += 1;
+                            continue;
+                        }
+
+                        let id = egraph.find(self.reg(*orig));
+                        if let Some(color) = self.color.as_ref() {
+                            // Will also run id as it is part of black_ids
+                            if let Some(eqs) = egraph.get_color(*color).unwrap().black_ids(egraph, id) {
+                                let orig = *orig;
+                                for jump_id in eqs {
+                                    if *jump_id == id {
+                                        continue;
+                                    }
+                                    let jump_id = *jump_id;
+                                    let action = Box::new(move |machine: &mut Machine| {
+                                        machine.reg[orig.0 as usize] = jump_id;
+                                    });
+                                    stack.push(MachineContext::new(index + 1, self.color, action));
+                                }
+                            }
+                        } else {
+                            if let Some(eqs) = egraph.get_colored_equalities(id) {
+                                for (c_id, jumped_id) in eqs {
+                                    let jumped_id = egraph.find(jumped_id);
+                                    if jumped_id == id {
+                                        continue;
+                                    }
+                                    let orig = *orig;
+                                    let action = Box::new(move |machine: &mut Machine| {
+                                        machine.reg[orig.0 as usize] = jumped_id;
+                                    });
+                                    stack.push(MachineContext::new(index + 1, Some(c_id), action));
+                                }
+                            }
+                        }
+                        stack.push(MachineContext::new(index + 1, self.color, Box::new(|_| {})));
+                        break;
+                    }
+                };
+                index += 1;
+            }
+            if index == instructions.len() {
+                yield_fn(self, subst)?
             }
         }
-
-        yield_fn(self, subst)
+        Ok(())
     }
 }
 
@@ -458,8 +493,17 @@ impl<L: Language> Program<L> {
         program
     }
 
-    pub(crate) fn compile_from_multi_pat(patterns: &[(Var, PatternAst<L>)]) -> Self {
+    pub(crate) fn compile_from_multi_pat(patterns: &[(Var, PatternAst<L>)], or_patterns: &Vec<(Var, Vec<PatternAst<L>>)>) -> Self {
         let mut compiler = Compiler::new();
+        let mut all_normal_vars = BTreeSet::new();
+        for (v, p) in patterns {
+            all_normal_vars.insert(*v);
+            p.as_ref().iter().for_each(|node_or_var| {
+                if let ENodeOrVar::Var(v) = node_or_var {
+                    all_normal_vars.insert(*v);
+                }
+            })
+        }
         for (var, pattern) in patterns {
             compiler.compile(Some(*var), pattern);
         }
@@ -478,9 +522,9 @@ impl<L: Language> Program<L> {
     }
 
     pub fn colored_run<A>(&self,
-                       egraph: &EGraph<L, A>,
-                       eclass: Id,
-                       color: Option<ColorId>,
+                          egraph: &EGraph<L, A>,
+                          eclass: Id,
+                          color: Option<ColorId>,
     ) -> Vec<Subst>
         where
             A: Analysis<L>,

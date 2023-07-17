@@ -30,6 +30,7 @@ use crate::searchers::ToDyn;
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct MultiPattern<L> {
     asts: Vec<(Var, PatternAst<L>)>,
+    or_asts: Vec<(Var, Vec<PatternAst<L>>)>,
     program: machine::Program<L>,
 }
 
@@ -58,8 +59,13 @@ impl<L: Language> MultiPattern<L> {
     /// assert_eq!(multipattern.n_matches(&egraph), 2);
     /// ```
     pub fn new(asts: Vec<(Var, PatternAst<L>)>) -> Self {
-        let program = machine::Program::compile_from_multi_pat(&asts);
-        Self { asts, program }
+        let program = machine::Program::compile_from_multi_pat(&asts, &vec![]);
+        Self { asts, or_asts: vec![], program }
+    }
+
+    pub fn new_with_or(asts: Vec<(Var, PatternAst<L>)>, or_asts: Vec<(Var, Vec<PatternAst<L>>)>) -> Self {
+        let program = machine::Program::compile_from_multi_pat(&asts, &or_asts);
+        Self { asts, or_asts, program }
     }
 }
 

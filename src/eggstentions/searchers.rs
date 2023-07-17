@@ -1,4 +1,3 @@
-// use crate::{EGraph, Id, Pattern, Searcher, SearchMatches, Subst, SymbolLang, Var, Language, Analysis, Condition, ImmutableCondition, ENodeOrVar, ImmutableFunctionCondition, RcImmutableCondition, ToCondRc, ColorId};
 use crate::{EGraph, Id, Pattern, Searcher, SearchMatches, Subst, Var, Language, Analysis, Condition, ImmutableCondition, RcImmutableCondition, ToCondRc, ColorId};
 use itertools::{Itertools, Either};
 
@@ -587,7 +586,7 @@ impl<L: Language, N: Analysis<L>> Searcher<L, N> for PointerSearcher<L, N> {
 mod tests {
     use std::str::FromStr;
 
-    use crate::{EGraph, RecExpr, Searcher, SymbolLang, Pattern, Var, ImmutableCondition, ToCondRc, MultiPattern};
+    use crate::{EGraph, RecExpr, Searcher, SymbolLang, Pattern, Var, ImmutableCondition, ToCondRc, MultiPattern, init_logger};
 
     use crate::eggstentions::searchers::{FilteringSearcher, ToDyn, Matcher, PatternMatcher};
     use crate::searchers::{MatcherContainsCondition, ToRc, VarMatcher};
@@ -611,6 +610,8 @@ mod tests {
 
     #[test]
     fn diff_two_trees_one_common() {
+        init_logger();
+
         let searcher = MultiPattern::from_str("?v1 = (a ?b ?c), ?v2 = (a ?c ?d)").unwrap();
         let mut egraph: EGraph<SymbolLang, ()> = EGraph::default();
         let _x = egraph.add_expr(&RecExpr::from_str("x").unwrap());

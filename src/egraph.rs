@@ -3,6 +3,8 @@ use std::{
     fmt::{self, Debug},
 };
 use std::collections::BTreeSet;
+use std::fs::File;
+use std::io::Write;
 
 use indexmap::{IndexMap, IndexSet};
 use invariants::{dassert, iassert, tassert, wassert, AssertConfig, AssertLevel};
@@ -735,7 +737,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     }
                 }
             }
-            tassert!({self.verify_colored_equivalences(); true});
+            tassert!({self.verify_colored_equivalences(to, from); true});
 
             #[cfg(feature = "colored_no_cmemo")]
             iassert!(self[to].color().is_none());
@@ -1691,7 +1693,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             // Other ids in the equality class will already have the color
             self.colored_equivalences.entry(id1).or_default().insert(color);
             self.colored_equivalences.entry(id2).or_default().insert(color);
-            tassert!({self.verify_colored_equivalences(); true});
+            tassert!({self.verify_colored_equivalences(to, from); true});
 
             let from_cp = self[from]
                 .colord_changed_parents
@@ -1883,11 +1885,11 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         self.colored_equivalences.iter().map(|(_, v)| v.len()).sum()
     }
 
-    pub(crate) fn verify_colored_equivalences(&self) {
+    pub(crate) fn verify_colored_equivalences(&self, to: Id, from: Id) {
         for (id, colors) in &self.colored_equivalences {
             for color in colors {
                 if self.get_color(*color).unwrap().black_ids(self, *id).is_none() {
-                    println!("{} {:?}", id, self[*id]);
+                    println!("eclass: {}, color: {}, merged: {} <- {}", id, color, to, from);
                 }
                 assert!(self.get_color(*color).unwrap().black_ids(self, *id).is_some());
             }

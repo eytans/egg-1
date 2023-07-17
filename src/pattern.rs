@@ -269,6 +269,19 @@ pub struct SearchMatches {
 }
 
 impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
+    fn search_eclass(&self, egraph: &EGraph<L, A>, eclass: Id) -> Option<SearchMatches> {
+        let substs = if cfg!(feature = "colored") {
+            self.program.colored_run(egraph, eclass, None)
+        }  else {
+            self.program.run(egraph, eclass)
+        };
+        if substs.is_empty() {
+            None
+        } else {
+            Some(SearchMatches { eclass, substs: substs.into_iter().unique().collect_vec() })
+        }
+    }
+
     fn search(&self, egraph: &EGraph<L, A>) -> Vec<SearchMatches> {
         let res = match self.ast.as_ref().last().unwrap() {
             ENodeOrVar::ENode(e, _) => {
@@ -287,19 +300,6 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
                 .collect(),
         };
         res
-    }
-
-    fn search_eclass(&self, egraph: &EGraph<L, A>, eclass: Id) -> Option<SearchMatches> {
-        let substs = if cfg!(feature = "colored") {
-            self.program.colored_run(egraph, eclass, None)
-        }  else {
-            self.program.run(egraph, eclass)
-        };
-        if substs.is_empty() {
-            None
-        } else {
-            Some(SearchMatches { eclass, substs: substs.into_iter().unique().collect_vec() })
-        }
     }
 
     /// Searches all equivalent EClasses under the colored assumption. Returns all results under

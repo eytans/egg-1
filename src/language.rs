@@ -33,7 +33,7 @@ pub type OpId = u32;
 /// [`FromStr`]: https://doc.rust-lang.org/std/str/trait.FromStr.html
 /// [`Display`]: https://doc.rust-lang.org/std/fmt/trait.Display.html
 #[allow(clippy::len_without_is_empty)]
-pub trait Language: Debug + Clone + Eq + Ord + Hash {
+pub trait Language: Debug + Clone + Eq + Ord + Hash + 'static {
     /// Return a number representing the op.
     fn op_id(&self) -> OpId;
 
