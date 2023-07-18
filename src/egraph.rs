@@ -727,6 +727,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             if let Some(eqs) = self.colored_equivalences.remove(&from) {
                 for c_id in eqs {
                     let eq_classes = &self.get_color(c_id).unwrap().equality_classes;
+                    // Two options, now no more colored equalities, or `to` got new colored equalities from `from`.
                     if !eq_classes.contains_key(&self.colored_find(c_id, to)) {
                         if self.colored_equivalences.contains_key(&to) {
                             self.colored_equivalences[&to].remove(&c_id);
@@ -734,6 +735,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                                 self.colored_equivalences.remove(&to);
                             }
                         }
+                    } else {
+                        self.colored_equivalences.entry(to).or_default().insert(c_id);
                     }
                 }
             }
@@ -1747,10 +1750,16 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     }
 
     pub fn get_color(&self, color: ColorId) -> Option<&Color<L, N>> {
+        if color.0 >= self.colors.len() {
+            return None;
+        }
         self.colors[usize::from(color)].as_ref()
     }
 
     pub fn get_color_mut(&mut self, color: ColorId) -> Option<&mut Color<L, N>> {
+        if color.0 >= self.colors.len() {
+            return None;
+        }
         self.colors[usize::from(color)].as_mut()
     }
 
@@ -2918,5 +2927,24 @@ mod tests {
         egraph.rebuild();
 
         assert!(egraph.detect_graph_vacuity());
+    }
+
+    #[test]
+    fn test_update_colored_equalities() {
+        init_logger();
+        let invariants_level = invariants::max_level();
+        invariants::set_max_level(invariants::AssertLevel::Trace);
+        let mut egraph: EGraph<SymbolLang, ()> = EGraph::new(());
+        let x = egraph.add_expr(&"x".parse().unwrap());
+        let y = egraph.add_expr(&"y".parse().unwrap());
+        let z = egraph.add_expr(&"z".parse().unwrap());
+        let color = egraph.create_color();
+        egraph.rebuild();
+
+        egraph.colored_union(color, x, z);
+        egraph.union(y, z);
+        egraph.rebuild();
+        egraph.verify_colored_equivalences(x, y);
+        invariants::set_max_level(invariants_level);
     }
 }
