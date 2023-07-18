@@ -12,16 +12,10 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Removed DiffSearcher">
+    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Fixed bug in colored equality tracking. Insert was missing on black union">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/eggstentions/searchers.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/eggstentions/searchers.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/egraph.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/egraph.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/language.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/language.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/machine.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/machine.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/multipattern.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/multipattern.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/pattern.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/pattern.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -53,7 +47,7 @@
     <option name="stateVersion" value="1" />
   </component>
   <component name="ProblemsViewState">
-    <option name="selectedTabId" value="ProjectErrors" />
+    <option name="selectedTabId" value="CurrentFile" />
   </component>
   <component name="ProjectId" id="2OyxIkBHxT5vcI8A2ho0aPNuZ9V" />
   <component name="ProjectViewState">
@@ -81,23 +75,6 @@
   }
 }</component>
   <component name="RunManager" selected="Cargo.test">
-    <configuration name="Test dot::test::draw_max" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package egg --lib dot::test::draw_max -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
-      <option name="emulateTerminal" value="false" />
-      <option name="channel" value="DEFAULT" />
-      <option name="requiredFeatures" value="true" />
-      <option name="allFeatures" value="false" />
-      <option name="withSudo" value="false" />
-      <option name="buildTarget" value="REMOTE" />
-      <option name="backtrace" value="SHORT" />
-      <envs />
-      <option name="isRedirectInput" value="false" />
-      <option name="redirectInputPath" value="" />
-      <method v="2">
-        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
-      </method>
-    </configuration>
     <configuration name="Test eggstentions::searchers::tests::diff_two_trees_one_common" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package egg --lib eggstentions::searchers::tests::diff_two_trees_one_common -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -132,8 +109,25 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test egraph::tests::colored_drop_take" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package egg --lib egraph::tests::colored_drop_take -- --exact" />
+    <configuration name="Test egraph::tests::color_true_eq_false" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib egraph::tests::color_true_eq_false -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="emulateTerminal" value="false" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test egraph::tests::test_update_colored_equalities" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib egraph::tests::test_update_colored_equalities -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <option name="emulateTerminal" value="false" />
       <option name="channel" value="DEFAULT" />
@@ -185,11 +179,11 @@
     </configuration>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test egraph::tests::color_true_eq_false" />
+        <item itemvalue="Cargo.Test egraph::tests::test_update_colored_equalities" />
         <item itemvalue="Cargo.Test eggstentions::searchers::tests::diff_two_trees_one_common" />
         <item itemvalue="Cargo.Test searchers::tests" />
         <item itemvalue="Cargo.Test eggstentions::searchers::tests::eq_two_trees_one_common" />
-        <item itemvalue="Cargo.Test dot::test::draw_max" />
-        <item itemvalue="Cargo.Test egraph::tests::colored_drop_take" />
       </list>
     </recent_temporary>
   </component>
@@ -221,7 +215,7 @@
       <workItem from="1689405510493" duration="7402000" />
       <workItem from="1689492960477" duration="4053000" />
       <workItem from="1689500629427" duration="13000" />
-      <workItem from="1689591866667" duration="2147000" />
+      <workItem from="1689591866667" duration="11123000" />
     </task>
     <task id="LOCAL-00001" summary="Colored congruence should take less memory due to better implementation">
       <created>1682546837181</created>
@@ -321,7 +315,21 @@
       <option name="project" value="LOCAL" />
       <updated>1689243709898</updated>
     </task>
-    <option name="localTasksCounter" value="15" />
+    <task id="LOCAL-00015" summary="Machine is now a user stack instead of recursive machine!">
+      <created>1689599741407</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1689599741407</updated>
+    </task>
+    <task id="LOCAL-00016" summary="Fixed bug in colored equality tracking. Insert was missing on black union">
+      <created>1689682958363</created>
+      <option name="number" value="00016" />
+      <option name="presentableId" value="LOCAL-00016" />
+      <option name="project" value="LOCAL" />
+      <updated>1689682958363</updated>
+    </task>
+    <option name="localTasksCounter" value="17" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -353,7 +361,9 @@
     <MESSAGE value="Added uniquify for multipattern results" />
     <MESSAGE value="Fixed multipattern to string and cleanup" />
     <MESSAGE value="Removed DiffSearcher" />
-    <option name="LAST_COMMIT_MESSAGE" value="Removed DiffSearcher" />
+    <MESSAGE value="Machine is now a user stack instead of recursive machine!" />
+    <MESSAGE value="Fixed bug in colored equality tracking. Insert was missing on black union" />
+    <option name="LAST_COMMIT_MESSAGE" value="Fixed bug in colored equality tracking. Insert was missing on black union" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -367,21 +377,6 @@
           <url>file://$PROJECT_DIR$/src/egraph.rs</url>
           <line>1897</line>
           <option name="timeStamp" value="69" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
-          <url>file://$PROJECT_DIR$/src/machine.rs</url>
-          <line>293</line>
-          <option name="timeStamp" value="75" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
-          <url>file://$PROJECT_DIR$/src/machine.rs</url>
-          <line>212</line>
-          <option name="timeStamp" value="76" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
-          <url>file://$PROJECT_DIR$/src/machine.rs</url>
-          <line>222</line>
-          <option name="timeStamp" value="77" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

@@ -3,18 +3,21 @@ use crate::*;
 use std::result;
 use indexmap::{IndexMap, IndexSet};
 use invariants::dassert;
-use itertools::Either;
+use itertools::{Either, Itertools};
 use itertools::Either::{Right, Left};
 
-type Result = result::Result<(), ()>;
-
-#[derive(Default)]
-struct Machine {
+/// An iterator for match results
+struct Machine<'a, L: Language, N: Analysis<L>> {
     reg: Vec<Id>,
     // a buffer to re-use for lookups
     lookup: Vec<Id>,
     #[cfg(feature = "colored")]
     color: Option<ColorId>,
+    egraph: &'a EGraph<L, N>,
+    instructions: &'a [Instruction<L>],
+    subst: Subst,
+    colored_jumps: bool,
+    stack: Vec<MachineContext<L, N>>,
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -33,6 +36,7 @@ enum Instruction<L> {
     Lookup { term: Vec<ENodeOrReg<L>>, i: Reg },
     Scan { out: Reg, top_pat: Either<L, Option<Reg>> },
     ColorJump { orig: Reg },
+    Not { sub_machine: Program<L> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,7 +65,7 @@ fn for_each_matching_node<L, D>(
         debug_assert!(node.children().iter().all(|id| *id == Id::from(0)));
         debug_assert!(eclass.nodes.windows(2).all(|w| w[0] < w[1]));
         let start = eclass.nodes.binary_search(node).unwrap_or_else(|i| i);
-        let mut matching = eclass.nodes[..start].iter().rev()
+        let matching = eclass.nodes[..start].iter().rev()
             .take_while(|x| node.matches(x))
             .chain(eclass.nodes[start..].iter().take_while(|x| node.matches(x)));
         debug_assert_eq!(
@@ -82,16 +86,16 @@ fn for_each_matching_node<L, D>(
     }
 }
 
-type RunAction = Box<dyn FnMut(&mut Machine) -> ()>;
+type RunAction<L, A> = Box<dyn FnMut(&mut Machine<L, A>) -> ()>;
 
-struct MachineContext {
+struct MachineContext<L, A> where L: Language, A: Analysis<L> {
     instruction_index: usize,
     color: Option<ColorId>,
-    prep: RunAction,
+    prep: RunAction<L, A>,
 }
 
-impl MachineContext {
-    fn new(instruction_index: usize, color: Option<ColorId>, prep: RunAction) -> Self {
+impl<L: Language, A: Analysis<L>> MachineContext<L, A> {
+    fn new(instruction_index: usize, color: Option<ColorId>, prep: RunAction<L, A>) -> Self {
         Self {
             instruction_index,
             color,
@@ -100,53 +104,42 @@ impl MachineContext {
     }
 }
 
-impl Machine {
+impl<'a, L: Language, A: Analysis<L>> Machine<'a, L, A> {
+    pub(crate) fn new(
+        color: Option<ColorId>,
+        egraph: &'a EGraph<L, A>,
+        instructions: &'a [Instruction<L>],
+        subst: Subst,
+        colored_jumps: bool,
+    ) -> Self {
+        let stack: Vec<MachineContext<L, A>> = vec![MachineContext::new(0, color, Box::new(|_| {}))];
+        Machine {
+            reg: vec![],
+            lookup: vec![],
+            color,
+            egraph,
+            instructions,
+            subst,
+            colored_jumps,
+            stack,
+        }
+    }
+
     #[inline(always)]
     fn reg(&self, reg: Reg) -> Id {
         self.reg[reg.0 as usize]
     }
+}
 
-    fn run<L, N>(&mut self,
-                 egraph: &EGraph<L, N>,
-                 instructions: &[Instruction<L>],
-                 subst: &Subst,
-                 yield_fn: &mut impl FnMut(&Self, &Subst) -> Result,
-    ) -> Result
-        where
-            L: Language,
-            N: Analysis<L>,
-    {
-        self.inner_run(egraph, instructions, subst, false, yield_fn)
-    }
+impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
+    type Item = Subst;
 
-    fn colored_run<L, N>(&mut self,
-                 egraph: &EGraph<L, N>,
-                 instructions: &[Instruction<L>],
-                 subst: &Subst,
-                 yield_fn: &mut impl FnMut(&Self, &Subst) -> Result,
-    ) -> Result
-        where
-            L: Language,
-            N: Analysis<L>,
-    {
-        self.inner_run(egraph, instructions, subst, true, yield_fn)
-    }
-
-    fn inner_run<L, N>(
-        &mut self,
-        egraph: &EGraph<L, N>,
-        instructions: &[Instruction<L>],
-        subst: &Subst,
-        colored_jumps: bool,
-        yield_fn: &mut impl FnMut(&Self, &Subst) -> Result,
-    ) -> Result
-        where
-            L: Language,
-            N: Analysis<L>,
-    {
-        let mut stack: Vec<MachineContext> = vec![MachineContext::new(0, self.color, Box::new(|_| {}))];
-        while !stack.is_empty() {
-            let mut current_state = stack.pop().unwrap();
+    fn next(&mut self) -> Option<Self::Item> {
+        let egraph = self.egraph;
+        let instructions = self.instructions;
+        let colored_jumps = self.colored_jumps;
+        while !self.stack.is_empty() {
+            let mut current_state = self.stack.pop().unwrap();
             (current_state.prep)(self);
             self.color = current_state.color;
             let mut index = current_state.instruction_index;
@@ -159,17 +152,17 @@ impl Machine {
                         for_each_matching_node(&egraph[self.reg(*eclass)], node, |matched| {
                             let matched = matched.clone();
                             let out = *out;
-                            let action = move |machine: &mut Machine| {
+                            let action = move |machine: &mut Machine<L, A>| {
                                 machine.reg.truncate(out.0 as usize);
                                 matched.for_each(|id| machine.reg.push(id));
                             };
-                            stack.push(MachineContext::new(index + 1, self.color, Box::new(action)));
+                            self.stack.push(MachineContext::new(index + 1, self.color, Box::new(action)));
                         });
                         break;
                     }
                     Instruction::Scan { out, top_pat } => {
                         // Doesn't work with Or because we don't sort root color to be first
-                        let mut run = |machine: &mut Machine, id| {
+                        let run = |machine: &mut Machine<L, A>, id| {
                             let cur_color = machine.color;
                             let cls_color = egraph[id].color();
                             if (cur_color.is_some() && cls_color.is_some() && cur_color != cls_color) ||
@@ -182,11 +175,11 @@ impl Machine {
                                 cls_color
                             };
                             let out = *out;
-                            let action = Box::new(move |machine: &mut Machine| {
+                            let action = Box::new(move |machine: &mut Machine<L, A>| {
                                 machine.reg.truncate(out.0 as usize);
                                 machine.reg.push(id);
                             });
-                            stack.push(MachineContext::new(index + 1, new_color, action));
+                            machine.stack.push(MachineContext::new(index + 1, new_color, action));
                         };
 
                         match top_pat {
@@ -216,7 +209,7 @@ impl Machine {
                             if colored_jumps && self.color.is_none() {
                                 if let Some(eqs) = egraph.get_colored_equalities(fixed_i) {
                                     for (cid, _id) in eqs.into_iter().filter(|(_cid, id)| *id == fixed_j) {
-                                        stack.push(MachineContext::new(index + 1, Some(cid), Box::new(|_| {})));
+                                        self.stack.push(MachineContext::new(index + 1, Some(cid), Box::new(|_| {})));
                                     }
                                 }
                             }
@@ -233,7 +226,7 @@ impl Machine {
                                     let look = |i| self.lookup[usize::from(i)];
                                     match egraph.lookup(node.clone().map_children(look)) {
                                         Some(id) => self.lookup.push(id),
-                                        None => return Ok(()),
+                                        None => break,
                                     }
                                 }
                                 ENodeOrReg::Reg(r) => {
@@ -263,10 +256,10 @@ impl Machine {
                                         continue;
                                     }
                                     let jump_id = *jump_id;
-                                    let action = Box::new(move |machine: &mut Machine| {
+                                    let action = Box::new(move |machine: &mut Machine<L, A>| {
                                         machine.reg[orig.0 as usize] = jump_id;
                                     });
-                                    stack.push(MachineContext::new(index + 1, self.color, action));
+                                    self.stack.push(MachineContext::new(index + 1, self.color, action));
                                 }
                             }
                         } else {
@@ -277,24 +270,33 @@ impl Machine {
                                         continue;
                                     }
                                     let orig = *orig;
-                                    let action = Box::new(move |machine: &mut Machine| {
+                                    let action = Box::new(move |machine: &mut Machine<L, A>| {
                                         machine.reg[orig.0 as usize] = jumped_id;
                                     });
-                                    stack.push(MachineContext::new(index + 1, Some(c_id), action));
+                                    self.stack.push(MachineContext::new(index + 1, Some(c_id), action));
                                 }
                             }
                         }
-                        stack.push(MachineContext::new(index + 1, self.color, Box::new(|_| {})));
+                        self.stack.push(MachineContext::new(index + 1, self.color, Box::new(|_| {})));
                         break;
+                    }
+                    Instruction::Not { sub_machine } => {
+                        // let mut it = sub_machine.inner_run_from(egraph, &self.reg, self.color, colored_jumps);
                     }
                 };
                 index += 1;
             }
             if index == instructions.len() {
-                yield_fn(self, subst)?
+                let subst_vec = self.subst
+                    .vec
+                    .iter()
+                    // HACK we are reusing Ids here, this is bad
+                    .map(|(v, reg_id)| (*v, self.reg(Reg(usize::from(*reg_id) as u32))))
+                    .collect();
+                return Some(Subst { vec: subst_vec, color: self.color.clone() });
             }
         }
-        Ok(())
+        None
     }
 }
 
@@ -544,45 +546,18 @@ impl<L: Language> Program<L> {
     {
         assert!(egraph.is_clean(), "Tried to search a dirty e-graph!");
 
-        let mut machine = Machine::default();
-        assert_eq!(machine.reg.len(), 0);
-        machine.reg.push(eclass);
-
         let class_color = egraph[eclass].color();
         dassert!(opt_color.is_none() || class_color.is_none() || opt_color == class_color,
                  "Tried to run a colored program on an eclass with a different color: {:?} vs {:?}",
                  opt_color, class_color);
-        machine.color = class_color;
+        let opt_color = class_color;
+        let mut machine = Machine::new(opt_color, egraph, &self.instructions, self.subst.clone(), run_color);
+        assert_eq!(machine.reg.len(), 0);
+        machine.reg.push(eclass);
 
-        let mut matches = Vec::new();
-        let mut yield_fn = |machine: &Machine, subst: &Subst| {
-            let subst_vec = subst
-                .vec
-                .iter()
-                // HACK we are reusing Ids here, this is bad
-                .map(|(v, reg_id)| (*v, machine.reg(Reg(usize::from(*reg_id) as u32))))
-                .collect();
-            matches.push(Subst { vec: subst_vec, color: machine.color.clone() });
-            Ok(())
-        };
 
-        if run_color {
-            machine.colored_run(
-                egraph,
-                &self.instructions,
-                &self.subst,
-                &mut yield_fn,
-            ).unwrap_or_default();
-        } else {
-            assert!(opt_color.is_none());
-            machine.run(
-                egraph,
-                &self.instructions,
-                &self.subst,
-                &mut yield_fn,
-            ).unwrap_or_default();
-        }
 
+        let matches = machine.collect_vec();
         log::trace!("Ran program, found {:?}", matches);
         matches
     }

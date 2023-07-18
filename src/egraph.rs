@@ -3,9 +3,6 @@ use std::{
     fmt::{self, Debug},
 };
 use std::collections::BTreeSet;
-use std::fs::File;
-use std::io::Write;
-
 use indexmap::{IndexMap, IndexSet};
 use invariants::{dassert, iassert, tassert, wassert, AssertConfig, AssertLevel};
 use log::*;
