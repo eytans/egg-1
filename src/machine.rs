@@ -1,10 +1,10 @@
 use std::collections::BTreeSet;
 use crate::*;
-use std::result;
 use indexmap::{IndexMap, IndexSet};
 use invariants::dassert;
 use itertools::{Either, Itertools};
 use itertools::Either::{Right, Left};
+use log::trace;
 
 /// An iterator for match results
 struct Machine<'a, L: Language, N: Analysis<L>> {
@@ -35,8 +35,9 @@ enum Instruction<L> {
     Compare { i: Reg, j: Reg },
     Lookup { term: Vec<ENodeOrReg<L>>, i: Reg },
     Scan { out: Reg, top_pat: Either<L, Option<Reg>> },
-    ColorJump { orig: Reg },
-    Not { sub_machine: Program<L> },
+    ColorJump { orig: Reg, out: Reg },
+    Not { sub_prog: Program<L> },
+    Nop,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -140,6 +141,7 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
         let colored_jumps = self.colored_jumps;
         while !self.stack.is_empty() {
             let mut current_state = self.stack.pop().unwrap();
+            trace!("Instruction index {} - Popped state with color {:?}", current_state.instruction_index, current_state.color);
             (current_state.prep)(self);
             self.color = current_state.color;
             let mut index = current_state.instruction_index;
@@ -148,10 +150,12 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                 match instruction {
                     Instruction::Bind { eclass, out, node } => {
                         let class_color = egraph[self.reg(*eclass)].color();
+                        trace!("Instruction index {} - Binding (cur color: {:?}) node {} @ {} (color: {:?}) for out reg {}", index, self.color, node.display_op(), self.reg(*eclass), class_color, out.0);
                         dassert!(class_color.is_none() || class_color == self.color);
                         for_each_matching_node(&egraph[self.reg(*eclass)], node, |matched| {
                             let matched = matched.clone();
                             let out = *out;
+                            trace!("Pusing to stack color: {:?}, truncate to {} and push {}", self.color, out.0, matched.children().iter().join(", "));
                             let action = move |machine: &mut Machine<L, A>| {
                                 machine.reg.truncate(out.0 as usize);
                                 matched.for_each(|id| machine.reg.push(id));
@@ -179,21 +183,25 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                                 machine.reg.truncate(out.0 as usize);
                                 machine.reg.push(id);
                             });
+                            trace!("Pushing to stack color: {:?}, truncate to {} and push {}", new_color, out.0, id);
                             machine.stack.push(MachineContext::new(index + 1, new_color, action));
                         };
 
                         match top_pat {
-                            Either::Left(node) => {
+                            Left(node) => {
+                                trace!("Instruction index {} - Scanning for {} with color {:?}", node.display_op(), index, self.color);
                                 if let Some(ids) = egraph.classes_by_op_id().get(&node.op_id()) {
                                     for class in ids {
                                         run(self, *class);
                                     }
                                 }
                             }
-                            Either::Right(opt_reg_var) => {
+                            Right(opt_reg_var) => {
                                 if let Some(reg_var) = opt_reg_var {
+                                    trace!("Instruction index {} - Scanning for reg {}={} with color {:?}", reg_var.0, self.reg(*reg_var), index, self.color);
                                     run(self, self.reg(*reg_var));
                                 } else {
+                                    trace!("Instruction index {} - Scanning for any with color {:?}", index, self.color);
                                     for class in egraph.classes() {
                                         run(self, class.id);
                                     }
@@ -205,10 +213,12 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                     Instruction::Compare { i, j } => {
                         let fixed_i = egraph.opt_colored_find(self.color.clone(), self.reg(*i));
                         let fixed_j = egraph.opt_colored_find(self.color.clone(), self.reg(*j));
+                        trace!("Instruction index {} - Comparing (color: {:?}) reg {} and reg {} (found to be {} and {})", index, self.color, i.0, j.0, fixed_i, fixed_j);
                         if fixed_i != fixed_j {
                             if colored_jumps && self.color.is_none() {
                                 if let Some(eqs) = egraph.get_colored_equalities(fixed_i) {
                                     for (cid, _id) in eqs.into_iter().filter(|(_cid, id)| *id == fixed_j) {
+                                        trace!("Pushing to stack with new color {:?}", cid);
                                         self.stack.push(MachineContext::new(index + 1, Some(cid), Box::new(|_| {})));
                                     }
                                 }
@@ -219,6 +229,7 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                     Instruction::Lookup { term, i } => {
                         assert!(self.color.is_none(), "Lookup instruction is an optimization for non colored search");
                         assert!(!colored_jumps, "Lookup instruction is an optimization for non colored search");
+                        trace!("Instruction index {} - Looking up {:?} in reg {}", index, term, i.0);
                         self.lookup.clear();
                         for node in term {
                             match node {
@@ -240,11 +251,12 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                             break;
                         }
                     }
-                    Instruction::ColorJump { orig } => {
+                    Instruction::ColorJump { orig, out } => {
                         if !colored_jumps {
                             index += 1;
                             continue;
                         }
+                        trace!("Instruction index {} - Color jumping from reg {}={} (color: {:?})", index, orig.0, self.reg(*orig), self.color);
 
                         let id = egraph.find(self.reg(*orig));
                         if let Some(color) = self.color.as_ref() {
@@ -256,9 +268,11 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                                         continue;
                                     }
                                     let jump_id = *jump_id;
+                                    let _out = *out;
                                     let action = Box::new(move |machine: &mut Machine<L, A>| {
-                                        machine.reg[orig.0 as usize] = jump_id;
+                                        machine.reg[_out.0 as usize] = jump_id;
                                     });
+                                    trace!("Pushing to stack with new id (same color) reg {}={}", _out.0, jump_id);
                                     self.stack.push(MachineContext::new(index + 1, self.color, action));
                                 }
                             }
@@ -269,19 +283,27 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                                     if jumped_id == id {
                                         continue;
                                     }
-                                    let orig = *orig;
+                                    let out = *out;
                                     let action = Box::new(move |machine: &mut Machine<L, A>| {
-                                        machine.reg[orig.0 as usize] = jumped_id;
+                                        machine.reg[out.0 as usize] = jumped_id;
                                     });
+                                    trace!("Pushing to stack with new id (new color {:?}) reg {}={}", c_id, orig.0, jumped_id);
                                     self.stack.push(MachineContext::new(index + 1, Some(c_id), action));
                                 }
                             }
                         }
-                        self.stack.push(MachineContext::new(index + 1, self.color, Box::new(|_| {})));
-                        break;
+                        trace!("Done color jump continuing run with color {:?} and reg {}={}", self.color, orig.0, self.reg(*orig));
+                        dassert!(self.reg.len() == out.0 as usize);
+                        self.reg.push(self.reg(*orig));
+                        // Not breaking so will continue to next instruction with current setup.
                     }
-                    Instruction::Not { sub_machine } => {
-                        // let mut it = sub_machine.inner_run_from(egraph, &self.reg, self.color, colored_jumps);
+                    Instruction::Not { sub_prog } => {
+                        if sub_prog.inner_run_from(egraph, self, colored_jumps).next().is_some() {
+                            break;
+                        }
+                    }
+                    Instruction::Nop => {
+                        // do nothing
                     }
                 };
                 index += 1;
@@ -417,9 +439,12 @@ impl<L: Language> Compiler<L> {
             if let Some(&i) = self.v2r.get(&v) {
                 // patternbinder already bound
                 if matches!(pattern.as_ref()[last_i], ENodeOrVar::ENode(_, _)) {
-                    self.instructions.push(Instruction::ColorJump { orig: i });
+                    self.introduce_color_jump(next_out, i);
+                    self.v2r[&v] = next_out;
+                    next_out.0 += 1;
+                    self.next_reg.0 += 1;
                 }
-                self.add_todo(pattern, Id::from(last_i), i);
+                self.add_todo(pattern, Id::from(last_i), self.v2r[&v]);
             } else {
                 // patternbinder is new variable
                 next_out.0 += 1;
@@ -433,7 +458,7 @@ impl<L: Language> Compiler<L> {
         }
 
         let mut first_bind = true;
-        while let Some(((id, reg), node)) = self.next() {
+        while let Some(((id, mut reg), node)) = self.next() {
             if self.is_ground_now(id) && (!node.is_leaf()) && !cfg!(feature = "colored") {
                 let extracted = pattern.extract(id);
                 self.instructions.push(Instruction::Lookup {
@@ -448,18 +473,18 @@ impl<L: Language> Compiler<L> {
                         .collect(),
                 });
             } else {
+                if !first_bind {
+                    self.introduce_color_jump(next_out, reg);
+                    reg = next_out;
+                    next_out.0 += 1;
+                } else {
+                    first_bind = false;
+                }
                 let out = next_out;
                 next_out.0 += node.len() as u32;
 
                 // zero out the children so Bind can use it to sort
                 let op = node.clone().map_children(|_| Id::from(0));
-                if !first_bind {
-                    self.instructions.push(Instruction::ColorJump {
-                        orig: reg,
-                    });
-                } else {
-                    first_bind = false;
-                }
                 self.instructions.push(Instruction::Bind {
                     eclass: reg,
                     node: op,
@@ -472,6 +497,26 @@ impl<L: Language> Compiler<L> {
             }
         }
         self.next_reg = next_out;
+    }
+
+    fn introduce_color_jump(&mut self, next_out: Reg, orig: Reg) {
+        self.instructions.push(Instruction::ColorJump { orig, out: next_out });
+        self.todo_nodes = std::mem::take(&mut self.todo_nodes)
+            .into_iter()
+            .map(|((id, reg), node)| if reg == orig {
+                ((id, next_out), node)
+            } else { ((id, reg), node) })
+            .collect();
+    }
+
+    fn compile_sub_program(&mut self, patternbinder: Option<Var>, pattern: &PatternAst<L>) -> Program<L> {
+        let mut compiler = Compiler::new();
+        compiler.next_reg = self.next_reg;
+        compiler.v2r = self.v2r.clone();
+        // Adding a nop so it will be treated as a "not first" pattern
+        compiler.instructions.push(Instruction::Nop);
+        compiler.compile(patternbinder, pattern);
+        compiler.extract()
     }
 
     fn extract(self) -> Program<L> {
@@ -495,7 +540,8 @@ impl<L: Language> Program<L> {
         program
     }
 
-    pub(crate) fn compile_from_multi_pat(patterns: &[(Var, PatternAst<L>)], or_patterns: &Vec<(Var, Vec<PatternAst<L>>)>) -> Self {
+    pub(crate) fn compile_from_multi_pat(patterns: &[(Var, PatternAst<L>)], or_patterns: &Vec<(Var, Vec<PatternAst<L>>)>, not_patterns: &[(Var, PatternAst<L>)]) -> Self {
+        assert!(!patterns.is_empty());
         let mut compiler = Compiler::new();
         let mut all_normal_vars = BTreeSet::new();
         for (v, p) in patterns {
@@ -508,6 +554,13 @@ impl<L: Language> Program<L> {
         }
         for (var, pattern) in patterns {
             compiler.compile(Some(*var), pattern);
+        }
+        // TODO: insert not patterns early (when all vars are available)
+        for (var, not_pattern) in not_patterns {
+            let res = compiler.compile_sub_program(Some(*var), not_pattern);
+            compiler.instructions.push(Instruction::Not {
+                sub_prog: res,
+            });
         }
         compiler.extract()
     }
@@ -545,7 +598,6 @@ impl<L: Language> Program<L> {
             A: Analysis<L>,
     {
         assert!(egraph.is_clean(), "Tried to search a dirty e-graph!");
-
         let class_color = egraph[eclass].color();
         dassert!(opt_color.is_none() || class_color.is_none() || opt_color == class_color,
                  "Tried to run a colored program on an eclass with a different color: {:?} vs {:?}",
@@ -555,10 +607,22 @@ impl<L: Language> Program<L> {
         assert_eq!(machine.reg.len(), 0);
         machine.reg.push(eclass);
 
-
-
         let matches = machine.collect_vec();
         log::trace!("Ran program, found {:?}", matches);
         matches
+    }
+
+    fn inner_run_from<'a, A>(
+        &'a self,
+        egraph: &'a EGraph<L, A>,
+        old_machine: &Machine<'a, L, A>,
+        run_color: bool,
+    ) -> impl Iterator<Item = Subst> + 'a
+        where
+            A: Analysis<L>,
+    {
+        let mut machine = Machine::new(old_machine.color, egraph, &self.instructions, self.subst.clone(), run_color);
+        machine.reg = old_machine.reg.clone();
+        machine
     }
 }

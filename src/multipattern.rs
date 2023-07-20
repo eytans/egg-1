@@ -31,6 +31,7 @@ use crate::searchers::ToDyn;
 pub struct MultiPattern<L> {
     asts: Vec<(Var, PatternAst<L>)>,
     or_asts: Vec<(Var, Vec<PatternAst<L>>)>,
+    not_asts: Vec<(Var, PatternAst<L>)>,
     program: machine::Program<L>,
 }
 
@@ -59,13 +60,17 @@ impl<L: Language> MultiPattern<L> {
     /// assert_eq!(multipattern.n_matches(&egraph), 2);
     /// ```
     pub fn new(asts: Vec<(Var, PatternAst<L>)>) -> Self {
-        let program = machine::Program::compile_from_multi_pat(&asts, &vec![]);
-        Self { asts, or_asts: vec![], program }
+        let program = machine::Program::compile_from_multi_pat(&asts, &vec![], &vec![]);
+        Self { asts, or_asts: vec![], not_asts: vec![], program }
     }
 
-    pub fn new_with_or(asts: Vec<(Var, PatternAst<L>)>, or_asts: Vec<(Var, Vec<PatternAst<L>>)>) -> Self {
-        let program = machine::Program::compile_from_multi_pat(&asts, &or_asts);
-        Self { asts, or_asts, program }
+    pub fn new_with_specials(
+        asts: Vec<(Var, PatternAst<L>)>,
+        or_asts: Vec<(Var, Vec<PatternAst<L>>)>,
+        not_asts: Vec<(Var, PatternAst<L>)>,
+    ) -> Self {
+        let program = machine::Program::compile_from_multi_pat(&asts, &or_asts, &not_asts);
+        Self { asts, or_asts, not_asts, program }
     }
 }
 
@@ -194,7 +199,7 @@ impl<L: Language + 'static, A: Analysis<L> + 'static> Applier<L, A> for MultiPat
             for subst in &mat.substs {
                 let mut subst = subst.clone();
                 for (i, (v, p)) in self.asts.iter().enumerate() {
-                    let id1 = crate::pattern::apply_pat(p.as_ref(), egraph, &subst);
+                    let id1 = pattern::apply_pat(p.as_ref(), egraph, &subst);
                     if let Some(id2) = subst.insert(*v, id1) {
                         egraph.opt_colored_union(subst.color, id1, id2);
                     }
@@ -263,7 +268,7 @@ mod tests {
 
     #[test]
     fn multi_patterns() {
-        crate::init_logger();
+        init_logger();
         let mut egraph = EGraph::default();
         let _ = egraph.add_expr(&"(f a a)".parse().unwrap());
         let ab = egraph.add_expr(&"(f a b)".parse().unwrap());

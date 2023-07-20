@@ -12,10 +12,10 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Fixed bug in colored equality tracking. Insert was missing on black union">
+    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Cleanup + Machine is now an iterator">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/egraph.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/egraph.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/machine.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/machine.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/multipattern.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/multipattern.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -215,7 +215,8 @@
       <workItem from="1689405510493" duration="7402000" />
       <workItem from="1689492960477" duration="4053000" />
       <workItem from="1689500629427" duration="13000" />
-      <workItem from="1689591866667" duration="11123000" />
+      <workItem from="1689591866667" duration="15776000" />
+      <workItem from="1689838086036" duration="599000" />
     </task>
     <task id="LOCAL-00001" summary="Colored congruence should take less memory due to better implementation">
       <created>1682546837181</created>
@@ -329,7 +330,14 @@
       <option name="project" value="LOCAL" />
       <updated>1689682958363</updated>
     </task>
-    <option name="localTasksCounter" value="17" />
+    <task id="LOCAL-00017" summary="Cleanup + Machine is now an iterator">
+      <created>1689687498792</created>
+      <option name="number" value="00017" />
+      <option name="presentableId" value="LOCAL-00017" />
+      <option name="project" value="LOCAL" />
+      <updated>1689687498792</updated>
+    </task>
+    <option name="localTasksCounter" value="18" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -363,7 +371,8 @@
     <MESSAGE value="Removed DiffSearcher" />
     <MESSAGE value="Machine is now a user stack instead of recursive machine!" />
     <MESSAGE value="Fixed bug in colored equality tracking. Insert was missing on black union" />
-    <option name="LAST_COMMIT_MESSAGE" value="Fixed bug in colored equality tracking. Insert was missing on black union" />
+    <MESSAGE value="Cleanup + Machine is now an iterator" />
+    <option name="LAST_COMMIT_MESSAGE" value="Cleanup + Machine is now an iterator" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
