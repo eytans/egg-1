@@ -1,9 +1,11 @@
+use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::rc::Rc;
 use std::str::FromStr;
 use indexmap::IndexSet;
 use itertools::Itertools;
 use thiserror::Error;
+use regex::Regex;
 
 use crate::*;
 use crate::pretty_string::PrettyString;
@@ -94,26 +96,29 @@ impl<L: Language + FromOp> FromStr for MultiPattern<L> {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         use MultiPatternParseError::*;
         let mut asts = vec![];
+        let mut or_asts: BTreeMap<Var, Vec<PatternAst<L>>> = BTreeMap::default();
+        let mut not_asts = vec![];
         for split in s.trim().split(',') {
             let split = split.trim();
             if split.is_empty() {
                 continue;
             }
-            let mut parts = split.split('=');
-            let vs: &str = parts
-                .next()
+            let regex = Regex::new(r"(\?[a-zA-Z0-9_\-+*^%$#@!]+)\s?(\|=|!=|=)\s?(.+)").expect("bad regex");
+            let parts = regex.captures(split)
                 .ok_or_else(|| PatternAssignmentError(split.to_string()))?;
-            let v: Var = vs.trim().parse().map_err(VariableError)?;
-            let ps = parts
-                .map(|p| p.trim().parse())
-                .collect::<Result<Vec<PatternAst<L>>, _>>()
+
+            let v: Var = parts[1].parse().map_err(VariableError)?;
+            let pattern_ast: PatternAst<L> = parts[3].trim().parse()
                 .map_err(PatternParseError)?;
-            if ps.is_empty() {
-                return Err(PatternAssignmentError(split.to_string()));
+            if &parts[2] == "!=" {
+                not_asts.push((v, pattern_ast));
+            } else if &parts[2] == "|=" {
+                or_asts.entry(v).or_default().push(pattern_ast);
+            } else {
+                asts.push((v, pattern_ast));
             }
-            asts.extend(ps.into_iter().map(|p| (v, p)))
         }
-        Ok(MultiPattern::new(asts))
+        Ok(MultiPattern::new_with_specials(asts, or_asts.into_iter().collect_vec(), not_asts))
     }
 }
 
@@ -258,7 +263,7 @@ mod tests {
     #[test]
     #[should_panic = "unbound var ?z"]
     fn bad_unbound_var() {
-        let _: Rewrite<S, ()> = multi_rewrite!("foo"; "?x = (foo ?y)" => "?x = ?z");
+        let _: Rewrite<S, ()> = multi_rewrite!("foo"; "?x  = (foo ?y)" => "?x = ?z");
     }
 
     #[test]
@@ -473,6 +478,82 @@ mod tests {
         assert_eq!(egraph.colored_find(color, root), egraph.colored_find(color, g));
         assert_ne!(egraph.find(root), egraph.find(g));
         assert_ne!(egraph.add_expr(&"false".parse().unwrap()), egraph.add_expr(&"true".parse().unwrap()));
+    }
 
+    #[test]
+    fn test_not_exists_pattern() {
+        init_logger();
+
+        let pattern: MultiPattern<S> = "?v1 = x, ?v2 = y, ?v3 != z, ?v3 != w, ?v3 != p".parse().unwrap();
+
+        let mut egraph = EGraph::default();
+        let _x = egraph.add_expr(&"x".parse().unwrap());
+        let _y = egraph.add_expr(&"y".parse().unwrap());
+        egraph.rebuild();
+
+        assert!(!pattern.search(&egraph).is_empty());
+
+        let _z = egraph.add_expr(&"z".parse().unwrap());
+        egraph.rebuild();
+
+        assert!(pattern.search(&egraph).is_empty());
+
+        let pattern: MultiPattern<S> = "?v1 = x, ?v2 = (f ?y), ?v2 != w".parse().unwrap();
+        let color = egraph.create_color();
+        egraph.add_expr(&"(f y)".parse().unwrap());
+        let p = egraph.colored_add_expr(color, &"(f p)".parse().unwrap());
+        let w = egraph.colored_add_expr(color, &"w".parse().unwrap());
+        egraph.rebuild();
+
+        assert_eq!(pattern.search(&egraph).len(), 1);
+        assert_eq!(pattern.search(&egraph)[0].substs.len(), 2);
+
+        egraph.colored_union(color, p, w);
+        egraph.rebuild();
+
+        assert_eq!(pattern.search(&egraph).len(), 1);
+        assert_eq!(pattern.search(&egraph)[0].substs.len(), 1);
+    }
+
+    #[test]
+    fn test_not_layered_match() {
+        init_logger();
+
+        let pattern: MultiPattern<S> = "?v1 = (f ?x (g ?z ?w)), ?w != (cons ?l)".parse().unwrap();
+        let mut egraph = EGraph::default();
+        egraph.add_expr(&"(f X (g Z W))".parse().unwrap());
+        egraph.add_expr(&"(f X (g Z (cons L)))".parse().unwrap());
+        egraph.add_expr(&"(f X (g Z (cons (f z))))".parse().unwrap());
+        let color = egraph.create_color();
+        egraph.rebuild();
+
+        let sms = pattern.search(&egraph);
+        assert_eq!(1, sms.len());
+        assert_eq!(sms[0].substs.len(), 1);
+
+        let w = egraph.add_expr(&"W".parse().unwrap());
+        let cons = egraph.add_expr(&"(cons L)".parse().unwrap());
+        egraph.union(w, cons);
+        egraph.rebuild();
+
+        let sms = pattern.search(&egraph);
+        assert_eq!(0, sms.len());
+
+        let colored_fl = egraph.colored_add_expr(color, &"(f X (g Z L))".parse().unwrap());
+        egraph.rebuild();
+        let colored_l = egraph.colored_add_expr(color, &"L".parse().unwrap());
+        egraph.rebuild();
+
+        let sms = pattern.search(&egraph);
+        assert_eq!(1, sms.len());
+        assert_eq!(sms[0].substs.len(), 1);
+        assert_eq!(sms[0].substs[0].get("?w".parse().unwrap()), Some(&colored_l));
+        assert!(sms[0].substs[0].color().is_some());
+
+        egraph.colored_union(color, colored_l, cons);
+        egraph.rebuild();
+
+        let sms = pattern.search(&egraph);
+        assert_eq!(0, sms.len());
     }
 }

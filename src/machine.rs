@@ -262,7 +262,7 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                         if let Some(color) = self.color.as_ref() {
                             // Will also run id as it is part of black_ids
                             if let Some(eqs) = egraph.get_color(*color).unwrap().black_ids(egraph, id) {
-                                let orig = *orig;
+                                let _orig = *orig;
                                 for jump_id in eqs {
                                     if *jump_id == id {
                                         continue;
