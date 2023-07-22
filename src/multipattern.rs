@@ -539,7 +539,7 @@ mod tests {
         let sms = pattern.search(&egraph);
         assert_eq!(0, sms.len());
 
-        let colored_fl = egraph.colored_add_expr(color, &"(f X (g Z L))".parse().unwrap());
+        let _colored_fl = egraph.colored_add_expr(color, &"(f X (g Z L))".parse().unwrap());
         egraph.rebuild();
         let colored_l = egraph.colored_add_expr(color, &"L".parse().unwrap());
         egraph.rebuild();
@@ -555,5 +555,33 @@ mod tests {
 
         let sms = pattern.search(&egraph);
         assert_eq!(0, sms.len());
+    }
+
+    #[test]
+    fn test_second_or_matches() {
+        init_logger();
+
+        let mut egraph = EGraph::default();
+        let pattern: MultiPattern<S> = "?v1 = (f ?x (g ?z ?w)), ?w |= (cons ?l), ?w |= nil".parse().unwrap();
+        egraph.add_expr(&"(f X (g Z W))".parse().unwrap());
+        egraph.rebuild();
+        assert_eq!(pattern.search(&egraph).len(), 0);
+
+        egraph.add_expr(&"(f X (g Z nil))".parse().unwrap());
+        egraph.rebuild();
+        assert_eq!(pattern.search(&egraph).len(), 1);
+        assert_eq!(pattern.search(&egraph)[0].substs.len(), 1);
+
+        let color = egraph.create_color();
+        let cons = egraph.colored_add_expr(color, &"(cons JJH)".parse().unwrap());
+        egraph.rebuild();
+        assert_eq!(pattern.search(&egraph).len(), 1);
+        assert_eq!(pattern.search(&egraph)[0].substs.len(), 1);
+
+        let w = egraph.add_expr(&"W".parse().unwrap());
+        egraph.colored_union(color, w, cons);
+        egraph.rebuild();
+
+        assert_eq!(pattern.search(&egraph).into_iter().map(|sms| sms.substs.len()).sum::<usize>(), 2);
     }
 }

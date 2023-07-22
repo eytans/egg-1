@@ -38,6 +38,7 @@ enum Instruction<L> {
     ColorJump { orig: Reg, out: Reg },
     Not { sub_prog: Program<L> },
     Nop,
+    Or { root: Var, sub_progs: Vec<Program<L>>, out: Reg },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -165,7 +166,6 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                         break;
                     }
                     Instruction::Scan { out, top_pat } => {
-                        // Doesn't work with Or because we don't sort root color to be first
                         let run = |machine: &mut Machine<L, A>, id| {
                             let cur_color = machine.color;
                             let cls_color = egraph[id].color();
@@ -304,6 +304,24 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                     }
                     Instruction::Nop => {
                         // do nothing
+                    }
+                    Instruction::Or { root ,out, sub_progs } => {
+                        // TODO: optimize by not running it all ahead of time
+                        let results = sub_progs.iter().flat_map(|p|
+                                p.inner_run_from(egraph, self, colored_jumps))
+                            .map(|s| (*s.get(*root).unwrap(), s.color))
+                            .unique()
+                            .collect_vec();
+                        for (res, color) in results {
+                            let out = *out;
+                            self.stack.push(MachineContext::new(
+                               index + 1, color, Box::new(move |machine| {
+                                    machine.reg.truncate(out.0 as usize);
+                                    machine.reg.push(res);
+                                })
+                            ));
+                        }
+                        break;
                     }
                 };
                 index += 1;
@@ -555,7 +573,32 @@ impl<L: Language> Program<L> {
         for (var, pattern) in patterns {
             compiler.compile(Some(*var), pattern);
         }
+        for (var, or_patterns) in or_patterns {
+            // Or patterns keep running to match root for all "base" hierarchy colors. That is if black matches
+            // continue to next eclass root.
+            // Otherwise try all colors.
+            // Another possible optimization is skipping "already matched" colors.
+            let mut compiled = or_patterns.iter().map(|p| compiler.compile_sub_program(Some(*var), p)).collect_vec();
+            let out = compiler.next_reg;
+            compiler.next_reg.0 += 1;
+            let or = Instruction::Or {
+                root: *var,
+                sub_progs: compiled,
+                out,
+            };
+            if let Some(r) = compiler.v2r.get(var) {
+                compiler.instructions.push(or);
+                compiler.instructions.push(Instruction::Compare {
+                    i: out,
+                    j: *r,
+                });
+            } else {
+                compiler.v2r[var] = out;
+                compiler.instructions.push(or);
+            }
+        }
         // TODO: insert not patterns early (when all vars are available)
+        // Not patterns are a bit funny. They might match black but not colors.
         for (var, not_pattern) in not_patterns {
             let res = compiler.compile_sub_program(Some(*var), not_pattern);
             compiler.instructions.push(Instruction::Not {

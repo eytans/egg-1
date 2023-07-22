@@ -12,9 +12,8 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Fixed bug in colored jumps + added support for not operation and patterns">
+    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Parsing not and or multipattern.rs. Added not tests">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/machine.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/machine.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/multipattern.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/multipattern.rs" afterDir="false" />
     </list>
@@ -75,26 +74,9 @@
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
-  <component name="RunManager" selected="Cargo.Test multipattern::tests::test_not_layered_match">
+  <component name="RunManager" selected="Cargo.Test multipattern::tests::test_second_or_matches">
     <configuration name="Test multipattern::tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package egg --lib multipattern::tests" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
-      <option name="emulateTerminal" value="false" />
-      <option name="channel" value="DEFAULT" />
-      <option name="requiredFeatures" value="true" />
-      <option name="allFeatures" value="false" />
-      <option name="withSudo" value="false" />
-      <option name="buildTarget" value="REMOTE" />
-      <option name="backtrace" value="SHORT" />
-      <envs />
-      <option name="isRedirectInput" value="false" />
-      <option name="redirectInputPath" value="" />
-      <method v="2">
-        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
-      </method>
-    </configuration>
-    <configuration name="Test multipattern::tests::bad_unbound_var" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package egg --lib multipattern::tests::bad_unbound_var -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <option name="emulateTerminal" value="false" />
       <option name="channel" value="DEFAULT" />
@@ -161,6 +143,23 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
+    <configuration name="Test multipattern::tests::test_second_or_matches" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib multipattern::tests::test_second_or_matches -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="emulateTerminal" value="false" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
     <configuration name="test" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
       <option name="command" value="test" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -180,11 +179,11 @@
     </configuration>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test multipattern::tests::test_second_or_matches" />
         <item itemvalue="Cargo.Test multipattern::tests::test_not_layered_match" />
         <item itemvalue="Cargo.Test multipattern::tests::test_not_exists_pattern" />
         <item itemvalue="Cargo.Test multipattern::tests::test_not_exists_black_pattern" />
         <item itemvalue="Cargo.Test multipattern::tests" />
-        <item itemvalue="Cargo.Test multipattern::tests::bad_unbound_var" />
       </list>
     </recent_temporary>
   </component>
@@ -218,7 +217,8 @@
       <workItem from="1689500629427" duration="13000" />
       <workItem from="1689591866667" duration="15776000" />
       <workItem from="1689838086036" duration="599000" />
-      <workItem from="1689869891571" duration="6298000" />
+      <workItem from="1689869891571" duration="11871000" />
+      <workItem from="1689934269027" duration="4503000" />
     </task>
     <task id="LOCAL-00001" summary="Colored congruence should take less memory due to better implementation">
       <created>1682546837181</created>
@@ -346,7 +346,14 @@
       <option name="project" value="LOCAL" />
       <updated>1689870135079</updated>
     </task>
-    <option name="localTasksCounter" value="19" />
+    <task id="LOCAL-00019" summary="Parsing not and or multipattern.rs. Added not tests">
+      <created>1689879307640</created>
+      <option name="number" value="00019" />
+      <option name="presentableId" value="LOCAL-00019" />
+      <option name="project" value="LOCAL" />
+      <updated>1689879307640</updated>
+    </task>
+    <option name="localTasksCounter" value="20" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -382,7 +389,8 @@
     <MESSAGE value="Fixed bug in colored equality tracking. Insert was missing on black union" />
     <MESSAGE value="Cleanup + Machine is now an iterator" />
     <MESSAGE value="Fixed bug in colored jumps + added support for not operation and patterns" />
-    <option name="LAST_COMMIT_MESSAGE" value="Fixed bug in colored jumps + added support for not operation and patterns" />
+    <MESSAGE value="Parsing not and or multipattern.rs. Added not tests" />
+    <option name="LAST_COMMIT_MESSAGE" value="Parsing not and or multipattern.rs. Added not tests" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -396,11 +404,6 @@
           <url>file://$PROJECT_DIR$/src/egraph.rs</url>
           <line>1897</line>
           <option name="timeStamp" value="69" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
-          <url>file://$PROJECT_DIR$/src/machine.rs</url>
-          <line>300</line>
-          <option name="timeStamp" value="73" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
