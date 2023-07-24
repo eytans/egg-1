@@ -1,7 +1,9 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source to the Rust file `src/tutorials/_01_background.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>_01_background.rs.html -- source</title><link rel="stylesheet" type="text/css" href="../../../normalize.css"><link rel="stylesheet" type="text/css" href="../../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../../light.css"  id="themeStyle"><link rel="stylesheet" type="text/css" href="../../../dark.css" disabled ><link rel="stylesheet" type="text/css" href="../../../ayu.css" disabled ><script src="../../../storage.js"></script><noscript><link rel="stylesheet" href="../../../noscript.css"></noscript><link rel="icon" type="image/svg+xml" href="../../../favicon.svg">
-<link rel="alternate icon" type="image/png" href="../../../favicon-16x16.png">
-<link rel="alternate icon" type="image/png" href="../../../favicon-32x32.png"><style type="text/css">#crate-search{background-image:url("../../../down-arrow.svg");}</style></head><body class="rustdoc source"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu">&#9776;</div><a href='../../../egg/index.html'><div class='logo-container rust-logo'><img src='../../../rust-logo.png' alt='logo'></div></a></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!"><img src="../../../brush.svg" width="18" alt="Pick another theme!"></button><div id="theme-choices"></div></div><script src="../../../theme.js"></script><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><span class="help-button">?</span>
-                <a id="settings-menu" href="../../../settings.html"><img src="../../../wheel.svg" width="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><pre class="line-numbers"><span id="1">  1</span>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/tutorials/_01_background.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>_01_background.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" type="text/css" href="../../../normalize.css"><link rel="stylesheet" type="text/css" href="../../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../../ayu.css" disabled><link rel="stylesheet" type="text/css" href="../../../dark.css" disabled><link rel="stylesheet" type="text/css" href="../../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../../storage.js"></script><script src="../../../crates.js"></script><script defer src="../../../main.js"></script><script defer src="../../../source-script.js"></script><script defer src="../../../source-files.js"></script>
+    <noscript><link rel="stylesheet" href="../../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../../favicon.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle">&#9776;</button><a class="sidebar-logo" href="../../../egg/index.html"><div class="logo-container"><img class="rust-logo" src="../../../rust-logo.svg" alt="logo"></div>
+        </a><h2 class="location"></h2>
+    </nav>
+    <nav class="sidebar"><a class="sidebar-logo" href="../../../egg/index.html"><div class="logo-container"><img class="rust-logo" src="../../../rust-logo.svg" alt="logo"></div>
+        </a></nav><main><div class="width-limiter"><div class="sub-container"><a class="sub-logo-container" href="../../../egg/index.html"><img class="rust-logo" src="../../../rust-logo.svg" alt="logo"></a><nav class="sub"><div class="theme-picker hidden"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu" title="themes"><img width="22" height="22" alt="Pick another theme!" src="../../../brush.svg"></button><div id="theme-choices" role="menu"></div></div><form class="search-form"><div class="search-container"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><button type="button" id="help-button" title="help">?</button><a id="settings-menu" href="../../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../../wheel.svg"></a></div></form></nav></div><section id="main-content" class="content"><div class="example-wrap"><pre class="line-numbers"><span id="1">  1</span>
 <span id="2">  2</span>
 <span id="3">  3</span>
 <span id="4">  4</span>
@@ -306,8 +308,7 @@
 <span id="303">303</span>
 <span id="304">304</span>
 <span id="305">305</span>
-</pre><div class="example-wrap"><pre class="rust ">
-<span class="comment">// -*- mode: markdown;  markdown-fontify-code-block-default-mode: rustic-mode; evil-shift-width: 2; -*-</span>
+</pre><pre class="rust"><code><span class="comment">// -*- mode: markdown;  markdown-fontify-code-block-default-mode: rustic-mode; evil-shift-width: 2; -*-</span>
 <span class="doccomment">/*!
 
 # Concepts: e-graphs and equality saturation
@@ -350,9 +351,9 @@ you try to match the pattern _l_ against the term _t_,
 For example, consider the term 42 × (7 + 7) and the rewrite _x + x → 2 × x_:
 - The left-hand side would match at the subterm 7 + 7,
   generating the substitution _σ_ = {_x_: 7}.
-- Applying the substitution gives _r[σ] =_ 2 × 7.
-  (_r[σ]_ means apply the substitution _σ_ to _r_)
-- Replacing the matched subterm 7 + 7 with _r[σ] =_ 2 × 7 gives the result: 42 × (2 × 7).
+- Applying the substitution gives _r\[σ\] =_ 2 × 7.
+  (_r\[σ\]_ means apply the substitution _σ_ to _r_)
+- Replacing the matched subterm 7 + 7 with _r\[σ\] =_ 2 × 7 gives the result: 42 × (2 × 7).
 
 One issue with term rewriting
   (and other programming language techniques that involve manipulating terms)
@@ -413,7 +414,7 @@ We can define what it means for _represent_ (or _contain_) a term as follows:
 
 - An e-graph represents a term if any of its e-classes do.
 - An e-class represents a term if any of its e-nodes do.
-- An e-node `f(n1, n2, ...)` represents a term `f(t1, t2, ...)` if e-node `ni` represents term `ti`.
+- An e-node `f(n1, n2, ...)` represents a term `f(t1, t2, ...)` if e-class `ni` represents term `ti`.
 
 Here are some e-graphs.
 We picture e-classes as dotted boxes surrounding the equivalent e-nodes.
@@ -446,7 +447,7 @@ Additionally, rewrites add entire _classes_ of terms at a time.
 To perform a rewrite _l → r_ over an e-graph,
   you first search _l_ in the e-graph, yielding pairs of (_c_, _σ_),
   where _c_ is the matching e-class and _σ_ is the substitution.
-Then, you `add` the term _r[σ]_ to the e-graph
+Then, you `add` the term _r\[σ\]_ to the e-graph
   and `union` it with the matching e-class _c_.
 
 Let&#39;s put it all together with an example referring to the four e-graphs in the
@@ -466,12 +467,12 @@ Let&#39;s put it all together with an example referring to the four e-graphs in 
     associates with multiplication.
    This rewrite is critical to discovering the cancellation of 2s that we are looking for,
      and it still works despite the fact that we applied the &quot;wrong&quot; rewrite previously.
-4. Applying rewrites _x / x → 1_ and _1 × x → x_ doesn&#39;t add any new e-nodes,
+4. Applying rewrites _x / x → 1_ and _x × 1 → x_ doesn&#39;t add any new e-nodes,
      since all the e-nodes were already present in the e-graph.
    The result only unions e-classes,
      meaning that e-graph actually got _smaller_ from applying these rewrites,
      even though it now represents more terms.
-   In fact, observe that that the top-right &quot;×&quot; e-node&#39;s left child is _itself_;
+   In fact, observe that the top-right &quot;×&quot; e-node&#39;s left child is _itself_;
      this cycle means the e-class represents the _infinite_ (!) set of terms
      _a_, _a × 1_, _a × 1 × 1_, and so on.
 
@@ -512,7 +513,7 @@ which calls [`union`]) may not be reflected immediately.
 To restore the e-graph invariants and make these effects visible, the
 user *must* call the [`rebuild`] method.
 
-`egg`&#39;s choice here allows for a higher performance implementation
+`egg`&#39;s choice here allows for a higher performance implementation.
 Maintaining the congruence relation complicates the core e-graph data
 structure and requires an expensive traversal through the e-graph on
 every [`union`].
@@ -571,7 +572,7 @@ Most of this was covered above, but we need to define two new terms:
   If all the rewrites are in this state, we say the e-graph is _saturated_,
     meaning that the e-graph encodes all possible equivalences derivable from
     the given rewrites.
-- _Extraction_ is a procedure for picking a single represented from an e-class
+- _Extraction_ is a procedure for picking a single represented term from an e-class
   that is optimal according to some cost function.
   `egg`&#39;s [`Extractor`]s provide this functionality.
 
@@ -591,26 +592,27 @@ We&#39;ve already discussed how rebuilding makes `egg`&#39;s e-graphs fast,
   and later tutorials will discuss how [`Analysis`] makes this approach flexible
   and able to handle more than just syntactic rewriting.
 
-[`Searcher`]: ../../trait.Searcher.html
-[`Pattern`]: ../../struct.Pattern.html
-[`EGraph`]: ../../struct.EGraph.html
-[`EClass`]: ../../struct.EClass.html
-[`Rewrite`]: ../../struct.Rewrite.html
-[`Runner`]: ../../struct.Runner.html
-[`Extractor`]: ../../struct.Extractor.html
-[`Language`]: ../../trait.Language.html
-[`Analysis`]: ../../trait.Analysis.html
-[`Id`]: ../../type.Id.html
-[`add`]: ../../struct.EGraph.html#method.add
-[`union`]: ../../struct.EGraph.html#method.union
-[`rebuild`]: ../../struct.EGraph.html#method.rebuild
+[`Searcher`]: super::super::Searcher
+[`Pattern`]: super::super::Pattern
+[`EGraph`]: super::super::EGraph
+[`EClass`]: super::super::EClass
+[`Rewrite`]: super::super::Rewrite
+[`Runner`]: super::super::Runner
+[`Extractor`]: super::super::Extractor
+[`Language`]: super::super::Language
+[`Analysis`]: super::super::Analysis
+[`Id`]: super::super::Id
+[`add`]: super::super::EGraph::add()
+[`union`]: super::super::EGraph::union()
+[`rebuild`]: super::super::EGraph::rebuild()
 [equivalence relation]: https://en.wikipedia.org/wiki/Equivalence_relation
 [congruence relation]: https://en.wikipedia.org/wiki/Congruence_relation
-[dot]: ../../struct.Dot.html
-[extract]: ../../struct.Extractor.html
+[dot]: super::super::Dot
+[extract]: super::super::Extractor
 [sound]: https://itinerarium.github.io/phoneme-synthesis/?w=/&#39;igraf/
 [paper]: https://arxiv.org/abs/2004.03082
 
 */</span>
-</pre></div>
-</section><section id="search" class="content hidden"></section><section class="footer"></section><script>window.rootPath = "../../../";window.currentCrate = "egg";</script><script src="../../../main.js"></script><script src="../../../source-script.js"></script><script src="../../../source-files.js"></script><script defer src="../../../search-index.js"></script></body></html>
+</code></pre></div>
+</section><section id="search" class="content hidden"></section></div></main><div id="rustdoc-vars" data-root-path="../../../" data-current-crate="egg" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.60.0 (7737e0b5c 2022-04-04)" ></div>
+</body></html>
