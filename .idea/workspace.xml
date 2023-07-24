@@ -12,10 +12,9 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Parsing not and or multipattern.rs. Added not tests">
+    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Implemented Or operation for multipattern">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/machine.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/machine.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/multipattern.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/multipattern.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -218,7 +217,7 @@
       <workItem from="1689591866667" duration="15776000" />
       <workItem from="1689838086036" duration="599000" />
       <workItem from="1689869891571" duration="11871000" />
-      <workItem from="1689934269027" duration="4503000" />
+      <workItem from="1689934269027" duration="7191000" />
     </task>
     <task id="LOCAL-00001" summary="Colored congruence should take less memory due to better implementation">
       <created>1682546837181</created>
@@ -353,7 +352,14 @@
       <option name="project" value="LOCAL" />
       <updated>1689879307640</updated>
     </task>
-    <option name="localTasksCounter" value="20" />
+    <task id="LOCAL-00020" summary="Implemented Or operation for multipattern">
+      <created>1690049374175</created>
+      <option name="number" value="00020" />
+      <option name="presentableId" value="LOCAL-00020" />
+      <option name="project" value="LOCAL" />
+      <updated>1690049374175</updated>
+    </task>
+    <option name="localTasksCounter" value="21" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -390,7 +396,8 @@
     <MESSAGE value="Cleanup + Machine is now an iterator" />
     <MESSAGE value="Fixed bug in colored jumps + added support for not operation and patterns" />
     <MESSAGE value="Parsing not and or multipattern.rs. Added not tests" />
-    <option name="LAST_COMMIT_MESSAGE" value="Parsing not and or multipattern.rs. Added not tests" />
+    <MESSAGE value="Implemented Or operation for multipattern" />
+    <option name="LAST_COMMIT_MESSAGE" value="Implemented Or operation for multipattern" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

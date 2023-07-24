@@ -578,7 +578,7 @@ impl<L: Language> Program<L> {
             // continue to next eclass root.
             // Otherwise try all colors.
             // Another possible optimization is skipping "already matched" colors.
-            let mut compiled = or_patterns.iter().map(|p| compiler.compile_sub_program(Some(*var), p)).collect_vec();
+            let compiled = or_patterns.iter().map(|p| compiler.compile_sub_program(Some(*var), p)).collect_vec();
             let out = compiler.next_reg;
             compiler.next_reg.0 += 1;
             let or = Instruction::Or {
