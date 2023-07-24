@@ -253,6 +253,7 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                     }
                     Instruction::ColorJump { orig, out } => {
                         if !colored_jumps {
+                            self.reg.push(self.reg(*orig));
                             index += 1;
                             continue;
                         }
@@ -298,7 +299,7 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                         // Not breaking so will continue to next instruction with current setup.
                     }
                     Instruction::Not { sub_prog } => {
-                        if sub_prog.inner_run_from(egraph, self, colored_jumps).next().is_some() {
+                        if sub_prog.inner_run_from(egraph, self, false).next().is_some() {
                             break;
                         }
                     }
