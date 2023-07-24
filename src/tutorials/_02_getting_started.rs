@@ -6,7 +6,7 @@
 This tutorial is aimed at getting you up and running with `egg`,
   even if you have little Rust experience.
 If you haven't heard about e-graphs, you may want to read the
-[background tutorial](../_01_background/index.html).
+[background tutorial](super::_01_background).
 If you do have prior Rust experience, you may want to skim around in this section.
 
 ## Getting started with Rust
@@ -36,7 +36,7 @@ First,
 Now we can add `egg` as a project dependency by adding a line to `Cargo.toml`:
 ```toml
 [dependencies]
-egg = "0.6.0"
+egg = "0.9.5"
 ```
 
 All of the code samples below work, but you'll have to `use` the relevant types.
@@ -109,6 +109,9 @@ let a = egraph.add(SymbolLang::leaf("a"));
 let b = egraph.add(SymbolLang::leaf("b"));
 let foo = egraph.add(SymbolLang::new("foo", vec![a, b]));
 
+// rebuild the e-graph since we modified it
+egraph.rebuild();
+
 // we can make Patterns by parsing, similar to RecExprs
 // names preceded by ? are parsed as Pattern variables and will match anything
 let pat: Pattern<SymbolLang> = "(foo ?x ?x)".parse().unwrap();
@@ -119,12 +122,12 @@ let matches = pat.search(&egraph);
 assert!(matches.is_empty());
 
 egraph.union(a, b);
-// recall that rebuild must be called to "see" the effects of unions
+// recall that rebuild must be called to "see" the effects of adds or unions
 egraph.rebuild();
 
 // now we can find a match since a = b
 let matches = pat.search(&egraph);
-assert!(!matches.is_empty())
+assert!(!matches.is_empty());
 ```
 
 
@@ -159,7 +162,7 @@ let runner = Runner::default().with_expr(&start).run(rules);
 
 // Extractors can take a user-defined cost function,
 // we'll use the egg-provided AstSize for now
-let mut extractor = Extractor::new(&runner.egraph, AstSize);
+let extractor = Extractor::new(&runner.egraph, AstSize);
 
 // We want to extract the best expression represented in the
 // same e-class as our initial expression, not from the whole e-graph.
@@ -171,19 +174,19 @@ assert_eq!(best_expr, "a".parse().unwrap());
 assert_eq!(best_cost, 1);
 ```
 
-[`EGraph`]: ../../struct.EGraph.html
-[`Id`]: ../../struct.Id.html
-[`Language`]: ../../trait.Language.html
-[`Searcher`]: ../../trait.Searcher.html
-[`Pattern`]: ../../struct.Pattern.html
-[`RecExpr`]: ../../struct.RecExpr.html
-[`SymbolLang`]: ../../struct.SymbolLang.html
-[`define_language!`]: ../../macro.define_language.html
-[`rewrite!`]: ../../macro.rewrite.html
-[`FromStr`]: https://doc.rust-lang.org/std/str/trait.FromStr.html
-[`Display`]: https://doc.rust-lang.org/stable/std/fmt/trait.Display.html
-[`Rewrite`]: ../../struct.Rewrite.html
-[`Runner`]: ../../struct.Runner.html
-[`Extractor`]: ../../struct.Extractor.html
+[`EGraph`]: super::super::EGraph
+[`Id`]: super::super::Id
+[`Language`]: super::super::Language
+[`Searcher`]: super::super::Searcher
+[`Pattern`]: super::super::Pattern
+[`RecExpr`]: super::super::RecExpr
+[`SymbolLang`]: super::super::SymbolLang
+[`define_language!`]: super::super::define_language!
+[`rewrite!`]: super::super::rewrite!
+[`FromStr`]: std::str::FromStr
+[`Display`]: std::fmt::Display
+[`Rewrite`]: super::super::Rewrite
+[`Runner`]: super::super::Runner
+[`Extractor`]: super::super::Extractor
 
 */

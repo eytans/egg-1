@@ -1,47 +1,53 @@
 use std::fmt;
 use std::str::FromStr;
 
-use crate::{Id, Symbol};
+use crate::*;
+use fmt::{Debug, Display, Formatter};
+use thiserror::Error;
 
 /// A variable for use in [`Pattern`]s or [`Subst`]s.
 ///
 /// This implements [`FromStr`], and will only parse if it has a
 /// leading `?`.
 ///
-/// [`Pattern`]: struct.Pattern.html
-/// [`Subst`]: struct.Subst.html
-/// [`FromStr`]: https://doc.rust-lang.org/std/str/trait.FromStr.html
+/// [`FromStr`]: std::str::FromStr
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Var(Symbol);
 
+#[derive(Debug, Error)]
+pub enum VarParseError {
+    #[error("pattern variable {0:?} should have a leading question mark")]
+    MissingQuestionMark(String),
+}
+
 impl FromStr for Var {
-    type Err = String;
+    type Err = VarParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        use VarParseError::*;
+
         if s.starts_with('?') && s.len() > 1 {
             Ok(Var(s.into()))
         } else {
-            Err(format!("{} doesn't start with '?'", s))
+            Err(MissingQuestionMark(s.to_owned()))
         }
     }
 }
 
-impl fmt::Display for Var {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+impl Display for Var {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.0, f)
     }
 }
 
-impl fmt::Debug for Var {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+impl Debug for Var {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Debug::fmt(&self.0, f)
     }
 }
 
-/// A substitition mapping [`Var`]s to eclass [`Id`]s.
+/// A substitution mapping [`Var`]s to eclass [`Id`]s.
 ///
-/// [`Var`]: struct.Var.html
-/// [`Id`]: struct.Id.html
 #[derive(Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Subst {
     pub(crate) vec: smallvec::SmallVec<[(Var, Id); 3]>,
@@ -86,8 +92,8 @@ impl std::ops::Index<Var> for Subst {
     }
 }
 
-impl fmt::Debug for Subst {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Debug for Subst {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let len = self.vec.len();
         write!(f, "{{")?;
         for i in 0..len {

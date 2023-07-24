@@ -3,8 +3,6 @@ EGraph visualization with [GraphViz]
 
 Use the [`Dot`] struct to visualize an [`EGraph`]
 
-[`Dot`]: struct.Dot.html
-[`EGraph`]: struct.EGraph.html
 [GraphViz]: https://graphviz.gitlab.io/
 !*/
 
@@ -19,11 +17,11 @@ use crate::{egraph::EGraph, Analysis, Language};
 A wrapper for an [`EGraph`] that can output [GraphViz] for
 visualization.
 
-The [`EGraph::dot`](struct.EGraph.html#method.dot) method creates `Dot`s.
+The [`EGraph::dot`](EGraph::dot()) method creates `Dot`s.
 
 # Example
 
-```
+```no_run
 use egg::{*, rewrite as rw};
 
 let rules = &[
@@ -40,9 +38,9 @@ println!("My egraph dot file: {}", egraph.dot());
 
 // create a Dot and then compile it assuming `dot` is on the system
 egraph.dot().to_svg("target/foo.svg").unwrap();
-// egraph.dot().to_png("target/foo.png").unwrap();
-// egraph.dot().to_pdf("target/foo.pdf").unwrap();
-// egraph.dot().to_dot("target/foo.dot").unwrap();
+egraph.dot().to_png("target/foo.png").unwrap();
+egraph.dot().to_pdf("target/foo.pdf").unwrap();
+egraph.dot().to_dot("target/foo.dot").unwrap();
 ```
 
 Note that self-edges (from an enode to its containing eclass) will be
@@ -50,24 +48,40 @@ rendered improperly due to a deficiency in GraphViz.
 So the example above will render with an from the "+" enode to itself
 instead of to its own eclass.
 
-[`EGraph`]: struct.EGraph.html
 [GraphViz]: https://graphviz.gitlab.io/
 **/
 pub struct Dot<'a, L: Language, N: Analysis<L>> {
     pub(crate) egraph: &'a EGraph<L, N>,
+    /// A list of strings to be output top part of the dot file.
+    pub config: Vec<String>,
+    /// Whether or not to anchor the edges in the output.
+    /// True by default.
+    pub use_anchors: bool,
 }
 
 impl<'a, L, N> Dot<'a, L, N>
 where
-    L: Language,
+    L: Language + Display,
     N: Analysis<L>,
 {
     /// Writes the `Dot` to a .dot file with the given filename.
     /// Does _not_ require a `dot` binary.
     pub fn to_dot(&self, filename: impl AsRef<Path>) -> Result<()> {
         let mut file = std::fs::File::create(filename)?;
-        write!(file, "{}", self)?;
-        Ok(())
+        write!(file, "{}", self)
+    }
+
+    /// Adds a line to the dot output.
+    /// Indentation and a newline will be added automatically.
+    pub fn with_config_line(mut self, line: impl Into<String>) -> Self {
+        self.config.push(line.into());
+        self
+    }
+
+    /// Set whether or not to anchor the edges in the output.
+    pub fn with_anchors(mut self, use_anchors: bool) -> Self {
+        self.use_anchors = use_anchors;
+        self
     }
 
     /// Renders the `Dot` to a .png file with the given filename.
@@ -136,32 +150,35 @@ where
             )),
         }
     }
+
+    // gives back the appropriate label and anchor
+    fn edge(&self, i: usize, len: usize) -> (String, String) {
+        assert!(i < len);
+        let s = |s: &str| s.to_string();
+        if !self.use_anchors {
+            return (s(""), format!("label={}", i));
+        }
+        match (len, i) {
+            (1, 0) => (s(""), s("")),
+            (2, 0) => (s(":sw"), s("")),
+            (2, 1) => (s(":se"), s("")),
+            (3, 0) => (s(":sw"), s("")),
+            (3, 1) => (s(":s"), s("")),
+            (3, 2) => (s(":se"), s("")),
+            (_, _) => (s(""), format!("label={}", i)),
+        }
+    }
 }
 
 impl<'a, L: Language, N: Analysis<L>> Debug for Dot<'a, L, N> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "Dot({:?})", self.egraph)
-    }
-}
-
-// gives back the appropriate label and anchor
-fn edge(i: usize, len: usize) -> (String, String) {
-    assert!(i < len);
-    let s = |s: &str| s.to_string();
-    match (len, i) {
-        (1, 0) => (s(""), s("")),
-        (2, 0) => (s(":sw"), s("")),
-        (2, 1) => (s(":se"), s("")),
-        (3, 0) => (s(":sw"), s("")),
-        (3, 1) => (s(":s"), s("")),
-        (3, 2) => (s(":se"), s("")),
-        (_, _) => (s(""), format!("label={}", i)),
+        f.debug_tuple("Dot").field(self.egraph).finish()
     }
 }
 
 impl<'a, L, N> Display for Dot<'a, L, N>
 where
-    L: Language,
+    L: Language + Display,
     N: Analysis<L>,
 {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
@@ -171,28 +188,27 @@ where
         writeln!(f, "  compound=true")?;
         writeln!(f, "  clusterrank=local")?;
 
+        for line in &self.config {
+            writeln!(f, "  {}", line)?;
+        }
+
         // define all the nodes, clustered by eclass
         for class in self.egraph.classes() {
             writeln!(f, "  subgraph cluster_{} {{", class.id)?;
             writeln!(f, "    style=dotted")?;
             for (i, node) in class.iter().enumerate() {
-                writeln!(
-                    f,
-                    "    {}.{}[label = \"{}\"]",
-                    class.id,
-                    i,
-                    node.display_op()
-                )?;
+                writeln!(f, "    {}.{}[label = \"{}\"]", class.id, i, node)?;
             }
             writeln!(f, "  }}")?;
         }
 
         for class in self.egraph.classes() {
             for (i_in_class, node) in class.iter().enumerate() {
-                for (arg_i, child) in node.children().iter().enumerate() {
+                let mut arg_i = 0;
+                node.try_for_each(|child| {
                     // write the edge to the child, but clip it to the eclass with lhead
-                    let (anchor, label) = edge(arg_i, node.len());
-                    let child_leader = self.egraph.find(*child);
+                    let (anchor, label) = self.edge(arg_i, node.len());
+                    let child_leader = self.egraph.find(child);
 
                     if child_leader == class.id {
                         writeln!(
@@ -209,7 +225,9 @@ where
                             class.id, i_in_class, anchor, child, child_leader, label
                         )?;
                     }
-                }
+                    arg_i += 1;
+                    Ok(())
+                })?;
             }
         }
 

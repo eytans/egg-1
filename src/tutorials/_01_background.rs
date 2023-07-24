@@ -41,9 +41,9 @@ you try to match the pattern _l_ against the term _t_,
 For example, consider the term 42 × (7 + 7) and the rewrite _x + x → 2 × x_:
 - The left-hand side would match at the subterm 7 + 7,
   generating the substitution _σ_ = {_x_: 7}.
-- Applying the substitution gives _r[σ] =_ 2 × 7.
-  (_r[σ]_ means apply the substitution _σ_ to _r_)
-- Replacing the matched subterm 7 + 7 with _r[σ] =_ 2 × 7 gives the result: 42 × (2 × 7).
+- Applying the substitution gives _r\[σ\] =_ 2 × 7.
+  (_r\[σ\]_ means apply the substitution _σ_ to _r_)
+- Replacing the matched subterm 7 + 7 with _r\[σ\] =_ 2 × 7 gives the result: 42 × (2 × 7).
 
 One issue with term rewriting
   (and other programming language techniques that involve manipulating terms)
@@ -104,7 +104,7 @@ We can define what it means for _represent_ (or _contain_) a term as follows:
 
 - An e-graph represents a term if any of its e-classes do.
 - An e-class represents a term if any of its e-nodes do.
-- An e-node `f(n1, n2, ...)` represents a term `f(t1, t2, ...)` if e-node `ni` represents term `ti`.
+- An e-node `f(n1, n2, ...)` represents a term `f(t1, t2, ...)` if e-class `ni` represents term `ti`.
 
 Here are some e-graphs.
 We picture e-classes as dotted boxes surrounding the equivalent e-nodes.
@@ -137,7 +137,7 @@ Additionally, rewrites add entire _classes_ of terms at a time.
 To perform a rewrite _l → r_ over an e-graph,
   you first search _l_ in the e-graph, yielding pairs of (_c_, _σ_),
   where _c_ is the matching e-class and _σ_ is the substitution.
-Then, you `add` the term _r[σ]_ to the e-graph
+Then, you `add` the term _r\[σ\]_ to the e-graph
   and `union` it with the matching e-class _c_.
 
 Let's put it all together with an example referring to the four e-graphs in the
@@ -157,12 +157,12 @@ Let's put it all together with an example referring to the four e-graphs in the
     associates with multiplication.
    This rewrite is critical to discovering the cancellation of 2s that we are looking for,
      and it still works despite the fact that we applied the "wrong" rewrite previously.
-4. Applying rewrites _x / x → 1_ and _1 × x → x_ doesn't add any new e-nodes,
+4. Applying rewrites _x / x → 1_ and _x × 1 → x_ doesn't add any new e-nodes,
      since all the e-nodes were already present in the e-graph.
    The result only unions e-classes,
      meaning that e-graph actually got _smaller_ from applying these rewrites,
      even though it now represents more terms.
-   In fact, observe that that the top-right "×" e-node's left child is _itself_;
+   In fact, observe that the top-right "×" e-node's left child is _itself_;
      this cycle means the e-class represents the _infinite_ (!) set of terms
      _a_, _a × 1_, _a × 1 × 1_, and so on.
 
@@ -203,7 +203,7 @@ which calls [`union`]) may not be reflected immediately.
 To restore the e-graph invariants and make these effects visible, the
 user *must* call the [`rebuild`] method.
 
-`egg`'s choice here allows for a higher performance implementation
+`egg`'s choice here allows for a higher performance implementation.
 Maintaining the congruence relation complicates the core e-graph data
 structure and requires an expensive traversal through the e-graph on
 every [`union`].
@@ -262,7 +262,7 @@ Most of this was covered above, but we need to define two new terms:
   If all the rewrites are in this state, we say the e-graph is _saturated_,
     meaning that the e-graph encodes all possible equivalences derivable from
     the given rewrites.
-- _Extraction_ is a procedure for picking a single represented from an e-class
+- _Extraction_ is a procedure for picking a single represented term from an e-class
   that is optimal according to some cost function.
   `egg`'s [`Extractor`]s provide this functionality.
 
@@ -282,23 +282,23 @@ We've already discussed how rebuilding makes `egg`'s e-graphs fast,
   and later tutorials will discuss how [`Analysis`] makes this approach flexible
   and able to handle more than just syntactic rewriting.
 
-[`Searcher`]: ../../trait.Searcher.html
-[`Pattern`]: ../../struct.Pattern.html
-[`EGraph`]: ../../struct.EGraph.html
-[`EClass`]: ../../struct.EClass.html
-[`Rewrite`]: ../../struct.Rewrite.html
-[`Runner`]: ../../struct.Runner.html
-[`Extractor`]: ../../struct.Extractor.html
-[`Language`]: ../../trait.Language.html
-[`Analysis`]: ../../trait.Analysis.html
-[`Id`]: ../../type.Id.html
-[`add`]: ../../struct.EGraph.html#method.add
-[`union`]: ../../struct.EGraph.html#method.union
-[`rebuild`]: ../../struct.EGraph.html#method.rebuild
+[`Searcher`]: super::super::Searcher
+[`Pattern`]: super::super::Pattern
+[`EGraph`]: super::super::EGraph
+[`EClass`]: super::super::EClass
+[`Rewrite`]: super::super::Rewrite
+[`Runner`]: super::super::Runner
+[`Extractor`]: super::super::Extractor
+[`Language`]: super::super::Language
+[`Analysis`]: super::super::Analysis
+[`Id`]: super::super::Id
+[`add`]: super::super::EGraph::add()
+[`union`]: super::super::EGraph::union()
+[`rebuild`]: super::super::EGraph::rebuild()
 [equivalence relation]: https://en.wikipedia.org/wiki/Equivalence_relation
 [congruence relation]: https://en.wikipedia.org/wiki/Congruence_relation
-[dot]: ../../struct.Dot.html
-[extract]: ../../struct.Extractor.html
+[dot]: super::super::Dot
+[extract]: super::super::Extractor
 [sound]: https://itinerarium.github.io/phoneme-synthesis/?w=/'igraf/
 [paper]: https://arxiv.org/abs/2004.03082
 

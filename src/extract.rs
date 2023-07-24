@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::fmt::Debug;
 
+use crate::util::HashMap;
 use crate::{Analysis, EClass, EGraph, Id, Language, RecExpr};
 
 /** Extracting a single [`RecExpr`] from an [`EGraph`].
@@ -36,9 +36,8 @@ assert_eq!(best_cost, 1);
 assert_eq!(best, "10".parse().unwrap());
 ```
 
-[`RecExpr`]: struct.RecExpr.html
-[`EGraph`]: struct.EGraph.html
 **/
+#[derive(Debug)]
 pub struct Extractor<'a, CF: CostFunction<L>, L: Language, N: Analysis<L>> {
     cost_function: CF,
     costs: HashMap<Id, (CF::Cost, L)>,
@@ -78,10 +77,41 @@ assert_eq!(AstSize.cost_rec(&e), 4);
 assert_eq!(AstDepth.cost_rec(&e), 2);
 ```
 
-[`AstSize`]: struct.AstSize.html
-[`AstDepth`]: struct.AstDepth.html
-[`Extractor`]: struct.Extractor.html
-[`EGraph`]: struct.EGraph.html
+If you'd like to access the [`Analysis`] data or anything else in the e-graph,
+you can put a reference to the e-graph in your [`CostFunction`]:
+
+```
+# use egg::*;
+# type MyAnalysis = ();
+struct EGraphCostFn<'a> {
+    egraph: &'a EGraph<SymbolLang, MyAnalysis>,
+}
+
+impl<'a> CostFunction<SymbolLang> for EGraphCostFn<'a> {
+    type Cost = usize;
+    fn cost<C>(&mut self, enode: &SymbolLang, mut costs: C) -> Self::Cost
+    where
+        C: FnMut(Id) -> Self::Cost
+    {
+        // use self.egraph however you want here
+        println!("the egraph has {} classes", self.egraph.number_of_classes());
+        return 1
+    }
+}
+
+let mut egraph = EGraph::<SymbolLang, MyAnalysis>::default();
+let id = egraph.add_expr(&"(foo bar)".parse().unwrap());
+let cost_func = EGraphCostFn { egraph: &egraph };
+let mut extractor = Extractor::new(&egraph, cost_func);
+let _ = extractor.find_best(id);
+```
+
+Note that a particular e-class might occur in an expression multiple times.
+This means that pathological, but nevertheless realistic cases
+might overflow `usize` if you implement a cost function like [`AstSize`],
+even if the actual [`RecExpr`] fits compactly in memory.
+You might want to use [`saturating_add`](u64::saturating_add) to
+ensure your cost function is still monotonic in this situation.
 **/
 pub trait CostFunction<L: Language> {
     /// The `Cost` type. It only requires `PartialOrd` so you can use
@@ -103,7 +133,6 @@ pub trait CostFunction<L: Language> {
     /// As provided, this just recursively calls `cost` all the way
     /// down the [`RecExpr`].
     ///
-    /// [`RecExpr`]: struct.RecExpr.html
     fn cost_rec(&mut self, expr: &RecExpr<L>) -> Self::Cost {
         let mut costs: HashMap<Id, Self::Cost> = HashMap::default();
         for (i, node) in expr.as_ref().iter().enumerate() {
@@ -115,7 +144,7 @@ pub trait CostFunction<L: Language> {
     }
 }
 
-/** A simple [`CostFunction`] that counts total ast size.
+/** A simple [`CostFunction`] that counts total AST size.
 
 ```
 # use egg::*;
@@ -123,8 +152,8 @@ let e: RecExpr<SymbolLang> = "(do_it foo bar baz)".parse().unwrap();
 assert_eq!(AstSize.cost_rec(&e), 4);
 ```
 
-[`CostFunction`]: trait.CostFunction.html
 **/
+#[derive(Debug)]
 pub struct AstSize;
 impl<L: Language> CostFunction<L> for AstSize {
     type Cost = usize;
@@ -132,11 +161,11 @@ impl<L: Language> CostFunction<L> for AstSize {
     where
         C: FnMut(Id) -> Self::Cost,
     {
-        enode.fold(1, |sum, id| sum + costs(id))
+        enode.fold(1, |sum, id| sum.saturating_add(costs(id)))
     }
 }
 
-/** A simple [`CostFunction`] that counts maximum ast depth.
+/** A simple [`CostFunction`] that counts maximum AST depth.
 
 ```
 # use egg::*;
@@ -144,8 +173,8 @@ let e: RecExpr<SymbolLang> = "(do_it foo bar baz)".parse().unwrap();
 assert_eq!(AstDepth.cost_rec(&e), 2);
 ```
 
-[`CostFunction`]: trait.CostFunction.html
 **/
+#[derive(Debug)]
 pub struct AstDepth;
 impl<L: Language> CostFunction<L> for AstDepth {
     type Cost = usize;
@@ -163,7 +192,7 @@ fn cmp<T: PartialOrd>(a: &Option<T>, b: &Option<T>) -> Ordering {
         (None, None) => Ordering::Equal,
         (None, Some(_)) => Ordering::Greater,
         (Some(_), None) => Ordering::Less,
-        (Some(a), Some(b)) => a.partial_cmp(&b).unwrap(),
+        (Some(a), Some(b)) => a.partial_cmp(b).unwrap(),
     }
 }
 
@@ -193,30 +222,30 @@ where
 
     /// Find the cheapest (lowest cost) represented `RecExpr` in the
     /// given eclass.
-    pub fn find_best(&mut self, eclass: Id) -> (CF::Cost, RecExpr<L>) {
-        let mut expr = RecExpr::default();
-        let (_, cost) = self.find_best_rec(&mut expr, eclass);
+    pub fn find_best(&self, eclass: Id) -> (CF::Cost, RecExpr<L>) {
+        let (cost, root) = self.costs[&self.egraph.find(eclass)].clone();
+        let expr = root.build_recexpr(|id| self.find_best_node(id).clone());
         (cost, expr)
     }
 
-    fn find_best_rec(&mut self, expr: &mut RecExpr<L>, eclass: Id) -> (Id, CF::Cost) {
-        let id = self.egraph.find(eclass);
-        let (best_cost, best_node) = match self.costs.get(&id) {
-            Some(result) => result.clone(),
-            None => panic!("Failed to extract from eclass {}", id),
-        };
+    /// Find the cheapest e-node in the given e-class.
+    pub fn find_best_node(&self, eclass: Id) -> &L {
+        &self.costs[&self.egraph.find(eclass)].1
+    }
 
-        let node = best_node.map_children(|child| self.find_best_rec(expr, child).0);
-        (expr.add(node), best_cost)
+    /// Find the cost of the term that would be extracted from this e-class.
+    pub fn find_best_cost(&self, eclass: Id) -> CF::Cost {
+        let (cost, _) = &self.costs[&self.egraph.find(eclass)];
+        cost.clone()
     }
 
     fn node_total_cost(&mut self, node: &L) -> Option<CF::Cost> {
         let eg = &self.egraph;
-        let has_cost = |&id| self.costs.contains_key(&eg.find(id));
-        if node.children().iter().all(has_cost) {
+        let has_cost = |id| self.costs.contains_key(&eg.find(id));
+        if node.all(has_cost) {
             let costs = &self.costs;
             let cost_f = |id| costs[&eg.find(id)].0.clone();
-            Some(self.cost_function.cost(&node, cost_f))
+            Some(self.cost_function.cost(node, cost_f))
         } else {
             None
         }
@@ -261,5 +290,26 @@ where
             .min_by(|a, b| cmp(&a.0, &b.0))
             .unwrap_or_else(|| panic!("Can't extract, eclass is empty: {:#?}", eclass));
         cost.map(|c| (c, node.clone()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::*;
+
+    #[test]
+    fn ast_size_overflow() {
+        let rules: &[Rewrite<SymbolLang, ()>] =
+            &[rewrite!("explode"; "(meow ?a)" => "(meow (meow ?a ?a))")];
+
+        let start = "(meow 42)".parse().unwrap();
+        let runner = Runner::default()
+            .with_iter_limit(100)
+            .with_expr(&start)
+            .run(rules);
+
+        let extractor = Extractor::new(&runner.egraph, AstSize);
+        let (_, best_expr) = extractor.find_best(runner.roots[0]);
+        assert_eq!(best_expr, start);
     }
 }

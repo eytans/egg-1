@@ -17,28 +17,45 @@ type Rewrite = egg::Rewrite<Prop, ConstantFold>;
 #[derive(Default)]
 struct ConstantFold;
 impl Analysis<Prop> for ConstantFold {
-    type Data = Option<bool>;
-    fn merge(&self, to: &mut Self::Data, from: Self::Data) -> bool {
-        merge_if_different(to, to.or(from))
+    type Data = Option<(bool, PatternAst<Prop>)>;
+    fn merge(&mut self, to: &mut Self::Data, from: Self::Data) -> DidMerge {
+        merge_option(to, from, |a, b| {
+            assert_eq!(a.0, b.0, "Merged non-equal constants");
+            DidMerge(false, false)
+        })
     }
+
     fn make(egraph: &EGraph, enode: &Prop) -> Self::Data {
-        let x = |i: &Id| egraph[*i].data;
+        let x = |i: &Id| egraph[*i].data.as_ref().map(|c| c.0);
         let result = match enode {
-            Prop::Bool(c) => Some(*c),
+            Prop::Bool(c) => Some((*c, c.to_string().parse().unwrap())),
             Prop::Symbol(_) => None,
-            Prop::And([a, b]) => Some(x(a)? && x(b)?),
-            Prop::Not(a) => Some(!x(a)?),
-            Prop::Or([a, b]) => Some(x(a)? || x(b)?),
-            Prop::Implies([a, b]) => Some(x(a)? || !x(b)?),
+            Prop::And([a, b]) => Some((
+                x(a)? && x(b)?,
+                format!("(& {} {})", x(a)?, x(b)?).parse().unwrap(),
+            )),
+            Prop::Not(a) => Some((!x(a)?, format!("(~ {})", x(a)?).parse().unwrap())),
+            Prop::Or([a, b]) => Some((
+                x(a)? || x(b)?,
+                format!("(| {} {})", x(a)?, x(b)?).parse().unwrap(),
+            )),
+            Prop::Implies([a, b]) => Some((
+                !x(a)? || x(b)?,
+                format!("(-> {} {})", x(a)?, x(b)?).parse().unwrap(),
+            )),
         };
         println!("Make: {:?} -> {:?}", enode, result);
         result
     }
+
     fn modify(egraph: &mut EGraph, id: Id) {
-        println!("Modifying {}", id);
-        if let Some(c) = egraph[id].data {
-            let const_id = egraph.add(Prop::Bool(c));
-            egraph.union(id, const_id);
+        if let Some(c) = egraph[id].data.clone() {
+            egraph.union_instantiations(
+                &c.1,
+                &c.0.to_string().parse().unwrap(),
+                &Default::default(),
+                "analysis".to_string(),
+            );
         }
     }
 }
@@ -67,7 +84,17 @@ rule! {lem,         "(| ?a (~ ?a))",    "true"                      }
 rule! {or_true,     "(| ?a true)",         "true"                      }
 rule! {and_true,    "(& ?a true)",         "?a"                     }
 rule! {contrapositive, "(-> ?a ?b)",    "(-> (~ ?b) (~ ?a))"     }
-rule! {lem_imply, "(& (-> ?a ?b) (-> (~ ?a) ?c))", "(| ?b ?c)"}
+
+// this has to be a multipattern since (& (-> ?a ?b) (-> (~ ?a) ?c))  !=  (| ?b ?c)
+// see https://github.com/egraphs-good/egg/issues/185
+fn lem_imply() -> Rewrite {
+    multi_rewrite!(
+        "lem_imply";
+        "?value = true = (& (-> ?a ?b) (-> (~ ?a) ?c))"
+        =>
+        "?value = (| ?b ?c)"
+    )
+}
 
 fn prove_something(name: &str, start: &str, rewrites: &[Rewrite], goals: &[&str]) {
     let _ = env_logger::builder().is_test(true).try_init();
@@ -76,16 +103,23 @@ fn prove_something(name: &str, start: &str, rewrites: &[Rewrite], goals: &[&str]
     let start_expr: RecExpr<_> = start.parse().unwrap();
     let goal_exprs: Vec<RecExpr<_>> = goals.iter().map(|g| g.parse().unwrap()).collect();
 
-    let egraph = Runner::default()
+    let mut runner = Runner::default()
         .with_iter_limit(20)
         .with_node_limit(5_000)
-        .with_expr(&start_expr)
-        .run(rewrites)
-        .egraph;
+        .with_expr(&start_expr);
+
+    // we are assume the input expr is true
+    // this is needed for the soundness of lem_imply
+    let true_id = runner.egraph.add(Prop::Bool(true));
+    let root = runner.roots[0];
+    runner.egraph.union(root, true_id);
+    runner.egraph.rebuild();
+
+    let egraph = runner.run(rewrites).egraph;
 
     for (i, (goal_expr, goal_str)) in goal_exprs.iter().zip(goals).enumerate() {
         println!("Trying to prove goal {}: {}", i, goal_str);
-        let equivs = egraph.equivs(&start_expr, &goal_expr);
+        let equivs = egraph.equivs(&start_expr, goal_expr);
         if equivs.is_empty() {
             panic!("Couldn't prove goal {}: {}", i, goal_str);
         }

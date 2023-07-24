@@ -48,40 +48,56 @@ impl egg::CostFunction<Math> for MathCostFn {
 #[derive(Default)]
 pub struct ConstantFold;
 impl Analysis<Math> for ConstantFold {
-    type Data = Option<Constant>;
-
-    fn merge(&self, to: &mut Self::Data, from: Self::Data) -> bool {
-        if let (Some(c1), Some(c2)) = (to.as_ref(), from.as_ref()) {
-            assert_eq!(c1, c2);
-        }
-        merge_if_different(to, to.or(from))
-    }
+    type Data = Option<(Constant, PatternAst<Math>)>;
 
     fn make(egraph: &EGraph, enode: &Math) -> Self::Data {
-        let x = |i: &Id| egraph[*i].data;
+        let x = |i: &Id| egraph[*i].data.as_ref().map(|d| d.0);
         Some(match enode {
-            Math::Constant(c) => *c,
-            Math::Add([a, b]) => x(a)? + x(b)?,
-            Math::Sub([a, b]) => x(a)? - x(b)?,
-            Math::Mul([a, b]) => x(a)? * x(b)?,
-            Math::Div([a, b]) if x(b) != Some(0.0.into()) => x(a)? / x(b)?,
+            Math::Constant(c) => (*c, format!("{}", c).parse().unwrap()),
+            Math::Add([a, b]) => (
+                x(a)? + x(b)?,
+                format!("(+ {} {})", x(a)?, x(b)?).parse().unwrap(),
+            ),
+            Math::Sub([a, b]) => (
+                x(a)? - x(b)?,
+                format!("(- {} {})", x(a)?, x(b)?).parse().unwrap(),
+            ),
+            Math::Mul([a, b]) => (
+                x(a)? * x(b)?,
+                format!("(* {} {})", x(a)?, x(b)?).parse().unwrap(),
+            ),
+            Math::Div([a, b]) if x(b) != Some(NotNan::new(0.0).unwrap()) => (
+                x(a)? / x(b)?,
+                format!("(/ {} {})", x(a)?, x(b)?).parse().unwrap(),
+            ),
             _ => return None,
         })
     }
 
+    fn merge(&mut self, to: &mut Self::Data, from: Self::Data) -> DidMerge {
+        merge_option(to, from, |a, b| {
+            assert_eq!(a.0, b.0, "Merged non-equal constants");
+            DidMerge(false, false)
+        })
+    }
+
     fn modify(egraph: &mut EGraph, id: Id) {
-        let class = &mut egraph[id];
-        if let Some(c) = class.data {
-            let added = egraph.add(Math::Constant(c));
-            let (id, _did_something) = egraph.union(id, added);
+        let data = egraph[id].data.clone();
+        if let Some((c, pat)) = data {
+            if egraph.are_explanations_enabled() {
+                egraph.union_instantiations(
+                    &pat,
+                    &format!("{}", c).parse().unwrap(),
+                    &Default::default(),
+                    "constant_fold".to_string(),
+                );
+            } else {
+                let added = egraph.add(Math::Constant(c));
+                egraph.union(id, added);
+            }
             // to not prune, comment this out
             egraph[id].nodes.retain(|n| n.is_leaf());
 
-            assert!(
-                !egraph[id].nodes.is_empty(),
-                "empty eclass! {:#?}",
-                egraph[id]
-            );
             #[cfg(debug_assertions)]
             egraph[id].assert_unique_leaves();
         }
@@ -93,21 +109,17 @@ fn is_const_or_distinct_var(v: &str, w: &str) -> impl Fn(&mut EGraph, Id, &Subst
     let w = w.parse().unwrap();
     move |egraph, _, subst| {
         egraph.find(subst[v]) != egraph.find(subst[w])
-            && egraph[subst[v]]
-                .nodes
-                .iter()
-                .any(|n| matches!(n, Math::Constant(..) | Math::Symbol(..)))
+            && (egraph[subst[v]].data.is_some()
+                || egraph[subst[v]]
+                    .nodes
+                    .iter()
+                    .any(|n| matches!(n, Math::Symbol(..))))
     }
 }
 
 fn is_const(var: &str) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
     let var = var.parse().unwrap();
-    move |egraph, _, subst| {
-        egraph[subst[var]]
-            .nodes
-            .iter()
-            .any(|n| matches!(n, Math::Constant(..)))
-    }
+    move |egraph, _, subst| egraph[subst[var]].data.is_some()
 }
 
 fn is_sym(var: &str) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
@@ -122,8 +134,13 @@ fn is_sym(var: &str) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
 
 fn is_not_zero(var: &str) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
     let var = var.parse().unwrap();
-    let zero = Math::Constant(0.0.into());
-    move |egraph, _, subst| !egraph[subst[var]].nodes.contains(&zero)
+    move |egraph, _, subst| {
+        if let Some(n) = &egraph[subst[var]].data {
+            *(n.0) != 0.0
+        } else {
+            true
+        }
+    }
 }
 
 #[rustfmt::skip]
@@ -258,6 +275,7 @@ egg::test_fn! {
         .with_time_limit(std::time::Duration::from_secs(10))
         .with_iter_limit(60)
         .with_node_limit(100_000)
+        .with_explanations_enabled()
         // HACK this needs to "see" the end expression
         .with_expr(&"(* x (- (* 3 x) 14))".parse().unwrap()),
     "(d x (- (pow x 3) (* 7 (pow x 2))))"
@@ -288,4 +306,251 @@ egg::test_fn! {
 
 egg::test_fn! {
     integ_part3, rules(), "(i (ln x) x)" => "(- (* x (ln x)) x)"
+}
+
+#[test]
+fn assoc_mul_saturates() {
+    let expr: RecExpr<Math> = "(* x 1)".parse().unwrap();
+
+    let runner: Runner<Math, ConstantFold> = Runner::default()
+        .with_iter_limit(3)
+        .with_expr(&expr)
+        .run(&rules());
+
+    assert!(matches!(runner.stop_reason, Some(StopReason::Saturated)));
+}
+
+#[test]
+fn test_union_trusted() {
+    let expr: RecExpr<Math> = "(+ (* x 1) y)".parse().unwrap();
+    let expr2 = "20".parse().unwrap();
+    let mut runner: Runner<Math, ConstantFold> = Runner::default()
+        .with_explanations_enabled()
+        .with_iter_limit(3)
+        .with_expr(&expr)
+        .run(&rules());
+    let lhs = runner.egraph.add_expr(&expr);
+    let rhs = runner.egraph.add_expr(&expr2);
+    runner.egraph.union_trusted(lhs, rhs, "whatever");
+    let proof = runner.explain_equivalence(&expr, &expr2).get_flat_strings();
+    assert_eq!(proof, vec!["(+ (* x 1) y)", "(Rewrite=> whatever 20)"]);
+}
+
+#[cfg(feature = "lp")]
+#[test]
+fn math_lp_extract() {
+    let expr: RecExpr<Math> = "(pow (+ x (+ x x)) (+ x x))".parse().unwrap();
+
+    let runner: Runner<Math, ConstantFold> = Runner::default()
+        .with_iter_limit(3)
+        .with_expr(&expr)
+        .run(&rules());
+    let root = runner.roots[0];
+
+    let best = Extractor::new(&runner.egraph, AstSize).find_best(root).1;
+    let lp_best = LpExtractor::new(&runner.egraph, AstSize).solve(root);
+
+    println!("input   [{}] {}", expr.as_ref().len(), expr);
+    println!("normal  [{}] {}", best.as_ref().len(), best);
+    println!("ilp cse [{}] {}", lp_best.as_ref().len(), lp_best);
+
+    assert_ne!(best, lp_best);
+    assert_eq!(lp_best.as_ref().len(), 4);
+}
+
+#[test]
+fn math_ematching_bench() {
+    let exprs = &[
+        "(i (ln x) x)",
+        "(i (+ x (cos x)) x)",
+        "(i (* (cos x) x) x)",
+        "(d x (+ 1 (* 2 x)))",
+        "(d x (- (pow x 3) (* 7 (pow x 2))))",
+        "(+ (* y (+ x y)) (- (+ x 2) (+ x x)))",
+        "(/ 1 (- (/ (+ 1 (sqrt five)) 2) (/ (- 1 (sqrt five)) 2)))",
+    ];
+
+    let extra_patterns = &[
+        "(+ ?a (+ ?b ?c))",
+        "(+ (+ ?a ?b) ?c)",
+        "(* ?a (* ?b ?c))",
+        "(* (* ?a ?b) ?c)",
+        "(+ ?a (* -1 ?b))",
+        "(* ?a (pow ?b -1))",
+        "(* ?a (+ ?b ?c))",
+        "(pow ?a (+ ?b ?c))",
+        "(+ (* ?a ?b) (* ?a ?c))",
+        "(* (pow ?a ?b) (pow ?a ?c))",
+        "(* ?x (/ 1 ?x))",
+        "(d ?x (+ ?a ?b))",
+        "(+ (d ?x ?a) (d ?x ?b))",
+        "(d ?x (* ?a ?b))",
+        "(+ (* ?a (d ?x ?b)) (* ?b (d ?x ?a)))",
+        "(d ?x (sin ?x))",
+        "(d ?x (cos ?x))",
+        "(* -1 (sin ?x))",
+        "(* -1 (cos ?x))",
+        "(i (cos ?x) ?x)",
+        "(i (sin ?x) ?x)",
+        "(d ?x (ln ?x))",
+        "(d ?x (pow ?f ?g))",
+        "(* (pow ?f ?g) (+ (* (d ?x ?f) (/ ?g ?f)) (* (d ?x ?g) (ln ?f))))",
+        "(i (pow ?x ?c) ?x)",
+        "(/ (pow ?x (+ ?c 1)) (+ ?c 1))",
+        "(i (+ ?f ?g) ?x)",
+        "(i (- ?f ?g) ?x)",
+        "(+ (i ?f ?x) (i ?g ?x))",
+        "(- (i ?f ?x) (i ?g ?x))",
+        "(i (* ?a ?b) ?x)",
+        "(- (* ?a (i ?b ?x)) (i (* (d ?x ?a) (i ?b ?x)) ?x))",
+    ];
+
+    egg::test::bench_egraph("math", rules(), exprs, extra_patterns);
+}
+
+#[test]
+fn test_basic_egraph_union_intersect() {
+    let mut egraph1 = EGraph::new(ConstantFold {}).with_explanations_enabled();
+    let mut egraph2 = EGraph::new(ConstantFold {}).with_explanations_enabled();
+    egraph1.union_instantiations(
+        &"x".parse().unwrap(),
+        &"y".parse().unwrap(),
+        &Default::default(),
+        "",
+    );
+    egraph1.union_instantiations(
+        &"y".parse().unwrap(),
+        &"z".parse().unwrap(),
+        &Default::default(),
+        "",
+    );
+    egraph2.union_instantiations(
+        &"x".parse().unwrap(),
+        &"y".parse().unwrap(),
+        &Default::default(),
+        "",
+    );
+    egraph2.union_instantiations(
+        &"x".parse().unwrap(),
+        &"a".parse().unwrap(),
+        &Default::default(),
+        "",
+    );
+
+    let mut egraph3 = egraph1.egraph_intersect(&egraph2, ConstantFold {});
+
+    egraph2.egraph_union(&egraph1);
+
+    assert_eq!(
+        egraph2.add_expr(&"x".parse().unwrap()),
+        egraph2.add_expr(&"y".parse().unwrap())
+    );
+    assert_eq!(
+        egraph3.add_expr(&"x".parse().unwrap()),
+        egraph3.add_expr(&"y".parse().unwrap())
+    );
+
+    assert_eq!(
+        egraph2.add_expr(&"x".parse().unwrap()),
+        egraph2.add_expr(&"z".parse().unwrap())
+    );
+    assert_ne!(
+        egraph3.add_expr(&"x".parse().unwrap()),
+        egraph3.add_expr(&"z".parse().unwrap())
+    );
+    assert_eq!(
+        egraph2.add_expr(&"x".parse().unwrap()),
+        egraph2.add_expr(&"a".parse().unwrap())
+    );
+    assert_ne!(
+        egraph3.add_expr(&"x".parse().unwrap()),
+        egraph3.add_expr(&"a".parse().unwrap())
+    );
+
+    assert_eq!(
+        egraph2.add_expr(&"y".parse().unwrap()),
+        egraph2.add_expr(&"a".parse().unwrap())
+    );
+    assert_ne!(
+        egraph3.add_expr(&"y".parse().unwrap()),
+        egraph3.add_expr(&"a".parse().unwrap())
+    );
+}
+
+#[test]
+fn test_intersect_basic() {
+    let mut egraph1 = EGraph::new(ConstantFold {}).with_explanations_enabled();
+    let mut egraph2 = EGraph::new(ConstantFold {}).with_explanations_enabled();
+    egraph1.union_instantiations(
+        &"(+ x 0)".parse().unwrap(),
+        &"(+ y 0)".parse().unwrap(),
+        &Default::default(),
+        "",
+    );
+    egraph2.union_instantiations(
+        &"x".parse().unwrap(),
+        &"y".parse().unwrap(),
+        &Default::default(),
+        "",
+    );
+    egraph2.add_expr(&"(+ x 0)".parse().unwrap());
+    egraph2.add_expr(&"(+ y 0)".parse().unwrap());
+
+    let mut egraph3 = egraph1.egraph_intersect(&egraph2, ConstantFold {});
+
+    assert_ne!(
+        egraph3.add_expr(&"x".parse().unwrap()),
+        egraph3.add_expr(&"y".parse().unwrap())
+    );
+    assert_eq!(
+        egraph3.add_expr(&"(+ x 0)".parse().unwrap()),
+        egraph3.add_expr(&"(+ y 0)".parse().unwrap())
+    );
+}
+
+#[test]
+fn test_medium_intersect() {
+    let mut egraph1 = egg::EGraph::<Math, ()>::new(());
+
+    egraph1.add_expr(&"(sqrt (ln 1))".parse().unwrap());
+    let ln = egraph1.add_expr(&"(ln 1)".parse().unwrap());
+    let a = egraph1.add_expr(&"(sqrt (sin pi))".parse().unwrap());
+    let b = egraph1.add_expr(&"(* 1 pi)".parse().unwrap());
+    let pi = egraph1.add_expr(&"pi".parse().unwrap());
+    egraph1.union(a, b);
+    egraph1.union(a, pi);
+    let c = egraph1.add_expr(&"(+ pi pi)".parse().unwrap());
+    egraph1.union(ln, c);
+    let k = egraph1.add_expr(&"k".parse().unwrap());
+    let one = egraph1.add_expr(&"1".parse().unwrap());
+    egraph1.union(k, one);
+    egraph1.rebuild();
+
+    assert_eq!(
+        egraph1.add_expr(&"(ln k)".parse().unwrap()),
+        egraph1.add_expr(&"(+ (* k pi) (* k pi))".parse().unwrap())
+    );
+
+    let mut egraph2 = egg::EGraph::<Math, ()>::new(());
+    let ln = egraph2.add_expr(&"(ln 2)".parse().unwrap());
+    let k = egraph2.add_expr(&"k".parse().unwrap());
+    let mk1 = egraph2.add_expr(&"(* k 1)".parse().unwrap());
+    egraph2.union(mk1, k);
+    let two = egraph2.add_expr(&"2".parse().unwrap());
+    egraph2.union(mk1, two);
+    let mul2pi = egraph2.add_expr(&"(+ (* 2 pi) (* 2 pi))".parse().unwrap());
+    egraph2.union(ln, mul2pi);
+    egraph2.rebuild();
+
+    assert_eq!(
+        egraph2.add_expr(&"(ln k)".parse().unwrap()),
+        egraph2.add_expr(&"(+ (* k pi) (* k pi))".parse().unwrap())
+    );
+
+    let mut egraph3 = egraph1.egraph_intersect(&egraph2, ());
+
+    assert_eq!(
+        egraph3.add_expr(&"(ln k)".parse().unwrap()),
+        egraph3.add_expr(&"(+ (* k pi) (* k pi))".parse().unwrap())
+    );
 }
