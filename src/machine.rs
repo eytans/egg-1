@@ -1,13 +1,31 @@
 use crate::*;
-use std::result;
 
-type Result = result::Result<(), ()>;
-
-#[derive(Default)]
-struct Machine {
+struct Machine<'a, L: Language, N: Analysis<L>> {
     reg: Vec<Id>,
     // a buffer to re-use for lookups
     lookup: Vec<Id>,
+    stack: Vec<MachineContext>,
+    instructions: &'a [Instruction<L>],
+    egraph: &'a EGraph<L, N>,
+    subst: Subst,
+}
+
+impl<'a, L: Language, N: Analysis<L>> Machine<'a, L, N> {
+    #[inline(always)]
+    fn reg(&self, reg: Reg) -> Id {
+        self.reg[reg.0 as usize]
+    }
+
+    fn new(instructions: &'a [Instruction<L>], egraph: &'a EGraph<L, N>, subst: Subst) -> Self {
+        Machine {
+            reg: Default::default(),
+            lookup: Default::default(),
+            stack: Default::default(),
+            instructions,
+            egraph,
+            subst,
+        }
+    }
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -37,8 +55,8 @@ enum ENodeOrReg<L> {
 fn for_each_matching_node<L, D>(
     eclass: &EClass<L, D>,
     node: &L,
-    mut f: impl FnMut(&L) -> Result,
-) -> Result
+    mut f: impl FnMut(&L) -> (),
+)
 where
     L: Language,
 {
@@ -48,7 +66,7 @@ where
             .nodes
             .iter()
             .filter(|n| node.matches(n))
-            .try_for_each(f)
+            .for_each(f)
     } else {
         debug_assert!(node.all(|id| id == Id::from(0)));
         debug_assert!(eclass.nodes.windows(2).all(|w| w[0] < w[1]));
@@ -61,7 +79,7 @@ where
                 break;
             }
         }
-        let mut matching = eclass.nodes[start..]
+        let matching = eclass.nodes[start..]
             .iter()
             .take_while(|&n| std::mem::discriminant(n) == discrim)
             .filter(|n| node.matches(n));
@@ -79,7 +97,7 @@ where
                 .collect::<HashSet<_>>(),
             eclass.nodes
         );
-        matching.try_for_each(&mut f)
+        matching.for_each(&mut f)
     }
 }
 
@@ -99,53 +117,38 @@ impl MachineContext {
     }
 }
 
-impl Machine {
-    #[inline(always)]
-    fn reg(&self, reg: Reg) -> Id {
-        self.reg[reg.0 as usize]
-    }
+impl<'a, L: Language, N: Analysis<L>> Iterator for Machine<'a, L, N> {
+    type Item = Subst;
 
-    fn run<L, N>(
-        &mut self,
-        egraph: &EGraph<L, N>,
-        instructions: &[Instruction<L>],
-        subst: &Subst,
-        yield_fn: &mut impl FnMut(&Self, &Subst) -> Result,
-    ) -> Result
-    where
-        L: Language,
-        N: Analysis<L>,
-    {
-        let mut stack: Vec<MachineContext> = vec![MachineContext::new(0,  self.reg.len(), vec![])];
-        while !stack.is_empty() {
-            let current_state = stack.pop().unwrap();
+    fn next(&mut self) -> Option<Self::Item> {
+        while !self.stack.is_empty() {
+            let current_state = self.stack.pop().unwrap();
             self.reg.truncate(current_state.truncate);
             for id in current_state.to_push {
                 self.reg.push(id);
             }
             let mut index = current_state.instruction_index;
-            'instr: while index < instructions.len() {
-                let instruction = &instructions[index];
+            'instr: while index < self.instructions.len() {
+                let instruction = &self.instructions[index];
                 match instruction {
                     Instruction::Bind { eclass, out, node } => {
-                        for_each_matching_node(&egraph[self.reg(*eclass)], node, |matched| {
+                        for_each_matching_node(&self.egraph[self.reg(*eclass)], node, |matched| {
                             let truncate = out.0 as usize;
                             let to_push = matched.children().iter().copied().collect();
-                            stack.push(MachineContext::new(index + 1, truncate, to_push));
-                            Ok(())
-                        })?;
+                            self.stack.push(MachineContext::new(index + 1, truncate, to_push));
+                        });
                         break;
                     }
                     Instruction::Scan { out } => {
-                        for class in egraph.classes() {
+                        for class in self.egraph.classes() {
                             let truncate = out.0 as usize;
                             let to_push = vec![class.id];
-                            stack.push(MachineContext::new(index + 1, truncate, to_push));
+                            self.stack.push(MachineContext::new(index + 1, truncate, to_push));
                         }
                         break;
                     }
                     Instruction::Compare { i, j } => {
-                        if egraph.find(self.reg(*i)) != egraph.find(self.reg(*j)) {
+                        if self.egraph.find(self.reg(*i)) != self.egraph.find(self.reg(*j)) {
                             break;
                         }
                     }
@@ -155,18 +158,18 @@ impl Machine {
                             match node {
                                 ENodeOrReg::ENode(node) => {
                                     let look = |i| self.lookup[usize::from(i)];
-                                    match egraph.lookup(node.clone().map_children(look)) {
+                                    match self.egraph.lookup(node.clone().map_children(look)) {
                                         Some(id) => self.lookup.push(id),
                                         None => break 'instr,
                                     }
                                 }
                                 ENodeOrReg::Reg(r) => {
-                                    self.lookup.push(egraph.find(self.reg(*r)));
+                                    self.lookup.push(self.egraph.find(self.reg(*r)));
                                 }
                             }
                         }
 
-                        let id = egraph.find(self.reg(*i));
+                        let id = self.egraph.find(self.reg(*i));
                         if self.lookup.last().copied() != Some(id) {
                             break 'instr;
                         }
@@ -174,11 +177,17 @@ impl Machine {
                 };
                 index += 1;
             }
-            if index == instructions.len() {
-                yield_fn(self, subst)?
+            if index == self.instructions.len() {
+                let subst_vec = self.subst
+                    .vec
+                    .iter()
+                    // HACK we are reusing Ids here, this is bad
+                    .map(|(v, reg_id)| (*v, self.reg(Reg(usize::from(*reg_id) as u32))))
+                    .collect();
+                return Some(Subst { vec: subst_vec });
             }
         }
-        Ok(())
+        return None;
     }
 }
 
@@ -374,7 +383,7 @@ impl<L: Language> Program<L> {
         &self,
         egraph: &EGraph<L, A>,
         eclass: Id,
-        mut limit: usize,
+        limit: usize,
     ) -> Vec<Subst>
     where
         A: Analysis<L>,
@@ -385,33 +394,12 @@ impl<L: Language> Program<L> {
             return vec![];
         }
 
-        let mut machine = Machine::default();
+        let mut machine = Machine::new(&self.instructions, egraph, self.subst.clone());
         assert_eq!(machine.reg.len(), 0);
         machine.reg.push(eclass);
+        machine.stack.push(MachineContext::new(0,  1, vec![]));
 
-        let mut matches = Vec::new();
-        machine
-            .run(
-                egraph,
-                &self.instructions,
-                &self.subst,
-                &mut |machine, subst| {
-                    let subst_vec = subst
-                        .vec
-                        .iter()
-                        // HACK we are reusing Ids here, this is bad
-                        .map(|(v, reg_id)| (*v, machine.reg(Reg(usize::from(*reg_id) as u32))))
-                        .collect();
-                    matches.push(Subst { vec: subst_vec });
-                    limit -= 1;
-                    if limit != 0 {
-                        Ok(())
-                    } else {
-                        Err(())
-                    }
-                },
-            )
-            .unwrap_or_default();
+        let matches = machine.into_iter().take(limit).collect();
 
         log::trace!("Ran program, found {:?}", matches);
         matches
