@@ -21,7 +21,7 @@ pub struct Program<L> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Instruction<L> {
-    Bind { node: L, i: Reg, out: Reg },
+    Bind { node: L, eclass: Reg, out: Reg },
     Compare { i: Reg, j: Reg },
     Lookup { term: Vec<ENodeOrReg<L>>, i: Reg },
     Scan { out: Reg },
@@ -83,6 +83,22 @@ where
     }
 }
 
+struct MachineContext {
+    instruction_index: usize,
+    truncate: usize,
+    to_push: Vec<Id>,
+}
+
+impl MachineContext {
+    fn new(instruction_index: usize, truncate: usize, push: Vec<Id>) -> Self {
+        Self {
+            instruction_index,
+            truncate,
+            to_push: push
+        }
+    }
+}
+
 impl Machine {
     #[inline(always)]
     fn reg(&self, reg: Reg) -> Id {
@@ -100,57 +116,69 @@ impl Machine {
         L: Language,
         N: Analysis<L>,
     {
-        let mut instructions = instructions.iter();
-        while let Some(instruction) = instructions.next() {
-            match instruction {
-                Instruction::Bind { i, out, node } => {
-                    let remaining_instructions = instructions.as_slice();
-                    return for_each_matching_node(&egraph[self.reg(*i)], node, |matched| {
-                        self.reg.truncate(out.0 as usize);
-                        matched.for_each(|id| self.reg.push(id));
-                        self.run(egraph, remaining_instructions, subst, yield_fn)
-                    });
-                }
-                Instruction::Scan { out } => {
-                    let remaining_instructions = instructions.as_slice();
-                    for class in egraph.classes() {
-                        self.reg.truncate(out.0 as usize);
-                        self.reg.push(class.id);
-                        self.run(egraph, remaining_instructions, subst, yield_fn)?
+        let mut stack: Vec<MachineContext> = vec![MachineContext::new(0,  self.reg.len(), vec![])];
+        while !stack.is_empty() {
+            let current_state = stack.pop().unwrap();
+            self.reg.truncate(current_state.truncate);
+            for id in current_state.to_push {
+                self.reg.push(id);
+            }
+            let mut index = current_state.instruction_index;
+            'instr: while index < instructions.len() {
+                let instruction = &instructions[index];
+                match instruction {
+                    Instruction::Bind { eclass, out, node } => {
+                        for_each_matching_node(&egraph[self.reg(*eclass)], node, |matched| {
+                            let truncate = out.0 as usize;
+                            let to_push = matched.children().iter().copied().collect();
+                            stack.push(MachineContext::new(index + 1, truncate, to_push));
+                            Ok(())
+                        })?;
+                        break;
                     }
-                    return Ok(());
-                }
-                Instruction::Compare { i, j } => {
-                    if egraph.find(self.reg(*i)) != egraph.find(self.reg(*j)) {
-                        return Ok(());
+                    Instruction::Scan { out } => {
+                        for class in egraph.classes() {
+                            let truncate = out.0 as usize;
+                            let to_push = vec![class.id];
+                            stack.push(MachineContext::new(index + 1, truncate, to_push));
+                        }
+                        break;
                     }
-                }
-                Instruction::Lookup { term, i } => {
-                    self.lookup.clear();
-                    for node in term {
-                        match node {
-                            ENodeOrReg::ENode(node) => {
-                                let look = |i| self.lookup[usize::from(i)];
-                                match egraph.lookup(node.clone().map_children(look)) {
-                                    Some(id) => self.lookup.push(id),
-                                    None => return Ok(()),
-                                }
-                            }
-                            ENodeOrReg::Reg(r) => {
-                                self.lookup.push(egraph.find(self.reg(*r)));
-                            }
+                    Instruction::Compare { i, j } => {
+                        if egraph.find(self.reg(*i)) != egraph.find(self.reg(*j)) {
+                            break;
                         }
                     }
+                    Instruction::Lookup { term, i } => {
+                        self.lookup.clear();
+                        for node in term {
+                            match node {
+                                ENodeOrReg::ENode(node) => {
+                                    let look = |i| self.lookup[usize::from(i)];
+                                    match egraph.lookup(node.clone().map_children(look)) {
+                                        Some(id) => self.lookup.push(id),
+                                        None => break 'instr,
+                                    }
+                                }
+                                ENodeOrReg::Reg(r) => {
+                                    self.lookup.push(egraph.find(self.reg(*r)));
+                                }
+                            }
+                        }
 
-                    let id = egraph.find(self.reg(*i));
-                    if self.lookup.last().copied() != Some(id) {
-                        return Ok(());
+                        let id = egraph.find(self.reg(*i));
+                        if self.lookup.last().copied() != Some(id) {
+                            break 'instr;
+                        }
                     }
-                }
+                };
+                index += 1;
+            }
+            if index == instructions.len() {
+                yield_fn(self, subst)?
             }
         }
-
-        yield_fn(self, subst)
+        Ok(())
     }
 }
 
@@ -300,7 +328,7 @@ impl<L: Language> Compiler<L> {
                 // zero out the children so Bind can use it to sort
                 let op = node.clone().map_children(|_| Id::from(0));
                 self.instructions.push(Instruction::Bind {
-                    i: reg,
+                    eclass: reg,
                     node: op,
                     out,
                 });
