@@ -1,5 +1,5 @@
-use crate::{EGraph, Id, Pattern, Searcher, SearchMatches, Subst, Var, Language, Analysis, Condition, ImmutableCondition, RcImmutableCondition, ToCondRc, ColorId};
-use itertools::{Itertools, Either};
+use crate::{EGraph, Id, Pattern, Searcher, SearchMatches, Subst, Var, Language, Analysis, ColorId};
+use itertools::{Itertools};
 
 use crate::eggstentions::pretty_string::PrettyString;
 use std::fmt::{Debug, Display};
@@ -84,17 +84,19 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> Matcher<L, N> for PatternM
         let res = self.pattern.search(graph).into_iter().flat_map(|x| {
             let mut black_subs = None;
             let mut colored_subs = None;
-            for s in x.substs.iter()
-                .filter(|s| s.color().is_none() || (s.color() == subst.color())) {
-                if graph.subst_agrees(s, subst, true) {
-                    if s.color().is_some() {
-                        colored_subs = Some(graph.colored_find(s.color().unwrap(), x.eclass));
-                    } else {
-                        black_subs = Some(graph.find(x.eclass));
+            for (eclass, substs) in x.matches {
+                for s in substs.iter()
+                    .filter(|s| s.color().is_none() || (s.color() == subst.color())) {
+                    if graph.subst_agrees(s, subst, true) {
+                        if s.color().is_some() {
+                            colored_subs = Some(graph.colored_find(s.color().unwrap(), eclass));
+                        } else {
+                            black_subs = Some(graph.find(eclass));
+                        }
                     }
-                }
-                if black_subs.is_some() && (colored_subs.is_some() || subst.color().is_none()) {
-                    break;
+                    if black_subs.is_some() && (colored_subs.is_some() || subst.color().is_none()) {
+                        break;
+                    }
                 }
             }
             vec![black_subs, colored_subs].into_iter().filter_map(|s| s)
@@ -182,93 +184,6 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> Matcher<L, N> for Disjoint
     }
 }
 
-/// Wrapper for two types of searchers.
-pub struct EitherSearcher<L: Language, N: Analysis<L>, A: Searcher<L, N> + Debug, B: Searcher<L, N> + Debug> {
-    node: Either<A, B>,
-    phantom: PhantomData<(L, N)>,
-}
-
-impl<L: Language, N: Analysis<L>, A: Searcher<L, N> + Debug, B: Searcher<L, N> + Debug> EitherSearcher<L, N, A, B> {
-    /// Creates a new EitherSearcher with the left type.
-    pub fn left(a: A) -> EitherSearcher<L, N, A, B> {
-        EitherSearcher { node: Either::Left(a), phantom: PhantomData::default() }
-    }
-
-    /// Creates a new EitherSearcher with the right type.
-    pub fn right(b: B) -> EitherSearcher<L, N, A, B> {
-        EitherSearcher { node: Either::Right(b), phantom: PhantomData::default() }
-    }
-}
-
-impl<L: Language, N: Analysis<L>, A: Searcher<L, N> + Debug, B: Searcher<L, N> + Debug> Searcher<L, N> for EitherSearcher<L, N, A, B> {
-    fn search_eclass(&self, egraph: &EGraph<L, N>, eclass: Id) -> Option<SearchMatches> {
-        if self.node.is_left() {
-            self.node.as_ref().left().unwrap().search_eclass(egraph, eclass)
-        } else {
-            self.node.as_ref().right().unwrap().search_eclass(egraph, eclass)
-        }
-    }
-
-    fn search(&self, egraph: &EGraph<L, N>) -> Vec<SearchMatches> {
-        if self.node.is_left() {
-            self.node.as_ref().left().unwrap().search(egraph)
-        } else {
-            self.node.as_ref().right().unwrap().search(egraph)
-        }
-    }
-
-    fn colored_search_eclass(&self, egraph: &EGraph<L, N>, eclass: Id, color: ColorId) -> Option<SearchMatches> {
-        if self.node.is_left() {
-            self.node.as_ref().left().unwrap().colored_search_eclass(egraph, eclass, color)
-        } else {
-            self.node.as_ref().right().unwrap().colored_search_eclass(egraph, eclass, color)
-        }
-    }
-
-    fn vars(&self) -> Vec<Var> {
-        if self.node.is_left() {
-            self.node.as_ref().left().unwrap().vars()
-        } else {
-            self.node.as_ref().right().unwrap().vars()
-        }
-    }
-}
-
-impl<L: Language, N: Analysis<L>, A: Searcher<L, N> + Debug, B: Searcher<L, N> + Debug> std::fmt::Display for EitherSearcher<L, N, A, B> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match &self.node {
-            Either::Left(x) => { write!(f, "{}", x) }
-            Either::Right(x) => { write!(f, "{}", x) }
-        }
-    }
-}
-
-impl<L: Language, N: Analysis<L>, A: Searcher<L, N> + Debug + Clone, B: Searcher<L, N> + Debug + Clone> Clone for EitherSearcher<L, N, A, B> {
-    fn clone(&self) -> Self {
-        if self.node.is_left() {
-            Self::left(self.node.as_ref().left().unwrap().clone())
-        } else {
-            Self::right(self.node.as_ref().right().unwrap().clone())
-        }
-    }
-}
-
-impl<L: Language, N: Analysis<L>, A: Searcher<L, N> + Debug + PrettyString, B: Searcher<L, N> + Debug + PrettyString> PrettyString for EitherSearcher<L, N, A, B> {
-    fn pretty_string(&self) -> String {
-        if self.node.is_left() {
-            self.node.as_ref().left().unwrap().pretty_string()
-        } else {
-            self.node.as_ref().right().unwrap().pretty_string()
-        }
-    }
-}
-
-impl<L: Language, N: Analysis<L>, A: Searcher<L, N> + Debug, B: Searcher<L, N> + Debug> Debug for EitherSearcher<L, N, A, B> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        Debug::fmt(&self.node, f)
-    }
-}
-
 #[allow(unused)]
 fn merge_substs(vars: &Vec<Var>, sub1: &Subst, sub2: &Subst) -> Subst {
     let mut res = Subst::colored_with_capacity(vars.len(), sub1.color().or_else(|| sub2.color()));
@@ -320,201 +235,20 @@ fn aggregate_substs(matches_by_subst: &[Vec<(Vec<Option<Id>>, Vec<(Id, Subst)>)>
 /**
  * A condition that is true for ids where the two disjoint matchers disagree.
  */
-pub struct DisjointMatchCondition<L: Language, N: Analysis<L>> {
-    disjointer: DisjointMatcher<L, N>,
-    #[allow(dead_code)]
-    #[cfg(debug_assertions)]
-    desc: String,
-}
-
-impl<L: Language + 'static, N: Analysis<L> + 'static> DisjointMatchCondition<L, N> {
-    /// Create a new disjoint matcher condition.
-    pub fn new(disjointer: DisjointMatcher<L, N>) -> Self {
-        #[cfg(debug_assertions)]
-        let desc = disjointer.describe();
-        DisjointMatchCondition {
-            disjointer,
-            #[cfg(debug_assertions)]
-            desc,
-        }
-    }
-}
-
-impl<L: Language, N: Analysis<L>> ToCondRc<L, N> for DisjointMatchCondition<L, N> {}
-
-impl<L: Language + 'static, N: Analysis<L> + 'static> ImmutableCondition<L, N> for DisjointMatchCondition<L, N> {
-    fn check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
-        trace!("DisjointMatchCondition::{}({}, {}) - Start", self.describe(), eclass, subst);
-        let res = self.disjointer.is_disjoint(egraph, subst);
-        trace!("DisjointMatchCondition::{}({}, {}) - End - {}", self.describe(), eclass, subst, res);
-        res
-    }
-
-    fn colored_check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
-        // I think this is always like check_imm because adding colored assumptions will just
-        // create sets that are less disjoint.
-        trace!("DisjointMatchCondition::colored::{}({}, {}) - Start", self.describe(), eclass, subst);
-        let res = self.check_imm(egraph, eclass, subst)
-            .then(|| subst.color().map(|c| vec![c]).unwrap_or(vec![]));
-        trace!("DisjointMatchCondition::colored::{}({}, {}) - End - {:?}", self.describe(), eclass, subst, res);
-        res
-    }
-
-    fn describe(&self) -> String {
-        format!("{}", self.disjointer.describe())
-    }
-}
+// pub struct DisjointMatchCondition<L: Language, N: Analysis<L>> {
+//     disjointer: DisjointMatcher<L, N>,
+//     #[allow(dead_code)]
+//     #[cfg(debug_assertions)]
+//     desc: String,
+// }
 
 /**
  * A condition that is true when the matcher contains the id being checked.
  */
-#[derive(Clone)]
-pub struct MatcherContainsCondition<L: Language + 'static, N: Analysis<L> + 'static> {
-    matcher: Rc<dyn Matcher<L, N>>,
-}
-
-impl <L: Language + 'static, N: Analysis<L> + 'static> MatcherContainsCondition<L, N> {
-    /// Create a new matcher contains condition.
-    pub fn new(matcher: Rc<dyn Matcher<L, N>>) -> Self {
-        MatcherContainsCondition { matcher }
-    }
-}
-
-impl<L: Language + 'static, N: Analysis<L> + 'static> ToCondRc<L, N> for MatcherContainsCondition<L, N> {}
-
-impl<L: Language + 'static, N: Analysis<L> + 'static> ImmutableCondition<L, N> for MatcherContainsCondition<L, N> {
-    fn check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
-        trace!("MatcherContainsCondition::{}({}, {}) - Start", ImmutableCondition::describe(self), eclass, subst);
-        let fixed = egraph.opt_colored_find(subst.color(), eclass);
-        let res = (self.matcher.match_(egraph, subst)).iter()
-            .map(|id| egraph.opt_colored_find(subst.color(), *id))
-            .any(|id| id == fixed);
-        trace!("MatcherContainsCondition::{}({}, {}) - End - {}", ImmutableCondition::describe(self), eclass, subst, res);
-        res
-    }
-
-    fn colored_check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
-        trace!("MatcherContainsCondition::colored::{}({}, {}) - Start", ImmutableCondition::describe(self), eclass, subst);
-        let fixed = egraph.opt_colored_find(subst.color(), eclass);
-        let mut colors = Vec::new();
-        for id in self.matcher.match_(egraph, subst) {
-            if egraph.opt_colored_find(subst.color(), id) == fixed {
-                let res = Some(subst.color().map(|c| vec![c]).unwrap_or(vec![]));
-                trace!("MatcherContainsCondition::colored::{}({}, {}) - End - {:?}", ImmutableCondition::describe(self), eclass, subst, res);
-                return res;
-            }
-            if subst.color().is_none() {
-                if let Some(eqs) = egraph.get_colored_equalities(id) {
-                    for (c, id) in eqs {
-                        if egraph.colored_find(c, id) == egraph.colored_find(c, eclass) {
-                            if !colors.contains(&c) {
-                                colors.push(c);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        let res = if colors.is_empty() {
-            None
-        } else {
-            Some(colors)
-        };
-        trace!("MatcherContainsCondition::colored::{}({}, {}) - End - {:?}", ImmutableCondition::describe(self), eclass, subst, res);
-        res
-    }
-
-    fn describe(&self) -> String {
-        format!("({}).root.contains(subst_root)", self.matcher.describe())
-    }
-}
-
-impl<L: Language + 'static, N: Analysis<L> + 'static> Condition<L, N> for MatcherContainsCondition<L, N> {
-    fn check(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
-        self.check_imm(egraph, eclass, subst)
-    }
-
-    fn check_colored(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
-        self.colored_check_imm(egraph, eclass, subst)
-    }
-
-    fn describe(&self) -> String {
-        self.matcher.describe()
-    }
-}
-
-/// Searcher that only returns results where given condition (`predicate`) is true.
-#[derive(Clone)]
-pub struct FilteringSearcher<L: Language, N: Analysis<L>> {
-    searcher: Rc<dyn Searcher<L, N>>,
-    predicate: RcImmutableCondition<L, N>,
-    phantom_ln: PhantomData<(L, N)>,
-}
-
-impl<L: Language, N: Analysis<L>> PrettyString for FilteringSearcher<L, N> {
-    fn pretty_string(&self) -> String {
-        format!("{}[{}]", self.searcher, self.predicate.describe())
-    }
-}
-
-impl<'a, L: Language + 'static, N: Analysis<L> + 'static> FilteringSearcher<L, N> {
-    /// Create a new DisjointMatchCondition from two matchers.
-    pub fn create_non_pattern_filterer(matcher: RcMatcher<L, N>,
-                                       negator: RcMatcher<L, N>)
-        -> RcImmutableCondition<L, N> {
-        let dis_matcher = DisjointMatcher::new(matcher, negator);
-        DisjointMatchCondition::new(dis_matcher).into_rc()
-    }
-
-    /// Create a new FilteringSearcher.
-    pub fn new(searcher: Rc<dyn Searcher<L, N>>,
-               predicate: RcImmutableCondition<L, N>, ) -> Self {
-        FilteringSearcher {
-            searcher,
-            predicate,
-            phantom_ln: Default::default()
-        }
-    }
-
-    /// Create a new FilteringSearcher from a searcher and a predicate.
-    pub fn from<S: Searcher<L, N> + 'static>(s: S, predicate: RcImmutableCondition<L, N>) -> Self {
-        let dyn_searcher: Rc<dyn Searcher<L, N>> = Rc::new(s);
-        Self::new(dyn_searcher, predicate)
-    }
-}
-
-impl<L: Language + 'static, N: Analysis<L> + 'static> std::fmt::Display for FilteringSearcher<L, N> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} if {}", self.searcher, self.predicate.describe())
-    }
-}
-
-impl<L: Language + 'static, N: Analysis<L> + 'static> std::fmt::Debug for FilteringSearcher<L, N> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(self, f)
-    }
-}
-
-impl<L: 'static + Language, N: 'static + Analysis<L>> Searcher<L, N> for FilteringSearcher<L, N> {
-    fn search_eclass(&self, _egraph: &EGraph<L, N>, _eclass: Id) -> Option<SearchMatches> {
-        unimplemented!()
-    }
-
-    fn search(&self, egraph: &EGraph<L, N>) -> Vec<SearchMatches> {
-        trace!("FilteringSearcher::search({})", self.pretty_string());
-        let origin = self.searcher.search(egraph);
-        let res = self.predicate.filter(egraph, origin);
-        res
-    }
-
-    fn colored_search_eclass(&self, _egraph: &EGraph<L, N>, _eclass: Id, _color: ColorId) -> Option<SearchMatches> {
-        unimplemented!()
-    }
-
-    fn vars(&self) -> Vec<Var> {
-        self.searcher.vars()
-    }
-}
+// #[derive(Clone)]
+// pub struct MatcherContainsCondition<L: Language + 'static, N: Analysis<L> + 'static> {
+//     matcher: Rc<dyn Matcher<L, N>>,
+// }
 
 /// Trait for converting a type to a dynamic type behind a Rc pointer.
 pub trait ToDyn<L: Language, N: Analysis<L>> {
@@ -523,13 +257,6 @@ pub trait ToDyn<L: Language, N: Analysis<L>> {
 }
 
 impl<L: Language + 'static, N: Analysis<L> + 'static> ToDyn<L, N> for Pattern<L> {
-    fn into_rc_dyn(self) -> Rc<dyn Searcher<L, N>> {
-        let dyn_s: Rc<dyn Searcher<L, N>> = Rc::new(self);
-        dyn_s
-    }
-}
-
-impl<L: Language + 'static, N: Analysis<L> + 'static> ToDyn<L, N> for FilteringSearcher<L, N> {
     fn into_rc_dyn(self) -> Rc<dyn Searcher<L, N>> {
         let dyn_s: Rc<dyn Searcher<L, N>> = Rc::new(self);
         dyn_s
@@ -568,7 +295,7 @@ impl<L: Language, N: Analysis<L>> Searcher<L, N> for PointerSearcher<L, N> {
         self.searcher.search_eclass(egraph, eclass)
     }
 
-    fn search(&self, egraph: &EGraph<L, N>) -> Vec<SearchMatches> {
+    fn search(&self, egraph: &EGraph<L, N>) -> Option<SearchMatches> {
         self.searcher.search(egraph)
     }
 
@@ -586,10 +313,9 @@ impl<L: Language, N: Analysis<L>> Searcher<L, N> for PointerSearcher<L, N> {
 mod tests {
     use std::str::FromStr;
 
-    use crate::{EGraph, RecExpr, Searcher, SymbolLang, Pattern, Var, ImmutableCondition, ToCondRc, MultiPattern, init_logger};
+    use crate::{EGraph, RecExpr, Searcher, SymbolLang, Pattern, MultiPattern, init_logger};
 
-    use crate::eggstentions::searchers::{FilteringSearcher, ToDyn, Matcher, PatternMatcher};
-    use crate::searchers::{MatcherContainsCondition, ToRc, VarMatcher};
+    use crate::eggstentions::searchers::{Matcher, PatternMatcher};
     // use crate::system_case_splits;
 
     #[test]
@@ -601,11 +327,11 @@ mod tests {
         let a = egraph.add_expr(&RecExpr::from_str("(a x y)").unwrap());
         egraph.add_expr(&RecExpr::from_str("(a z x)").unwrap());
         egraph.rebuild();
-        assert_eq!(searcher.search(&egraph).len(), 0);
+        assert!(searcher.search(&egraph).is_none());
         let a2 = egraph.add(SymbolLang::new("a", vec![z, x]));
         egraph.union(a, a2);
         egraph.rebuild();
-        assert_eq!(searcher.search(&egraph).len(), 1);
+        assert_eq!(searcher.search(&egraph).unwrap().len(), 1);
     }
 
     #[test]
@@ -619,7 +345,7 @@ mod tests {
         let _a = egraph.add_expr(&RecExpr::from_str("(a x y)").unwrap());
         egraph.add_expr(&RecExpr::from_str("(a z x)").unwrap());
         egraph.rebuild();
-        assert_eq!(searcher.search(&egraph).len(), 1);
+        assert_eq!(searcher.search(&egraph).unwrap().len(), 1);
     }
 
     #[test]
@@ -634,7 +360,7 @@ mod tests {
         egraph.union(full_pl, after_pl);
         egraph.rebuild();
         let searcher = MultiPattern::from_str("?v1 = (ltwf ?x ind_var), ?v2 = (pl ?x Z)").unwrap();
-        assert!(!searcher.search(&egraph).is_empty());
+        assert!(searcher.search(&egraph).is_some());
     }
 
     #[test]
@@ -647,59 +373,14 @@ mod tests {
         let p: Pattern<SymbolLang> = Pattern::from_str("(+ ?z (+ ?x ?y))").unwrap();
         let m = PatternMatcher::new(p.clone());
         let results = p.search(&graph);
-        for sm in results {
-            let eclass = sm.eclass;
-            for sb in sm.substs {
-                assert_eq!(m.match_(&graph, &sb).contains(&eclass), true);
+        if let Some(sm) = results {
+            for (eclass, substs) in sm.matches {
+                let eclass = eclass;
+                for sb in substs {
+                    assert_eq!(m.match_(&graph, &sb).contains(&eclass), true);
+                }
             }
         }
-    }
-
-    #[test]
-    fn filtering_searcher_finds_color() {
-        // This is a very specific case, similar to conditional applier test in rewrite.rs.
-        // It should be a case where the filtering searcher can not find a black result because the
-        // condition doesn't hold for black. Then, we should add a color to the graph, and show the
-        // condition holds, but only under the new color.
-        crate::init_logger();
-        let mut egraph: EGraph<SymbolLang, ()> = EGraph::default();
-
-        let matcher: VarMatcher<SymbolLang, ()> = VarMatcher::new(Var::from_str("?a").unwrap());
-        // add x + y expression
-        let x = egraph.add(SymbolLang::leaf("x"));
-        let y = egraph.add(SymbolLang::leaf("y"));
-        let add = egraph.add(SymbolLang::new("+", vec![x, y]));
-        egraph.rebuild();
-        // ?x + ?y pattern
-        let pat = Pattern::from_str("(+ ?a ?b)").unwrap();
-        let sms = pat.search(&egraph);
-        assert_eq!(sms.len(), 1);
-        let sm = sms.first().unwrap().clone();
-        assert_eq!(sm.substs.len(), 1);
-        let subst = sm.substs[0].clone();
-        // Check matcher condition doesn't hold
-        let condition = MatcherContainsCondition::new(matcher.into_rc()).into_rc();
-        assert!(!condition.check_imm(&mut egraph, add, &subst));
-        assert!(condition.colored_check_imm(&mut egraph, add, &subst).is_none());
-        let searcher = FilteringSearcher::new(pat.into_rc_dyn(), condition.clone());
-        assert_eq!(searcher.search(&egraph).len(), 0);
-        // Add color, and merge add and x
-        let color = egraph.create_color();
-        egraph.colored_union(color, add, x);
-        egraph.rebuild();
-        // Check matcher colored condition holds, and only contains the color
-        let cond_res = condition.colored_check_imm(&mut egraph, add, &subst);
-        assert!(cond_res.is_some());
-        assert_eq!(cond_res.unwrap()[0], color);
-
-        // Check that the searcher now finds the match
-        let results = searcher.search(&egraph);
-        assert_eq!(results.len(), 1);
-        let sm = results.first().unwrap().clone();
-        assert_eq!(sm.substs.len(), 1, "substs: {:?}", sm.substs);
-        let subst = sm.substs[0].clone();
-        assert!(subst.color().is_some());
-        assert_eq!(subst.color().unwrap(), color);
     }
 
     // #[cfg(feature = "split_colored")]

@@ -8,8 +8,6 @@ pub mod reconstruct;
 pub mod costs;
 /// Module for utilities when dealing with expressions.
 pub mod expression_ops;
-/// Module for code related to the conditions used with searchers and appliers.
-pub mod conditions;
 /// Module for code related to the pretty printing of terms.
 pub mod pretty_string;
 /// Module for code related to the tree structure of terms.

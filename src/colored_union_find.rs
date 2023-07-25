@@ -14,7 +14,7 @@ type AtomicId = AtomicU32;
 /// # Examples
 ///
 /// ```
-/// use colored_union_find::ColoredUnionFind;
+/// use egg::colored_union_find::ColoredUnionFind;
 /// use egg::Id;
 ///
 /// let n = 10;
@@ -35,12 +35,12 @@ type AtomicId = AtomicU32;
 /// uf.union(&Id(6), &Id(9));
 ///
 /// // indexes:         0, 1, 2, 3, 4, 5, 6, 7, 8, 9
-/// let expected = vec![0, 0, 0, 0, 4, 5, 6, 6, 6, 6].into_iter().map(Id).collect::<Vec<_>>();
+/// let expected = vec![0, 0, 0, 0, 4, 5, 6, 6, 6, 6].into_iter().map(|x| Id::from(x)).collect::<Vec<_>>();
 /// for i in 0..n {
 /// assert_eq!(uf.find(&Id(i)).unwrap(), expected[i as usize]);
 /// }
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
-pub(crate) struct ColoredUnionFind {
+pub struct ColoredUnionFind {
     // The parents of each node. The index is T and we keep the maybe updated leader + rank.
     parents: IndexMap<Id, AtomicId>,
 }

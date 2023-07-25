@@ -41,7 +41,7 @@ mod util;
 /// A key to identify [`EClass`](struct.EClass.html)es within an
 /// [`EGraph`](struct.EGraph.html).
 #[derive(Clone, Copy, Default, Ord, PartialOrd, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct Id(u32);
+pub struct Id(pub u32);
 
 
 #[derive(Clone, Copy, Default, Ord, PartialOrd, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
@@ -118,8 +118,7 @@ pub use {
     language::*,
     pattern::{ENodeOrVar, Pattern, PatternAst, SearchMatches},
     multipattern::MultiPattern,
-    rewrite::{Applier, ImmutableCondition, Condition, ConditionEqual, ConditionalApplier, Rewrite, Searcher, RcImmutableCondition, ToCondRc},
-    // rewrite::{Applier, ImmutableCondition, ImmutableFunctionCondition, Condition, ConditionEqual, ConditionalApplier, Rewrite, Searcher, RcImmutableCondition, ToCondRc},
+    rewrite::{Applier, Rewrite, Searcher},
     run::*,
     ser::{Serialization, Deserialization},
     subst::{Subst, Var},
@@ -138,6 +137,6 @@ pub mod test;
 mod colors;
 mod eggstentions;
 pub mod tools;
-mod colored_union_find;
+pub mod colored_union_find;
 mod multipattern;
 

@@ -651,16 +651,20 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
         let mut equiv_eclasses = Vec::new();
 
-        for m1 in &matches1 {
-            if m1.substs.iter().all(|s| s.color.is_some()) {
-                continue;
-            }
-            for m2 in &matches2 {
-                if m2.substs.iter().all(|s| s.color.is_some()) {
+        if let Some(m1) = &matches1 {
+            for (m1_eclass, m1_subs) in &m1.matches {
+                if m1_subs.iter().all(|s| s.color.is_some()) {
                     continue;
                 }
-                if self.find(m1.eclass) == self.find(m2.eclass) {
-                    equiv_eclasses.push(m1.eclass)
+                if let Some(m2) = &matches2 {
+                    for (eclass, subs) in &m2.matches {
+                        if subs.iter().all(|s| s.color.is_some()) {
+                            continue;
+                        }
+                        if self.find(*m1_eclass) == self.find(*eclass) {
+                            equiv_eclasses.push(*m1_eclass)
+                        }
+                    }
                 }
             }
         }

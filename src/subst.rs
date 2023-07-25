@@ -2,7 +2,7 @@ use std::fmt;
 use std::str::FromStr;
 use thiserror::Error;
 
-use crate::{Id, Symbol};
+use crate::{Analysis, EGraph, Id, Symbol};
 use crate::ColorId;
 use std::fmt::Formatter;
 use serde::{Deserialize, Serialize};
@@ -59,6 +59,15 @@ pub struct Subst {
     pub(crate) vec: smallvec::SmallVec<[(Var, Id); 3]>,
     #[cfg(feature = "colored")]
     pub(crate) color: Option<ColorId>,
+}
+
+impl Subst {
+    pub(crate) fn fix<L: crate::Language, A: Analysis<L>>(&mut self, egraph: &EGraph<L, A>) {
+        let color = self.color;
+        for (_var, id) in &mut self.vec {
+            *id = egraph.opt_colored_find(color, *id);
+        }
+    }
 }
 
 impl Subst {

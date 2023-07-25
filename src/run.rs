@@ -457,14 +457,14 @@ pub fn new(analysis: N) -> Self {
 
         let mut applied = IndexMap::new();
         for (rw, ms) in rules.iter().zip(matches) {
-            let total_matches: usize = ms.iter().map(|m| m.substs.len()).sum();
+            let total_matches: usize = ms.as_ref().map_or(0, |ms| ms.total_substs());
             if total_matches == 0 {
                 continue;
             }
 
             debug!("Applying {} {} times", rw.name(), total_matches);
 
-            let actually_matched = self.scheduler.apply_rewrite(i, &mut self.egraph, rw, ms);
+            let actually_matched = self.scheduler.apply_rewrite(i, &mut self.egraph, rw, &ms);
             if actually_matched > 0 {
                 if let Some(count) = applied.get_mut(rw.name()) {
                     *count += actually_matched;
@@ -592,7 +592,7 @@ where
         iteration: usize,
         egraph: &EGraph<L, N>,
         rewrite: &Rewrite<L, N>,
-    ) -> Vec<SearchMatches> {
+    ) -> Option<SearchMatches> {
         rewrite.search(egraph)
     }
 
@@ -607,9 +607,9 @@ where
         iteration: usize,
         egraph: &mut EGraph<L, N>,
         rewrite: &Rewrite<L, N>,
-        matches: Vec<SearchMatches>,
+        matches: &Option<SearchMatches>,
     ) -> usize {
-        rewrite.apply(egraph, &matches).len()
+        rewrite.apply(egraph, matches).len()
     }
 }
 
@@ -748,7 +748,7 @@ where
         iteration: usize,
         egraph: &EGraph<L, N>,
         rewrite: &Rewrite<L, N>,
-    ) -> Vec<SearchMatches> {
+    ) -> Option<SearchMatches> {
         if let Some(limit) = self.stats.get_mut(rewrite.name()) {
             if iteration < limit.banned_until {
                 debug!(
@@ -758,11 +758,11 @@ where
                     limit.times_banned,
                     limit.banned_until,
                 );
-                return vec![];
+                return None;
             }
 
             let matches = rewrite.search(egraph);
-            let total_len: usize = matches.iter().map(|m| m.substs.len()).sum();
+            let total_len: usize = matches.as_ref().map_or(0, |m| m.total_substs());
             let threshold = self.initial_match_limit << limit.times_banned;
             if total_len > threshold {
                 let ban_length = self.ban_length << limit.times_banned;
@@ -777,7 +777,7 @@ where
                     threshold,
                     total_len,
                 );
-                vec![]
+                None
             } else {
                 limit.times_applied += 1;
                 matches

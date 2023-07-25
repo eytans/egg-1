@@ -305,9 +305,8 @@ let mut rules: Vec<Rewrite<SimpleLanguage, ()>> = vec![
 
     rewrite!("silly"; "(* ?a 1)" => { MySillyApplier("foo") }),
 
-    rewrite!("something_conditional";
-             "(/ ?a ?b)" => "(* ?a (/ 1 ?b))"
-             if is_not_zero("?b")),
+    multi_rewrite!("something_conditional";
+             "(/ ?a ?b), ?b != 0" => "(* ?a (/ 1 ?b))"),
 ];
 
 // rewrite! supports bidirectional rules too
@@ -444,14 +443,5 @@ mod tests {
     #[should_panic(expected = "refers to unbound var ?x")]
     fn rewrite_simple_panic() {
         let _: Rewrite<Simple, ()> = rewrite!("bad"; "?a" => "?x");
-    }
-
-    #[test]
-    #[should_panic(expected = "refers to unbound var ?x")]
-    fn rewrite_conditional_panic() {
-        let x: Pattern<Simple> = "?x".parse().unwrap();
-        let _: Rewrite<Simple, ()> = rewrite!(
-            "bad"; "?a" => "?a" if ConditionEqual(x.clone(), x)
-        );
     }
 }

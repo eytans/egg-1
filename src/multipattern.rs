@@ -3,6 +3,7 @@ use std::fmt::{Display, Formatter};
 use std::rc::Rc;
 use std::str::FromStr;
 use indexmap::IndexSet;
+use invariants::dassert;
 use itertools::Itertools;
 use thiserror::Error;
 use regex::Regex;
@@ -103,7 +104,7 @@ impl<L: Language + FromOp> FromStr for MultiPattern<L> {
             if split.is_empty() {
                 continue;
             }
-            let regex = Regex::new(r"(\?[a-zA-Z0-9_\-+*^%$#@!]+)\s?(\|=|!=|=)\s?(.+)").expect("bad regex");
+            let regex = Regex::new(r"(\?[a-zA-Z0-9_/\-+*^%$#@!]+)\s*(\|=|!=|=)\s*(.+)").expect("bad regex");
             let parts = regex.captures(split)
                 .ok_or_else(|| PatternAssignmentError(split.to_string()))?;
 
@@ -124,7 +125,11 @@ impl<L: Language + FromOp> FromStr for MultiPattern<L> {
 
 impl<L: Language> Display for MultiPattern<L> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}]", self.asts.iter().map(|(v, ast)| format!("{} = {}", v, ast)).join(", "))
+        write!(f, "[{}]", self.asts.iter()
+            .map(|(v, ast)| format!("{} = {}", v, ast)).chain(
+            self.or_asts.iter().map(|(v, asts)| format!("{} |= {}", v, asts.iter().map(|p| p.to_string()).join(" | "))).chain(
+            self.not_asts.iter().map(|(v, ast)| format!("{} != {}", v, ast))
+            )).join(", "))
     }
 }
 
@@ -150,10 +155,7 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for MultiPattern<L> {
         if substs.is_empty() {
             None
         } else {
-            Some(SearchMatches {
-                eclass,
-                substs,
-            })
+            Some(SearchMatches::collect_matches(egraph, eclass, substs))
         }
     }
 
@@ -171,8 +173,9 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for MultiPattern<L> {
                 res.extend(substs)
             }
         }
-        let matches = SearchMatches { eclass: egraph.colored_find(color, eclass), substs: res.into_iter().unique().collect_vec() };
-        (!matches.substs.is_empty()).then(|| matches)
+        let matches = SearchMatches::collect_matches(egraph, eclass, res);
+        dassert!(matches.matches.values().all(|v| v.iter().all(|s| s.color == Some(color))));
+        (!matches.matches.is_empty()).then(|| matches)
     }
 
     fn vars(&self) -> Vec<Var> {
@@ -195,13 +198,13 @@ impl<L: Language + 'static, A: Analysis<L> + 'static> Applier<L, A> for MultiPat
     fn apply_matches(
         &self,
         egraph: &mut EGraph<L, A>,
-        matches: &[SearchMatches],
+        matches: &Option<SearchMatches>,
     ) -> Vec<Id> {
         // TODO explanations?
         // the ids returned are kinda garbage
         let mut added = vec![];
-        for mat in matches {
-            for subst in &mat.substs {
+        if let Some(mat) = matches {
+            for subst in mat.substs() {
                 let mut subst = subst.clone();
                 for (i, (v, p)) in self.asts.iter().enumerate() {
                     let id1 = pattern::apply_pat(p.as_ref(), egraph, &subst);
@@ -362,22 +365,24 @@ mod tests {
 
         let pattern: MultiPattern<SymbolLang> = "?x = (f ?a ?b), ?b = (g ?c (and ?d ?k))".parse().unwrap();
         let sms = pattern.search(&egraph);
-        assert!(sms.is_empty());
+        assert!(sms.is_none());
 
         let small_big_color = egraph.create_color();
         egraph.colored_union(small_big_color, l, g);
         egraph.rebuild();
 
         let sms = pattern.search(&egraph);
+        assert!(sms.is_some());
+        let sms = sms.unwrap();
         assert_eq!(sms.len(), 1);
-        let sm = &sms[0];
+        let sm = sms.first().unwrap();
         assert_eq!(sm.substs.len(), 1);
-        assert_eq!(sm.substs[0].color(), Some(small_big_color));
-        assert!(sm.substs[0].get("?a".parse().unwrap()).is_some());
-        assert!(sm.substs[0].get("?b".parse().unwrap()).is_some());
-        assert!(sm.substs[0].get("?c".parse().unwrap()).is_some());
-        assert!(sm.substs[0].get("?d".parse().unwrap()).is_some());
-        assert!(sm.substs[0].get("?k".parse().unwrap()).is_some());
+        assert_eq!(sm.substs.first().unwrap().color(), Some(small_big_color));
+        assert!(sm.substs.first().unwrap().get("?a".parse().unwrap()).is_some());
+        assert!(sm.substs.first().unwrap().get("?b".parse().unwrap()).is_some());
+        assert!(sm.substs.first().unwrap().get("?c".parse().unwrap()).is_some());
+        assert!(sm.substs.first().unwrap().get("?d".parse().unwrap()).is_some());
+        assert!(sm.substs.first().unwrap().get("?k".parse().unwrap()).is_some());
 
         let big_small_color = egraph.create_color();
         egraph.colored_union(big_small_color, y, f);
@@ -385,8 +390,10 @@ mod tests {
 
         let pattern2: MultiPattern<SymbolLang> = "?x = (f (p ?a) ?l), ?b = (g ?x (and ?d ?k))".parse().unwrap();
         let sms = pattern2.search(&egraph);
+        assert!(sms.is_some());
+        let sms = sms.unwrap();
         assert_eq!(sms.len(), 1);
-        let subst = sms.into_iter()
+        let subst = sms.iter()
             .flat_map(|sm| sm.substs)
             .filter(|subst| subst.color() == Some(big_small_color))
             .collect::<Vec<_>>();
@@ -412,14 +419,18 @@ mod tests {
         let pattern2: MultiPattern<SymbolLang> = "?x = (f (p true) ?b)".parse().unwrap();
         let sms = pattern.search(&egraph);
         let sms2 = pattern2.search(&egraph);
+        assert!(sms.is_some());
+        assert!(sms2.is_some());
+        let sms = sms.unwrap();
+        let sms2 = sms2.unwrap();
         assert_eq!(sms.len(), 1);
         assert_eq!(sms2.len(), 1);
-        let sm = &sms[0];
-        let sm2 = &sms2[0];
+        let sm = sms.first().unwrap();
+        let sm2 = sms2.first().unwrap();
         assert_eq!(sm.substs.len(), 1);
         assert_eq!(sm2.substs.len(), 1);
-        assert_eq!(sm.substs[0].color(), Some(color));
-        assert_eq!(sm2.substs[0].color(), Some(color));
+        assert_eq!(sm.substs.first().unwrap().color(), Some(color));
+        assert_eq!(sm2.substs.first().unwrap().color(), Some(color));
     }
 
     // After it is a "black" match no more colored matches
@@ -438,10 +449,12 @@ mod tests {
 
         let pattern: MultiPattern<SymbolLang> = "?x = (f (g ?y) ?z), ?z = true".parse().unwrap();
         let sms = pattern.search(&egraph);
+        assert!(sms.is_some());
+        let sms = sms.unwrap();
         assert_eq!(sms.len(), 1, "sms: {:?}", sms);
-        let sm = &sms[0];
+        let sm = &sms.first().unwrap();
         assert_eq!(sm.substs.len(), 1);
-        assert_eq!(sm.substs[0].color(), None);
+        assert_eq!(sm.substs.first().unwrap().color(), None);
     }
 
     #[test]
@@ -462,13 +475,16 @@ mod tests {
         egraph.rebuild();
 
         let sms = searcher.search(&egraph);
+        assert!(sms.is_some());
+        let sms = sms.unwrap();
         assert_eq!(sms.len(), 1);
-        let sm = &sms[0];
+        let sm = &sms.first().unwrap();
         assert_eq!(sm.substs.len(), 1);
-        assert_eq!(sm.substs[0].color(), Some(color));
-        assert!(sm.substs[0].get("?k".parse().unwrap()).is_some());
-        assert!(sm.substs[0].get("?g".parse().unwrap()).is_some());
-        let _matches = applier.apply_matches(&mut egraph, &sms);
+        let first_subs = sm.substs.first().unwrap();
+        assert_eq!(first_subs.color(), Some(color));
+        assert!(first_subs.get("?k".parse().unwrap()).is_some());
+        assert!(first_subs.get("?g".parse().unwrap()).is_some());
+        let _matches = applier.apply_matches(&mut egraph, &Some(sms));
         egraph.verify_colored_uf_minimal();
         egraph.rebuild();
         egraph.verify_colored_uf_minimal();
@@ -491,12 +507,12 @@ mod tests {
         let _y = egraph.add_expr(&"y".parse().unwrap());
         egraph.rebuild();
 
-        assert!(!pattern.search(&egraph).is_empty());
+        assert!(pattern.search(&egraph).is_some());
 
         let _z = egraph.add_expr(&"z".parse().unwrap());
         egraph.rebuild();
 
-        assert!(pattern.search(&egraph).is_empty());
+        assert!(pattern.search(&egraph).is_none());
 
         let pattern: MultiPattern<S> = "?v1 = x, ?v2 = (f ?y), ?v2 != w".parse().unwrap();
         let color = egraph.create_color();
@@ -505,14 +521,20 @@ mod tests {
         let w = egraph.colored_add_expr(color, &"w".parse().unwrap());
         egraph.rebuild();
 
-        assert_eq!(pattern.search(&egraph).len(), 1);
-        assert_eq!(pattern.search(&egraph)[0].substs.len(), 2);
+        let sms = pattern.search(&egraph);
+        assert!(sms.is_some());
+        let sms = sms.unwrap();
+        assert_eq!(sms.len(), 1);
+        assert_eq!(sms.first().unwrap().substs.len(), 2);
 
         egraph.colored_union(color, p, w);
         egraph.rebuild();
 
-        assert_eq!(pattern.search(&egraph).len(), 1);
-        assert_eq!(pattern.search(&egraph)[0].substs.len(), 1);
+        let sms = pattern.search(&egraph);
+        assert!(sms.is_some());
+        let sms = sms.unwrap();
+        assert_eq!(sms.len(), 1);
+        assert_eq!(sms.first().unwrap().substs.len(), 1);
     }
 
     #[test]
@@ -528,8 +550,10 @@ mod tests {
         egraph.rebuild();
 
         let sms = pattern.search(&egraph);
+        assert!(sms.is_some());
+        let sms = sms.unwrap();
         assert_eq!(1, sms.len());
-        assert_eq!(sms[0].substs.len(), 1);
+        assert_eq!(sms.first().unwrap().substs.len(), 1);
 
         let w = egraph.add_expr(&"W".parse().unwrap());
         let cons = egraph.add_expr(&"(cons L)".parse().unwrap());
@@ -537,7 +561,7 @@ mod tests {
         egraph.rebuild();
 
         let sms = pattern.search(&egraph);
-        assert_eq!(0, sms.len());
+        assert!(sms.is_none());
 
         let _colored_fl = egraph.colored_add_expr(color, &"(f X (g Z L))".parse().unwrap());
         egraph.rebuild();
@@ -545,16 +569,20 @@ mod tests {
         egraph.rebuild();
 
         let sms = pattern.search(&egraph);
+        assert!(sms.is_some());
+        let sms = sms.unwrap();
         assert_eq!(1, sms.len());
-        assert_eq!(sms[0].substs.len(), 1);
-        assert_eq!(sms[0].substs[0].get("?w".parse().unwrap()), Some(&colored_l));
-        assert!(sms[0].substs[0].color().is_some());
+        let first_match = sms.first().unwrap();
+        assert_eq!(first_match.substs.len(), 1);
+        let first_subs = first_match.substs.first().unwrap();
+        assert_eq!(first_subs.get("?w".parse().unwrap()), Some(&colored_l));
+        assert!(first_subs.color().is_some());
 
         egraph.colored_union(color, colored_l, cons);
         egraph.rebuild();
 
         let sms = pattern.search(&egraph);
-        assert_eq!(0, sms.len());
+        assert!(sms.is_none());
     }
 
     #[test]
@@ -565,23 +593,25 @@ mod tests {
         let pattern: MultiPattern<S> = "?v1 = (f ?x (g ?z ?w)), ?w |= (cons ?l), ?w |= nil".parse().unwrap();
         egraph.add_expr(&"(f X (g Z W))".parse().unwrap());
         egraph.rebuild();
-        assert_eq!(pattern.search(&egraph).len(), 0);
+        assert!(pattern.search(&egraph).is_none());
 
         egraph.add_expr(&"(f X (g Z nil))".parse().unwrap());
         egraph.rebuild();
-        assert_eq!(pattern.search(&egraph).len(), 1);
-        assert_eq!(pattern.search(&egraph)[0].substs.len(), 1);
+        let sms = pattern.search(&egraph).expect("should have found a match");
+        assert_eq!(sms.len(), 1);
+        assert_eq!(sms.first().unwrap().substs.len(), 1);
 
         let color = egraph.create_color();
         let cons = egraph.colored_add_expr(color, &"(cons JJH)".parse().unwrap());
         egraph.rebuild();
-        assert_eq!(pattern.search(&egraph).len(), 1);
-        assert_eq!(pattern.search(&egraph)[0].substs.len(), 1);
+        let sms = pattern.search(&egraph).expect("should have found a match");
+        assert_eq!(sms.len(), 1);
+        assert_eq!(sms.first().unwrap().substs.len(), 1);
 
         let w = egraph.add_expr(&"W".parse().unwrap());
         egraph.colored_union(color, w, cons);
         egraph.rebuild();
 
-        assert_eq!(pattern.search(&egraph).into_iter().map(|sms| sms.substs.len()).sum::<usize>(), 2);
+        assert_eq!(pattern.search(&egraph).map_or(0, |sms| sms.total_substs()), 2);
     }
 }
