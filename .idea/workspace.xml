@@ -12,23 +12,8 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Fix for machine Not and Colored jump edge cases">
+    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Huge change to make SearchMatches types make sense">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/colored_union_find.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/colored_union_find.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/eggstentions/appliers.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/eggstentions/appliers.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/eggstentions/conditions.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/eggstentions/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/eggstentions/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/eggstentions/searchers.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/eggstentions/searchers.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/egraph.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/egraph.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/macros.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/macros.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/multipattern.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/multipattern.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/pattern.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/pattern.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/rewrite.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/rewrite.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/run.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/run.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/subst.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/subst.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/tutorials/_02_getting_started.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/tutorials/_02_getting_started.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/lambda.rs" beforeDir="false" afterPath="$PROJECT_DIR$/tests/lambda.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tests/math.rs" beforeDir="false" afterPath="$PROJECT_DIR$/tests/math.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -88,7 +73,7 @@
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
-  <component name="RunManager" selected="Cargo.Doctest of colored_union_find::ColoredUnionFind (line 16)">
+  <component name="RunManager" selected="Cargo.test">
     <configuration name="Doctest of colored_union_find::ColoredUnionFind (line 16)" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package egg --doc &quot;colored_union_find::ColoredUnionFind\ (line\ 16)&quot;" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -183,8 +168,8 @@
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Cargo.Doctest of colored_union_find::ColoredUnionFind (line 16)" />
         <item itemvalue="Cargo.test" />
+        <item itemvalue="Cargo.Doctest of colored_union_find::ColoredUnionFind (line 16)" />
         <item itemvalue="Cargo.Test rewrite::tests::conditional_rewrite" />
         <item itemvalue="Cargo.Test multipattern::tests::bad_unbound_var" />
         <item itemvalue="Cargo.Test multipattern::tests::test_second_or_matches" />
@@ -224,7 +209,7 @@
       <workItem from="1689869891571" duration="11871000" />
       <workItem from="1689934269027" duration="7191000" />
       <workItem from="1690275726285" duration="759000" />
-      <workItem from="1690276506621" duration="13631000" />
+      <workItem from="1690276506621" duration="14274000" />
     </task>
     <task id="LOCAL-00001" summary="Colored congruence should take less memory due to better implementation">
       <created>1682546837181</created>
@@ -373,7 +358,14 @@
       <option name="project" value="LOCAL" />
       <updated>1690206584401</updated>
     </task>
-    <option name="localTasksCounter" value="22" />
+    <task id="LOCAL-00022" summary="Huge change to make SearchMatches types make sense">
+      <created>1690299672262</created>
+      <option name="number" value="00022" />
+      <option name="presentableId" value="LOCAL-00022" />
+      <option name="project" value="LOCAL" />
+      <updated>1690299672262</updated>
+    </task>
+    <option name="localTasksCounter" value="23" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -412,7 +404,8 @@
     <MESSAGE value="Parsing not and or multipattern.rs. Added not tests" />
     <MESSAGE value="Implemented Or operation for multipattern" />
     <MESSAGE value="Fix for machine Not and Colored jump edge cases" />
-    <option name="LAST_COMMIT_MESSAGE" value="Fix for machine Not and Colored jump edge cases" />
+    <MESSAGE value="Huge change to make SearchMatches types make sense" />
+    <option name="LAST_COMMIT_MESSAGE" value="Huge change to make SearchMatches types make sense" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

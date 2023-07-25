@@ -174,26 +174,6 @@
 //     v: Var,
 // }
 //
-// impl Condition<Math, ConstantFold> for IsNotZeroCondition {
-//     fn check(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, _eclass: Id, subst: &Subst) -> bool {
-//         let zero = Math::Constant(0.0.into());
-//         !egraph[subst[self.v]].nodes.contains(&zero)
-//     }
-//
-//     fn check_colored(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
-//         self.check(egraph, eclass, subst).then(|| vec![])
-//     }
-//
-//     fn describe(&self) -> String {
-//         "is_not_zero".to_string()
-//     }
-// }
-//
-// fn is_not_zero(var: &str) -> impl Condition<Math, ConstantFold> {
-//     let var = var.parse().unwrap();
-//     IsNotZeroCondition { v: var }
-// }
-//
 // #[rustfmt::skip]
 // pub fn rules() -> Vec<Rewrite> { vec![
 //     rw!("comm-add";  "(+ ?a ?b)"        => "(+ ?b ?a)"),
@@ -202,7 +182,7 @@
 //     rw!("assoc-mul"; "(* ?a (* ?b ?c))" => "(* (* ?a ?b) ?c)"),
 //
 //     rw!("sub-canon"; "(- ?a ?b)" => "(+ ?a (* -1 ?b))"),
-//     rw!("div-canon"; "(/ ?a ?b)" => "(* ?a (pow ?b -1))" if is_not_zero("?b")),
+//     multi_rewrite!("div-canon"; "?root = (/ ?a ?b), ?b != 0" => "?root = (* ?a (pow ?b -1))"),
 //     // rw!("canon-sub"; "(+ ?a (* -1 ?b))"   => "(- ?a ?b)"),
 //     // rw!("canon-div"; "(* ?a (pow ?b -1))" => "(/ ?a ?b)" if is_not_zero("?b")),
 //
@@ -214,19 +194,17 @@
 //     rw!("mul-one";  "?a" => "(* ?a 1)"),
 //
 //     rw!("cancel-sub"; "(- ?a ?a)" => "0"),
-//     rw!("cancel-div"; "(/ ?a ?a)" => "1" if is_not_zero("?a")),
+//     multi_rewrite!("cancel-div"; "?root = (/ ?a ?a), ?a != 0" => "1"),
 //
 //     rw!("distribute"; "(* ?a (+ ?b ?c))"        => "(+ (* ?a ?b) (* ?a ?c))"),
 //     rw!("factor"    ; "(+ (* ?a ?b) (* ?a ?c))" => "(* ?a (+ ?b ?c))"),
 //
 //     rw!("pow-mul"; "(* (pow ?a ?b) (pow ?a ?c))" => "(pow ?a (+ ?b ?c))"),
-//     rw!("pow0"; "(pow ?x 0)" => "1"
-//         if is_not_zero("?x")),
+//     multi_rewrite!("pow0"; "?root = (pow ?x 0), ?x != 0" => "?root = 1"),
 //     rw!("pow1"; "(pow ?x 1)" => "?x"),
 //     rw!("pow2"; "(pow ?x 2)" => "(* ?x ?x)"),
-//     rw!("pow-recip"; "(pow ?x -1)" => "(/ 1 ?x)"
-//         if is_not_zero("?x")),
-//     rw!("recip-mul-div"; "(* ?x (/ 1 ?x))" => "1" if is_not_zero("?x")),
+//     multi_rewrite!("pow-recip"; "?root = (pow ?x -1), ?x != 0" => "?root = (/ 1 ?x)"),
+//     rw!("recip-mul-div"; "?root = (* ?x (/ 1 ?x)), ?x != 0" => "?root = 1"),
 //
 //     rw!("d-variable"; "(d ?x ?x)" => "1" if is_sym("?x")),
 //     rw!("d-constant"; "(d ?x ?c)" => "0" if {conditions::MutAndCondition::new(vec![Box::new(is_sym("?x")), Box::new(is_const_or_distinct_var("?c", "?x"))])}),
@@ -239,14 +217,13 @@
 //
 //     rw!("d-ln"; "(d ?x (ln ?x))" => "(/ 1 ?x)" if is_not_zero("?x")),
 //
-//     rw!("d-power";
-//         "(d ?x (pow ?f ?g))" =>
-//         "(* (pow ?f ?g)
+//     multi_rewrite!("d-power";
+//         "?root = (d ?x (pow ?f ?g)), ?f != 0, ?g != 0" =>
+//         "?root = (* (pow ?f ?g)
 //             (+ (* (d ?x ?f)
 //                   (/ ?g ?f))
 //                (* (d ?x ?g)
 //                   (ln ?f))))"
-//         if { egg::conditions::MutAndCondition::new(vec![Box::new(is_not_zero("?f")), Box::new(is_not_zero("?g"))])}
 //     ),
 //
 //     rw!("i-one"; "(i 1 ?x)" => "?x"),
