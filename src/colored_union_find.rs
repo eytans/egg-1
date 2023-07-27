@@ -1,7 +1,6 @@
 use std::borrow::BorrowMut;
-use std::cell::RefCell;
+use std::cell::Cell;
 use std::fmt::Debug;
-use std::process::id;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::atomic::Ordering::Relaxed;
 use indexmap::IndexMap;
@@ -11,14 +10,14 @@ use crate::Id;
 #[cfg(feature = "concurrent_cufind")]
 type AtomicId = AtomicU32;
 #[cfg(not(feature = "concurrent_cufind"))]
-type AtomicId = RefCell<u32>;
+type AtomicId = Cell<u32>;
 
 #[inline(always)]
 fn load_id(id: &AtomicId) -> u32 {
     #[cfg(feature = "concurrent_cufind")]
         return id.load(Relaxed);
     #[cfg(not(feature = "concurrent_cufind"))]
-        return *id.borrow();
+        return id.get();
 }
 
 #[inline(always)]
@@ -36,7 +35,7 @@ fn new_id(id: u32) -> AtomicId {
     #[cfg(feature = "concurrent_cufind")]
     return AtomicU32::new(id);
     #[cfg(not(feature = "concurrent_cufind"))]
-    return RefCell::new(id);
+    return Cell::new(id);
 }
 
 /// A type that can be used as an id in a union-find data structure.
