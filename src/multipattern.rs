@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::rc::Rc;
@@ -9,6 +10,7 @@ use thiserror::Error;
 use regex::Regex;
 
 use crate::*;
+use crate::expression_ops::{IntoTree, Tree};
 use crate::pretty_string::PrettyString;
 use crate::searchers::ToDyn;
 
@@ -72,6 +74,18 @@ impl<L: Language> MultiPattern<L> {
         or_asts: Vec<(Var, Vec<PatternAst<L>>)>,
         not_asts: Vec<(Var, PatternAst<L>)>,
     ) -> Self {
+        let mut asts = asts;
+        asts.sort_by(|(_v, p), (_v2, p2)| {
+            let p_holes = p.into_tree().holes();
+            if p_holes.len() == 0 {
+                return Ordering::Less;
+            }
+            let p2_holes = p2.into_tree().holes();
+            if p2_holes.len() == 0 {
+                return Ordering::Greater;
+            }
+            return p2.into_tree().consts().len().cmp(&p.into_tree().consts().len());
+        });
         let program = machine::Program::compile_from_multi_pat(&asts, &or_asts, &not_asts);
         Self { asts, or_asts, not_asts, program }
     }

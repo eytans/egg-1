@@ -1,5 +1,4 @@
-use crate::{Analysis, Applier, EGraph, Id, Language, Pattern, SearchMatches, Subst, SymbolLang, Var};
-use itertools::Itertools;
+use crate::{Applier, EGraph, Id, Pattern, SearchMatches, Subst, SymbolLang};
 use std::fmt::Formatter;
 
 /// A wrapper around an Applier that applies the applier to all matches.

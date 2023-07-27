@@ -5,6 +5,7 @@ use invariants::dassert;
 use itertools::{Either, Itertools};
 use itertools::Either::{Right, Left};
 use log::trace;
+use crate::expression_ops::{IntoTree, RecExpSlice, Tree};
 
 /// An iterator for match results
 struct Machine<'a, L: Language, N: Analysis<L>> {
@@ -306,21 +307,29 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                     Instruction::Nop => {
                         // do nothing
                     }
+                    // TODO : Change compilation such that No colored jump when previously jumped
+                    //     Early stop Or matches
                     Instruction::Or { root ,out, sub_progs } => {
                         // TODO: optimize by not running it all ahead of time
                         let results = sub_progs.iter().flat_map(|p|
                                 p.inner_run_from(egraph, self, colored_jumps))
                             .map(|s| (*s.get(*root).unwrap(), s.color))
                             .unique()
-                            .collect_vec();
-                        for (res, color) in results {
-                            let out = *out;
-                            self.stack.push(MachineContext::new(
-                               index + 1, color, Box::new(move |machine| {
-                                    machine.reg.truncate(out.0 as usize);
-                                    machine.reg.push(res);
-                                })
-                            ));
+                            .into_group_map();
+                        for (res, mut colors) in results {
+                            // TODO: filter by hierarchy
+                            if colors.contains(&None) {
+                                colors = vec![None];
+                            }
+                            for color in colors {
+                                let out = *out;
+                                self.stack.push(MachineContext::new(
+                                    index + 1, color, Box::new(move |machine| {
+                                        machine.reg.truncate(out.0 as usize);
+                                        machine.reg.push(res);
+                                    }),
+                                ));
+                            }
                         }
                         break;
                     }
@@ -569,43 +578,77 @@ impl<L: Language> Program<L> {
                 if let ENodeOrVar::Var(v) = node_or_var {
                     all_normal_vars.insert(*v);
                 }
-            })
-        }
-        for (var, pattern) in patterns {
-            compiler.compile(Some(*var), pattern);
-        }
-        for (var, or_patterns) in or_patterns {
-            // Or patterns keep running to match root for all "base" hierarchy colors. That is if black matches
-            // continue to next eclass root.
-            // Otherwise try all colors.
-            // Another possible optimization is skipping "already matched" colors.
-            let compiled = or_patterns.iter().map(|p| compiler.compile_sub_program(Some(*var), p)).collect_vec();
-            let out = compiler.next_reg;
-            compiler.next_reg.0 += 1;
-            let or = Instruction::Or {
-                root: *var,
-                sub_progs: compiled,
-                out,
-            };
-            if let Some(r) = compiler.v2r.get(var) {
-                compiler.instructions.push(or);
-                compiler.instructions.push(Instruction::Compare {
-                    i: out,
-                    j: *r,
-                });
-            } else {
-                compiler.v2r[var] = out;
-                compiler.instructions.push(or);
-            }
-        }
-        // TODO: insert not patterns early (when all vars are available)
-        // Not patterns are a bit funny. They might match black but not colors.
-        for (var, not_pattern) in not_patterns {
-            let res = compiler.compile_sub_program(Some(*var), not_pattern);
-            compiler.instructions.push(Instruction::Not {
-                sub_prog: res,
             });
         }
+        let or_patterns = or_patterns.into_iter().map(|(or_v, or_ps)| {
+            let mut all_vars: BTreeSet<Var> = or_ps.iter().flat_map(|p| p.as_ref().iter().filter_map(|node_or_var| {
+                if let ENodeOrVar::Var(v) = node_or_var {
+                    Some(*v)
+                } else {
+                    None
+                }
+            })).collect();
+            all_vars.insert(*or_v);
+            let intersection = all_vars.intersection(&all_normal_vars).copied().collect_vec();
+            (false, *or_v, or_ps, intersection)
+        }).collect_vec();
+        all_normal_vars.extend(or_patterns.iter().map(|(_, v, _, _)| *v));
+        let mut not_patterns = not_patterns.into_iter().map(|(not_v, not_p)| {
+            let mut all_vars: BTreeSet<Var> = not_p.as_ref().iter().filter_map(|node_or_var| {
+                if let ENodeOrVar::Var(v) = node_or_var {
+                    Some(*v)
+                } else {
+                    None
+                }
+            }).collect();
+            all_vars.insert(*not_v);
+            let intersection = all_vars.intersection(&all_normal_vars).copied().collect_vec();
+            (false, *not_v, not_p, intersection)
+        }).collect_vec();
+        let mut or_patterns = or_patterns.into_iter().filter(|(_, v, ps, intersection)| {
+            ps.iter().all(|p| {
+                !patterns.iter().any(|(var, pat)|
+                    *var == *v && Self::patterns_agree(p.into_tree(), pat.into_tree(), intersection))
+            })
+        }).collect_vec();
+        for (var, pattern) in patterns {
+            compiler.compile(Some(*var), pattern);
+            for (done, or_v, or_ps, intersection) in or_patterns.iter_mut() {
+                if !*done && intersection.iter().all(|v| compiler.v2r.contains_key(v)) {
+                    *done = true;
+                    // Or patterns keep running to match root for all "base" hierarchy colors. That is if black matches
+                    // continue to next eclass root.
+                    // Otherwise try all colors.
+                    // Another possible optimization is skipping "already matched" colors.
+                    let compiled = or_ps.iter().map(|p| compiler.compile_sub_program(Some(*or_v), p)).collect_vec();
+                    let out = compiler.next_reg;
+                    compiler.next_reg.0 += 1;
+                    compiler.instructions.push(Instruction::Or {
+                        root: *or_v,
+                        sub_progs: compiled,
+                        out,
+                    });
+                    if let Some(r) = compiler.v2r.get(or_v) {
+                        compiler.instructions.push(Instruction::Compare {
+                            i: out,
+                            j: *r,
+                        });
+                    } else {
+                        compiler.v2r[&*or_v] = out;
+                    }
+                }
+            }
+            for (done, not_v, not_p, intersection) in not_patterns.iter_mut() {
+                if !*done && intersection.iter().all(|v| compiler.v2r.contains_key(v)) {
+                    *done = true;
+                    let res = compiler.compile_sub_program(Some(*not_v), *not_p);
+                    compiler.instructions.push(Instruction::Not {
+                        sub_prog: res,
+                    });
+                }
+            }
+        }
+        assert!(not_patterns.iter().all(|(done, _, _, _)| *done), "Not patterns not done");
         compiler.extract()
     }
 
@@ -668,5 +711,27 @@ impl<L: Language> Program<L> {
         let mut machine = Machine::new(old_machine.color, egraph, &self.instructions, self.subst.clone(), run_color);
         machine.reg = old_machine.reg.clone();
         machine
+    }
+    fn patterns_agree(orig: RecExpSlice<ENodeOrVar<L>>, compared: RecExpSlice<ENodeOrVar<L>>, common_vars: &Vec<Var>) -> bool {
+        match orig.root() {
+            ENodeOrVar::ENode(enode, _) => {
+                if let ENodeOrVar::ENode(c_enode, _) = compared.root() {
+                    if enode.op_id() != c_enode.op_id() {
+                        return false;
+                    }
+                    for (orig_child, compared_child) in orig.children().into_iter().zip(compared.children()) {
+                        if !Self::patterns_agree(orig_child, compared_child, common_vars) {
+                            return false;
+                        }
+                    }
+                    true
+                } else {
+                    false
+                }
+            }
+            ENodeOrVar::Var(v) => {
+                (!common_vars.contains(v)) || compared.root() == orig.root()
+            }
+        }
     }
 }

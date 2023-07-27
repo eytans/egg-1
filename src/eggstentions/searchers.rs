@@ -1,8 +1,6 @@
 use crate::{EGraph, Id, Pattern, Searcher, SearchMatches, Subst, Var, Language, Analysis, ColorId};
 use itertools::{Itertools};
 
-use crate::eggstentions::pretty_string::PrettyString;
-use std::fmt::{Debug, Display};
 use smallvec::alloc::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -10,7 +8,7 @@ use std::ops::Deref;
 use std::rc::Rc;
 use std::time::Instant;
 use indexmap::IndexSet;
-use log::{trace, warn};
+use log::warn;
 
 
 /// A trait for a matcher that can be used in a Searcher. Differs from condition, as it is more

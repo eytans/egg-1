@@ -1,10 +1,8 @@
 use std::fmt;
 use std::rc::Rc;
 
-use crate::{Analysis, EGraph, Id, Language, Pattern, SearchMatches, Subst, Var, ColorId, FromOp};
-use std::fmt::{Formatter, Debug};
-use std::marker::PhantomData;
-use std::ops::Deref;
+use crate::{Analysis, EGraph, Id, Language, Pattern, SearchMatches, Subst, Var, ColorId};
+use std::fmt::Formatter;
 use itertools::Itertools;
 use invariants::iassert;
 
@@ -437,7 +435,7 @@ mod tests {
 
         let x = egraph.add(S::leaf("x"));
         let y = egraph.add(S::leaf("2"));
-        let mul = egraph.add(S::new("*", vec![x, y]));
+        let _mul = egraph.add(S::new("*", vec![x, y]));
 
         let true_id = egraph.add(S::leaf("TRUE"));
 

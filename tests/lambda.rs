@@ -1,6 +1,6 @@
 use egg::{rewrite as rw, *};
 use std::collections::HashSet;
-use std::fmt::{Display, Formatter, write};
+use std::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 define_language! {
@@ -115,7 +115,7 @@ impl Display for IsConstApplier {
 }
 
 impl Applier<Lambda, LambdaAnalysis> for IsConstApplier {
-    fn apply_one(&self, egraph: &mut egg::EGraph<Lambda, LambdaAnalysis>, eclass: Id, subst: &Subst) -> Vec<Id> {
+    fn apply_one(&self, egraph: &mut egg::EGraph<Lambda, LambdaAnalysis>, _eclass: Id, subst: &Subst) -> Vec<Id> {
         if egraph[subst[self.v]].data.constant.is_some() {
             vec![subst[self.v]]
         } else {
@@ -172,7 +172,7 @@ struct CaptureAvoid {
 }
 
 impl Applier<Lambda, LambdaAnalysis> for CaptureAvoid {
-    fn apply_one(&self, egraph: &mut EGraph, eclass: Id, subst: &Subst) -> Vec<Id> {
+    fn apply_one(&self, egraph: &mut EGraph, _eclass: Id, subst: &Subst) -> Vec<Id> {
         let e = subst[self.e];
         let v2 = subst[self.v2];
         let v2_free_in_e = egraph[e].data.free.contains(&v2);

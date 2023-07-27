@@ -12,9 +12,15 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Huge change to make SearchMatches types make sense">
+    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="To do math we will need a to return conditions (not gonna happen) or have a special applier for is sym">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/math.rs" beforeDir="false" afterPath="$PROJECT_DIR$/tests/math.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/eggstentions/appliers.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/eggstentions/appliers.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/eggstentions/expression_ops.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/eggstentions/expression_ops.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/eggstentions/searchers.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/eggstentions/searchers.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/machine.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/machine.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/multipattern.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/multipattern.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/pattern.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/pattern.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/rewrite.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/rewrite.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -209,7 +215,7 @@
       <workItem from="1689869891571" duration="11871000" />
       <workItem from="1689934269027" duration="7191000" />
       <workItem from="1690275726285" duration="759000" />
-      <workItem from="1690276506621" duration="14274000" />
+      <workItem from="1690276506621" duration="25770000" />
     </task>
     <task id="LOCAL-00001" summary="Colored congruence should take less memory due to better implementation">
       <created>1682546837181</created>
@@ -365,7 +371,14 @@
       <option name="project" value="LOCAL" />
       <updated>1690299672262</updated>
     </task>
-    <option name="localTasksCounter" value="23" />
+    <task id="LOCAL-00023" summary="To do math we will need a to return conditions (not gonna happen) or have a special applier for is sym">
+      <created>1690300978976</created>
+      <option name="number" value="00023" />
+      <option name="presentableId" value="LOCAL-00023" />
+      <option name="project" value="LOCAL" />
+      <updated>1690300978976</updated>
+    </task>
+    <option name="localTasksCounter" value="24" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -405,7 +418,8 @@
     <MESSAGE value="Implemented Or operation for multipattern" />
     <MESSAGE value="Fix for machine Not and Colored jump edge cases" />
     <MESSAGE value="Huge change to make SearchMatches types make sense" />
-    <option name="LAST_COMMIT_MESSAGE" value="Huge change to make SearchMatches types make sense" />
+    <MESSAGE value="To do math we will need a to return conditions (not gonna happen) or have a special applier for is sym" />
+    <option name="LAST_COMMIT_MESSAGE" value="To do math we will need a to return conditions (not gonna happen) or have a special applier for is sym" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

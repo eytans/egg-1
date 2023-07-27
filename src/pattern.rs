@@ -304,7 +304,7 @@ impl SearchMatches {
         self.iter().next()
     }
 
-    pub(crate) fn total_substs(&self) -> usize {
+    pub fn total_substs(&self) -> usize {
         self.matches.values().map(|x| x.len()).sum()
     }
 

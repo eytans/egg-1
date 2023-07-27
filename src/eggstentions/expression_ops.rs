@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fmt::Formatter;
 use std::hash::{Hash, Hasher};
 
@@ -143,6 +144,24 @@ pub trait Tree<'a, T: 'a + Language> {
     /// Returns true if the root of the tree is not a hole.
     fn is_root_ident(&self) -> bool {
         !self.is_root_hole()
+    }
+
+    /// Return all holes in tree
+    fn holes(&self) -> BTreeSet<T> {
+        let mut res: BTreeSet<T> = self.children().into_iter().flat_map(|c| c.holes()).collect();
+        if self.is_root_hole() {
+            res.insert(self.root().clone());
+        }
+        res
+    }
+
+    /// Return all non constants
+    fn consts(&self) -> Vec<T> {
+        let mut res: Vec<T> = self.children().into_iter().flat_map(|c| c.consts()).collect();
+        if self.is_root_ident() {
+            res.push(self.root().clone());
+        }
+        res
     }
 }
 
