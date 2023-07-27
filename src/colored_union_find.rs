@@ -1,11 +1,43 @@
+use std::borrow::BorrowMut;
+use std::cell::RefCell;
 use std::fmt::Debug;
+use std::process::id;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::atomic::Ordering::Relaxed;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use crate::Id;
 
+#[cfg(feature = "concurrent_cufind")]
 type AtomicId = AtomicU32;
+#[cfg(not(feature = "concurrent_cufind"))]
+type AtomicId = RefCell<u32>;
+
+#[inline(always)]
+fn load_id(id: &AtomicId) -> u32 {
+    #[cfg(feature = "concurrent_cufind")]
+        return id.load(Relaxed);
+    #[cfg(not(feature = "concurrent_cufind"))]
+        return *id.borrow();
+}
+
+#[inline(always)]
+fn store_id(id: &AtomicId, new: u32) {
+    #[cfg(feature = "concurrent_cufind")]
+    id.store(new, Relaxed);
+    #[cfg(not(feature = "concurrent_cufind"))]
+    {
+        id.replace(new);
+    }
+}
+
+#[inline(always)]
+fn new_id(id: u32) -> AtomicId {
+    #[cfg(feature = "concurrent_cufind")]
+    return AtomicU32::new(id);
+    #[cfg(not(feature = "concurrent_cufind"))]
+    return RefCell::new(id);
+}
 
 /// A type that can be used as an id in a union-find data structure.
 ///
@@ -47,7 +79,7 @@ pub struct ColoredUnionFind {
 
 impl ColoredUnionFind {
     pub(crate) fn iter(&self) -> impl Iterator<Item = (Id, Id)> + '_ {
-        self.parents.iter().map(|(k, v)| (k.clone(), Id(v.load(Relaxed))))
+        self.parents.iter().map(|(k, v)| (k.clone(), Id(load_id(v))))
     }
 }
 
@@ -62,7 +94,7 @@ impl ColoredUnionFind {
         if self.parents.contains_key(&t) {
             return;
         }
-        self.parents.insert(t, AtomicU32::new(t.0));
+        self.parents.insert(t, new_id(t.0));
     }
 
     fn inner_find(&self, current: &Id) -> Option<u32> {
@@ -73,17 +105,17 @@ impl ColoredUnionFind {
         }
 
         let mut old = *current;
-        let mut current = self.parents[&old].load(Relaxed);
+        let mut current = load_id(&self.parents[&old]);
         let mut to_update = vec![];
         while current != old.0 {
             to_update.push(old.clone());
             old = Id(current);
-            current = self.parents[&old].load(Relaxed)
+            current = load_id(&self.parents[&old]);
         }
 
         let current = current;
         for u in to_update {
-            self.parents[&u].store(current, Ordering::Relaxed);
+            store_id(&self.parents[&u], current);
         }
 
         Some(current)
@@ -107,9 +139,9 @@ impl ColoredUnionFind {
         }
         let x = Id(x);
         let y = Id(y);
-        let new_x_res = self.parents[&x].load(Ordering::Relaxed);
-        self.parents[&y].store(new_x_res, Ordering::Relaxed);
-        self.parents[&x].store(new_x_res, Ordering::Relaxed);
+        let new_x_res = load_id(&self.parents[&x]);
+        store_id(&self.parents[&y],new_x_res);
+        store_id(&self.parents[&x],new_x_res);
         Some((x, y))
     }
 
@@ -122,18 +154,18 @@ impl ColoredUnionFind {
         }
         if let Some(keys) = keys_to_check {
             for k in keys {
-                let inner = self.inner_find(&Id(self.parents[&k].load(Relaxed))).unwrap();
+                let inner = self.inner_find(&Id(load_id(&self.parents[&k]))).unwrap();
                 assert!(inner == t.0 || inner == leader);
-                self.parents[&k].store(leader, Relaxed);
+                store_id(&self.parents[&k], leader);
             }
         } else {
             let keys = self.parents.iter()
-                .filter(|(_k, v)| v.load(Relaxed) == t.0)
+                .filter(|(_k, v)| load_id(v) == t.0)
                 .map(|(k, _v)| k)
                 .copied()
                 .collect_vec();
             for k in keys {
-                self.parents[&k].store(leader, Relaxed);
+                store_id(&mut self.parents[&k], leader);
             }
         }
         self.parents.remove(t);
@@ -145,7 +177,7 @@ impl Clone for ColoredUnionFind {
     fn clone(&self) -> Self {
         Self {
             parents: self.parents.iter().map(|(k, v)|
-                (k.clone(), AtomicU32::new(v.load(Relaxed)))).collect(),
+                (k.clone(), new_id(load_id(v)))).collect(),
         }
     }
 }
