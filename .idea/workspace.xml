@@ -12,9 +12,9 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Cleanup + Optimized machine for better not and or runs">
+    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="More efficient single thread colored_union_find.rs using Cell">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/colored_union_find.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/colored_union_find.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/machine.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/machine.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -209,7 +209,7 @@
       <workItem from="1689869891571" duration="11871000" />
       <workItem from="1689934269027" duration="7191000" />
       <workItem from="1690275726285" duration="759000" />
-      <workItem from="1690276506621" duration="29363000" />
+      <workItem from="1690276506621" duration="31401000" />
     </task>
     <task id="LOCAL-00001" summary="Colored congruence should take less memory due to better implementation">
       <created>1682546837181</created>
@@ -379,7 +379,28 @@
       <option name="project" value="LOCAL" />
       <updated>1690458446573</updated>
     </task>
-    <option name="localTasksCounter" value="25" />
+    <task id="LOCAL-00025" summary="More efficient single thread colored_union_find.rs">
+      <created>1690477262909</created>
+      <option name="number" value="00025" />
+      <option name="presentableId" value="LOCAL-00025" />
+      <option name="project" value="LOCAL" />
+      <updated>1690477262909</updated>
+    </task>
+    <task id="LOCAL-00026" summary="Moving to less allocations in machine">
+      <created>1690480708509</created>
+      <option name="number" value="00026" />
+      <option name="presentableId" value="LOCAL-00026" />
+      <option name="project" value="LOCAL" />
+      <updated>1690480708509</updated>
+    </task>
+    <task id="LOCAL-00027" summary="More efficient single thread colored_union_find.rs using Cell">
+      <created>1690480980463</created>
+      <option name="number" value="00027" />
+      <option name="presentableId" value="LOCAL-00027" />
+      <option name="project" value="LOCAL" />
+      <updated>1690480980463</updated>
+    </task>
+    <option name="localTasksCounter" value="28" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -397,8 +418,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Colored congruence should take less memory due to better implementation" />
-    <MESSAGE value="Made colored union find separate from full union find and ready for hierarchy.&#10;&#10;It now supports multithreading, and has a partial representation of union of ids to better support future recursive splits" />
     <MESSAGE value="Fixed colored_union_find.rs remove, some warnings and better parameters for api" />
     <MESSAGE value="Fixed colored_union_find.rs remove black_ids set optimization" />
     <MESSAGE value="Fixed colored_equivalences to only hold what colors, and using equality classes for getter." />
@@ -421,7 +440,10 @@
     <MESSAGE value="Huge change to make SearchMatches types make sense" />
     <MESSAGE value="To do math we will need a to return conditions (not gonna happen) or have a special applier for is sym" />
     <MESSAGE value="Cleanup + Optimized machine for better not and or runs" />
-    <option name="LAST_COMMIT_MESSAGE" value="Cleanup + Optimized machine for better not and or runs" />
+    <MESSAGE value="More efficient single thread colored_union_find.rs" />
+    <MESSAGE value="Moving to less allocations in machine" />
+    <MESSAGE value="More efficient single thread colored_union_find.rs using Cell" />
+    <option name="LAST_COMMIT_MESSAGE" value="More efficient single thread colored_union_find.rs using Cell" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

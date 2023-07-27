@@ -5,6 +5,7 @@ use invariants::dassert;
 use itertools::{Either, Itertools};
 use itertools::Either::{Right, Left};
 use log::trace;
+use smallvec::{SmallVec, smallvec};
 use crate::expression_ops::{IntoTree, RecExpSlice, Tree};
 
 /// An iterator for match results
@@ -18,7 +19,7 @@ struct Machine<'a, L: Language, N: Analysis<L>> {
     instructions: &'a [Instruction<L>],
     subst: Subst,
     colored_jumps: bool,
-    stack: Vec<MachineContext<L, N>>,
+    stack: Vec<MachineContext>,
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -89,20 +90,20 @@ fn for_each_matching_node<L, D>(
     }
 }
 
-type RunAction<L, A> = Box<dyn FnMut(&mut Machine<L, A>) -> ()>;
-
-struct MachineContext<L, A> where L: Language, A: Analysis<L> {
+struct MachineContext {
     instruction_index: usize,
     color: Option<ColorId>,
-    prep: RunAction<L, A>,
+    truncate: usize,
+    to_push: SmallVec<[Id; 4]>,
 }
 
-impl<L: Language, A: Analysis<L>> MachineContext<L, A> {
-    fn new(instruction_index: usize, color: Option<ColorId>, prep: RunAction<L, A>) -> Self {
+impl MachineContext {
+    fn new(instruction_index: usize, color: Option<ColorId>, truncate: usize, to_push: SmallVec<[Id; 4]>) -> Self {
         Self {
             instruction_index,
             color,
-            prep,
+            truncate,
+            to_push
         }
     }
 }
@@ -115,7 +116,8 @@ impl<'a, L: Language, A: Analysis<L>> Machine<'a, L, A> {
         subst: Subst,
         colored_jumps: bool,
     ) -> Self {
-        let stack: Vec<MachineContext<L, A>> = vec![MachineContext::new(0, color, Box::new(|_| {}))];
+        let mut stack: Vec<MachineContext> = Vec::with_capacity(4096);
+        stack.push(MachineContext::new(0, color, 1, SmallVec::new()));
         Machine {
             reg: vec![],
             lookup: vec![],
@@ -144,7 +146,8 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
         while !self.stack.is_empty() {
             let mut current_state = self.stack.pop().unwrap();
             trace!("Instruction index {} - Popped state with color {:?}", current_state.instruction_index, current_state.color);
-            (current_state.prep)(self);
+            self.reg.truncate(current_state.truncate);
+            self.reg.extend(current_state.to_push.drain(..));
             self.color = current_state.color;
             let mut index = current_state.instruction_index;
             while index < instructions.len() {
@@ -155,14 +158,10 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                         trace!("Instruction index {} - Binding (cur color: {:?}) node {} @ {} (color: {:?}) for out reg {}", index, self.color, node.display_op(), self.reg(*eclass), class_color, out.0);
                         dassert!(class_color.is_none() || class_color == self.color);
                         for_each_matching_node(&egraph[self.reg(*eclass)], node, |matched| {
-                            let matched = matched.clone();
                             let out = *out;
                             trace!("Pusing to stack color: {:?}, truncate to {} and push {}", self.color, out.0, matched.children().iter().join(", "));
-                            let action = move |machine: &mut Machine<L, A>| {
-                                machine.reg.truncate(out.0 as usize);
-                                matched.for_each(|id| machine.reg.push(id));
-                            };
-                            self.stack.push(MachineContext::new(index + 1, self.color, Box::new(action)));
+                            let to_push = SmallVec::from_slice(matched.children());
+                            self.stack.push(MachineContext::new(index + 1, self.color, out.0 as usize, to_push));
                         });
                         break;
                     }
@@ -180,12 +179,8 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                                 cls_color
                             };
                             let out = *out;
-                            let action = Box::new(move |machine: &mut Machine<L, A>| {
-                                machine.reg.truncate(out.0 as usize);
-                                machine.reg.push(id);
-                            });
                             trace!("Pushing to stack color: {:?}, truncate to {} and push {}", new_color, out.0, id);
-                            machine.stack.push(MachineContext::new(index + 1, new_color, action));
+                            machine.stack.push(MachineContext::new(index + 1, new_color, out.0 as usize, smallvec![id]));
                         };
 
                         match top_pat {
@@ -220,7 +215,7 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                                 if let Some(eqs) = egraph.get_colored_equalities(fixed_i) {
                                     for (cid, _id) in eqs.into_iter().filter(|(_cid, id)| *id == fixed_j) {
                                         trace!("Pushing to stack with new color {:?}", cid);
-                                        self.stack.push(MachineContext::new(index + 1, Some(cid), Box::new(|_| {})));
+                                        self.stack.push(MachineContext::new(index + 1, Some(cid), self.reg.len(), smallvec![]));
                                     }
                                 }
                             }
@@ -269,13 +264,8 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                                     if *jump_id == id {
                                         continue;
                                     }
-                                    let jump_id = *jump_id;
-                                    let _out = *out;
-                                    let action = Box::new(move |machine: &mut Machine<L, A>| {
-                                        machine.reg[_out.0 as usize] = jump_id;
-                                    });
-                                    trace!("Pushing to stack with new id (same color) reg {}={}", _out.0, jump_id);
-                                    self.stack.push(MachineContext::new(index + 1, self.color, action));
+                                    trace!("Pushing to stack with new id (same color) reg {}={}", out.0, jump_id);
+                                    self.stack.push(MachineContext::new(index + 1, self.color, out.0 as usize, smallvec![*jump_id]));
                                 }
                             }
                         } else {
@@ -285,12 +275,8 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                                     if jumped_id == id {
                                         continue;
                                     }
-                                    let out = *out;
-                                    let action = Box::new(move |machine: &mut Machine<L, A>| {
-                                        machine.reg[out.0 as usize] = jumped_id;
-                                    });
                                     trace!("Pushing to stack with new id (new color {:?}) reg {}={}", c_id, orig.0, jumped_id);
-                                    self.stack.push(MachineContext::new(index + 1, Some(c_id), action));
+                                    self.stack.push(MachineContext::new(index + 1, Some(c_id), out.0 as usize, smallvec![jumped_id]));
                                 }
                             }
                         }
@@ -324,10 +310,7 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                             for color in colors {
                                 let out = *out;
                                 self.stack.push(MachineContext::new(
-                                    index + 1, color, Box::new(move |machine| {
-                                        machine.reg.truncate(out.0 as usize);
-                                        machine.reg.push(res);
-                                    }),
+                                    index + 1, color, out.0 as usize, smallvec![res],
                                 ));
                             }
                         }
@@ -710,6 +693,7 @@ impl<L: Language> Program<L> {
     {
         let mut machine = Machine::new(old_machine.color, egraph, &self.instructions, self.subst.clone(), run_color);
         machine.reg = old_machine.reg.clone();
+        machine.stack[0].truncate = machine.reg.len();
         machine
     }
     fn patterns_agree(orig: RecExpSlice<ENodeOrVar<L>>, compared: RecExpSlice<ENodeOrVar<L>>, common_vars: &Vec<Var>) -> bool {
