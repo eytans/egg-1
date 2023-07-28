@@ -12,7 +12,7 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="More efficient single thread colored_union_find.rs using Cell">
+    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Turned machine context into stack only for efficiency">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/machine.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/machine.rs" afterDir="false" />
     </list>
@@ -73,7 +73,7 @@
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
-  <component name="RunManager" selected="Cargo.test">
+  <component name="RunManager" selected="Cargo.Test multipattern::tests::test_second_or_matches">
     <configuration name="Doctest of colored_union_find::ColoredUnionFind (line 16)" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package egg --doc &quot;colored_union_find::ColoredUnionFind\ (line\ 16)&quot;" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -91,8 +91,25 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test multipattern::tests::bad_unbound_var" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package egg --lib multipattern::tests::bad_unbound_var -- --exact" />
+    <configuration name="Test multipattern::tests::check_refcell_clone" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib multipattern::tests::check_refcell_clone -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="emulateTerminal" value="false" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test multipattern::tests::test_not_exists_pattern" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib multipattern::tests::test_not_exists_pattern -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <option name="emulateTerminal" value="false" />
       <option name="channel" value="DEFAULT" />
@@ -110,23 +127,6 @@
     </configuration>
     <configuration name="Test multipattern::tests::test_second_or_matches" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package egg --lib multipattern::tests::test_second_or_matches -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
-      <option name="emulateTerminal" value="false" />
-      <option name="channel" value="DEFAULT" />
-      <option name="requiredFeatures" value="true" />
-      <option name="allFeatures" value="false" />
-      <option name="withSudo" value="false" />
-      <option name="buildTarget" value="REMOTE" />
-      <option name="backtrace" value="SHORT" />
-      <envs />
-      <option name="isRedirectInput" value="false" />
-      <option name="redirectInputPath" value="" />
-      <method v="2">
-        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
-      </method>
-    </configuration>
-    <configuration name="Test rewrite::tests::conditional_rewrite" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package egg --lib rewrite::tests::conditional_rewrite -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <option name="emulateTerminal" value="false" />
       <option name="channel" value="DEFAULT" />
@@ -161,18 +161,18 @@
     </configuration>
     <list>
       <item itemvalue="Cargo.Doctest of colored_union_find::ColoredUnionFind (line 16)" />
+      <item itemvalue="Cargo.Test multipattern::tests::check_refcell_clone" />
       <item itemvalue="Cargo.test" />
-      <item itemvalue="Cargo.Test multipattern::tests::bad_unbound_var" />
+      <item itemvalue="Cargo.Test multipattern::tests::test_not_exists_pattern" />
       <item itemvalue="Cargo.Test multipattern::tests::test_second_or_matches" />
-      <item itemvalue="Cargo.Test rewrite::tests::conditional_rewrite" />
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Cargo.test" />
-        <item itemvalue="Cargo.Doctest of colored_union_find::ColoredUnionFind (line 16)" />
-        <item itemvalue="Cargo.Test rewrite::tests::conditional_rewrite" />
-        <item itemvalue="Cargo.Test multipattern::tests::bad_unbound_var" />
         <item itemvalue="Cargo.Test multipattern::tests::test_second_or_matches" />
+        <item itemvalue="Cargo.test" />
+        <item itemvalue="Cargo.Test multipattern::tests::check_refcell_clone" />
+        <item itemvalue="Cargo.Test multipattern::tests::test_not_exists_pattern" />
+        <item itemvalue="Cargo.Doctest of colored_union_find::ColoredUnionFind (line 16)" />
       </list>
     </recent_temporary>
   </component>
@@ -209,7 +209,7 @@
       <workItem from="1689869891571" duration="11871000" />
       <workItem from="1689934269027" duration="7191000" />
       <workItem from="1690275726285" duration="759000" />
-      <workItem from="1690276506621" duration="31401000" />
+      <workItem from="1690276506621" duration="43805000" />
     </task>
     <task id="LOCAL-00001" summary="Colored congruence should take less memory due to better implementation">
       <created>1682546837181</created>
@@ -400,7 +400,14 @@
       <option name="project" value="LOCAL" />
       <updated>1690480980463</updated>
     </task>
-    <option name="localTasksCounter" value="28" />
+    <task id="LOCAL-00028" summary="Turned machine context into stack only for efficiency">
+      <created>1690483434288</created>
+      <option name="number" value="00028" />
+      <option name="presentableId" value="LOCAL-00028" />
+      <option name="project" value="LOCAL" />
+      <updated>1690483434288</updated>
+    </task>
+    <option name="localTasksCounter" value="29" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -418,7 +425,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Fixed colored_union_find.rs remove, some warnings and better parameters for api" />
     <MESSAGE value="Fixed colored_union_find.rs remove black_ids set optimization" />
     <MESSAGE value="Fixed colored_equivalences to only hold what colors, and using equality classes for getter." />
     <MESSAGE value="Temporary change trying to be 0.9.5" />
@@ -443,7 +449,8 @@
     <MESSAGE value="More efficient single thread colored_union_find.rs" />
     <MESSAGE value="Moving to less allocations in machine" />
     <MESSAGE value="More efficient single thread colored_union_find.rs using Cell" />
-    <option name="LAST_COMMIT_MESSAGE" value="More efficient single thread colored_union_find.rs using Cell" />
+    <MESSAGE value="Turned machine context into stack only for efficiency" />
+    <option name="LAST_COMMIT_MESSAGE" value="Turned machine context into stack only for efficiency" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -457,6 +464,16 @@
           <url>file://$PROJECT_DIR$/src/egraph.rs</url>
           <line>1901</line>
           <option name="timeStamp" value="69" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
+          <url>file://$PROJECT_DIR$/src/multipattern.rs</url>
+          <line>613</line>
+          <option name="timeStamp" value="75" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
+          <url>file://$PROJECT_DIR$/src/machine.rs</url>
+          <line>337</line>
+          <option name="timeStamp" value="76" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

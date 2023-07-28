@@ -1,4 +1,6 @@
+use std::cell::RefCell;
 use std::collections::BTreeSet;
+use std::rc::Rc;
 use crate::*;
 use indexmap::{IndexMap, IndexSet};
 use invariants::dassert;
@@ -7,6 +9,8 @@ use itertools::Either::{Right, Left};
 use log::trace;
 use smallvec::{SmallVec, smallvec};
 use crate::expression_ops::{IntoTree, RecExpSlice, Tree};
+
+type EarlyStopFn<'a, L, N> = Rc<RefCell<dyn FnMut(&Machine<'a, L, N>) -> bool>>;
 
 /// An iterator for match results
 struct Machine<'a, L: Language, N: Analysis<L>> {
@@ -20,6 +24,7 @@ struct Machine<'a, L: Language, N: Analysis<L>> {
     subst: Subst,
     colored_jumps: bool,
     stack: Vec<MachineContext>,
+    early_stop: Option<EarlyStopFn<'a, L, N>>,
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -127,6 +132,7 @@ impl<'a, L: Language, A: Analysis<L>> Machine<'a, L, A> {
             subst,
             colored_jumps,
             stack,
+            early_stop: None,
         }
     }
 
@@ -149,6 +155,14 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
             self.reg.truncate(current_state.truncate);
             self.reg.extend(current_state.to_push.drain(..));
             self.color = current_state.color;
+            let mut early = std::mem::take(&mut self.early_stop);
+            if let Some(f) = early.as_ref() {
+                let mut r = f.borrow_mut();
+                if r(self) {
+                    continue;
+                }
+            }
+            self.early_stop = early;
             let mut index = current_state.instruction_index;
             while index < instructions.len() {
                 let instruction = &instructions[index];
@@ -293,26 +307,51 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                     Instruction::Nop => {
                         // do nothing
                     }
-                    // TODO : Change compilation such that No colored jump when previously jumped
-                    //     Early stop Or matches
-                    Instruction::Or { root ,out, sub_progs } => {
-                        // TODO: optimize by not running it all ahead of time
-                        let results = sub_progs.iter().flat_map(|p|
-                                p.inner_run_from(egraph, self, colored_jumps))
-                            .map(|s| (*s.get(*root).unwrap(), s.color))
-                            .unique()
-                            .into_group_map();
-                        for (res, mut colors) in results {
+                    Instruction::Or { root, out, sub_progs } => {
+                        let mut done: Rc<RefCell<BTreeSet<(Option<ColorId>, Id)>>> = Default::default();
+                        let cloned = done.clone();
+                        let out = *out;
+                        let early_stop = Rc::new(RefCell::new(move |machine: &Machine<'a, L, A>| {
+                            if machine.reg.len() <= out.0 as usize {
+                                return false;
+                            }
+                            let id = machine.reg(out);
+                            // TODO: support hierarchy
+                            if done.borrow().contains(&(machine.color.clone(), id)) {
+                                return true;
+                            }
+                            if let Some(c) = machine.color {
+                                if let Some(eqs) = machine.egraph.get_color(c).unwrap().black_ids(machine.egraph, id) {
+                                    for eq in eqs {
+                                        if done.borrow().contains(&(None, *eq)) || done.borrow().contains(&(Some(c), *eq)) {
+                                            return true;
+                                        }
+                                    }
+                                }
+                            }
+                            false
+                        }));
+                        let done = cloned;
+                        sub_progs.iter().for_each(|p| {
+                            p.run_for_or(egraph, self, colored_jumps, early_stop.clone())
+                                .for_each(|s| {
+                                    done.borrow_mut().insert((s.color.clone(), *s.get(*root).unwrap()));
+                                })
+                        });
+                        for (color, id) in done.borrow().iter() {
                             // TODO: filter by hierarchy
-                            if colors.contains(&None) {
-                                colors = vec![None];
+                            if let Some(c) = color {
+                                if let Some(eqs) = egraph.get_color(*c).unwrap().black_ids(egraph, *id) {
+                                    for eq in eqs {
+                                        if done.borrow().contains(&(None, *eq)) {
+                                            continue;
+                                        }
+                                    }
+                                }
                             }
-                            for color in colors {
-                                let out = *out;
-                                self.stack.push(MachineContext::new(
-                                    index + 1, color, out.0 as usize, smallvec![res],
-                                ));
-                            }
+                            self.stack.push(MachineContext::new(
+                                index + 1, *color, out.0 as usize, smallvec![*id],
+                            ));
                         }
                         break;
                     }
@@ -696,6 +735,24 @@ impl<L: Language> Program<L> {
         machine.stack[0].truncate = machine.reg.len();
         machine
     }
+
+    fn run_for_or<'a, A>(
+        &'a self,
+        egraph: &'a EGraph<L, A>,
+        old_machine: &Machine<'a, L, A>,
+        run_color: bool,
+        early_stop: EarlyStopFn<'a, L, A>,
+    ) -> impl Iterator<Item = Subst> + 'a
+        where
+            A: Analysis<L>,
+    {
+        let mut machine = Machine::new(old_machine.color, egraph, &self.instructions, self.subst.clone(), run_color);
+        machine.reg = old_machine.reg.clone();
+        machine.stack[0].truncate = machine.reg.len();
+        machine.early_stop = Some(early_stop);
+        machine
+    }
+
     fn patterns_agree(orig: RecExpSlice<ENodeOrVar<L>>, compared: RecExpSlice<ENodeOrVar<L>>, common_vars: &Vec<Var>) -> bool {
         match orig.root() {
             ENodeOrVar::ENode(enode, _) => {
