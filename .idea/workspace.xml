@@ -12,7 +12,7 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Turned machine context into stack only for efficiency">
+    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Implemented early stop for or">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/machine.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/machine.rs" afterDir="false" />
     </list>
@@ -73,7 +73,7 @@
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
-  <component name="RunManager" selected="Cargo.Test multipattern::tests::test_second_or_matches">
+  <component name="RunManager" selected="Cargo.test">
     <configuration name="Doctest of colored_union_find::ColoredUnionFind (line 16)" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package egg --doc &quot;colored_union_find::ColoredUnionFind\ (line\ 16)&quot;" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -168,8 +168,8 @@
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Cargo.Test multipattern::tests::test_second_or_matches" />
         <item itemvalue="Cargo.test" />
+        <item itemvalue="Cargo.Test multipattern::tests::test_second_or_matches" />
         <item itemvalue="Cargo.Test multipattern::tests::check_refcell_clone" />
         <item itemvalue="Cargo.Test multipattern::tests::test_not_exists_pattern" />
         <item itemvalue="Cargo.Doctest of colored_union_find::ColoredUnionFind (line 16)" />
@@ -209,7 +209,7 @@
       <workItem from="1689869891571" duration="11871000" />
       <workItem from="1689934269027" duration="7191000" />
       <workItem from="1690275726285" duration="759000" />
-      <workItem from="1690276506621" duration="43805000" />
+      <workItem from="1690276506621" duration="47991000" />
     </task>
     <task id="LOCAL-00001" summary="Colored congruence should take less memory due to better implementation">
       <created>1682546837181</created>
@@ -407,7 +407,14 @@
       <option name="project" value="LOCAL" />
       <updated>1690483434288</updated>
     </task>
-    <option name="localTasksCounter" value="29" />
+    <task id="LOCAL-00029" summary="Implemented early stop for or">
+      <created>1690536413111</created>
+      <option name="number" value="00029" />
+      <option name="presentableId" value="LOCAL-00029" />
+      <option name="project" value="LOCAL" />
+      <updated>1690536413111</updated>
+    </task>
+    <option name="localTasksCounter" value="30" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -425,7 +432,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Fixed colored_union_find.rs remove black_ids set optimization" />
     <MESSAGE value="Fixed colored_equivalences to only hold what colors, and using equality classes for getter." />
     <MESSAGE value="Temporary change trying to be 0.9.5" />
     <MESSAGE value="Mostly working multipattern.rs for colored egraphs. Still needs special tests&#10;&#10;Using thiserror for parse error handling&#10;Added some helper functions in Language to help rec expression work with multipatterns&#10;Updated Machine to work for multipatterns. This includes:&#10; * A new Scan command for multipatterns&#10; * Updated compiler from egraphs-good/egg that supports MultiPatterns but also inserts ColorJump between Binds&#10; * A lookup command that is mostly disabled. It is an optimization that cannot work with colors&#10; Updated macros to support multipattern and changes to Language&#10; Added MultiPattern struct itself (as opposed to machine implementation)" />
@@ -450,7 +456,8 @@
     <MESSAGE value="Moving to less allocations in machine" />
     <MESSAGE value="More efficient single thread colored_union_find.rs using Cell" />
     <MESSAGE value="Turned machine context into stack only for efficiency" />
-    <option name="LAST_COMMIT_MESSAGE" value="Turned machine context into stack only for efficiency" />
+    <MESSAGE value="Implemented early stop for or" />
+    <option name="LAST_COMMIT_MESSAGE" value="Implemented early stop for or" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -469,11 +476,6 @@
           <url>file://$PROJECT_DIR$/src/multipattern.rs</url>
           <line>613</line>
           <option name="timeStamp" value="75" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
-          <url>file://$PROJECT_DIR$/src/machine.rs</url>
-          <line>337</line>
-          <option name="timeStamp" value="76" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

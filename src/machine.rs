@@ -300,7 +300,9 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                         // Not breaking so will continue to next instruction with current setup.
                     }
                     Instruction::Not { sub_prog } => {
-                        if sub_prog.inner_run_from(egraph, self, false).next().is_some() {
+                        // TODO: support hierarchy such that color doesn't "deepen"
+                        let run_color = self.color.is_some();
+                        if sub_prog.inner_run_from(egraph, self, run_color).next().is_some() {
                             break;
                         }
                     }
