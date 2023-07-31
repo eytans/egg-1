@@ -56,9 +56,7 @@ impl<L: Language, N: Analysis<L>> Searcher<L, N> for PointerSearcher<L, N> {
 mod tests {
     use std::str::FromStr;
 
-    use crate::{EGraph, RecExpr, Searcher, SymbolLang, Pattern, MultiPattern, init_logger};
-
-    use crate::eggstentions::searchers::{Matcher, PatternMatcher};
+    use crate::{EGraph, RecExpr, Searcher, SymbolLang, MultiPattern, init_logger};
     // use crate::system_case_splits;
 
     #[test]

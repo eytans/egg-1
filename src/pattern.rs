@@ -507,7 +507,7 @@ mod tests {
         let w = egraph.add(S::leaf("w"));
         let _plus2 = egraph.add(S::new("+", vec![z, w]));
 
-        let c = egraph.create_color();
+        let c = egraph.create_color(None);
         egraph.colored_union(c, y, z);
         egraph.rebuild();
 
@@ -559,7 +559,7 @@ mod tests {
         let z = egraph.add(S::leaf("z"));
         let y = egraph.add(S::leaf("y"));
         let equ = egraph.add(S::new("=", vec![z, y]));
-        let c = egraph.create_color();
+        let c = egraph.create_color(None);
         egraph.colored_union(c, x, y);
         egraph.colored_union(c, x, z);
         egraph.rebuild();
@@ -581,7 +581,7 @@ mod tests {
         let mut egraph = EGraph::default();
         let x = egraph.add(S::leaf("x"));
         let y = egraph.add(S::leaf("y"));
-        let c = egraph.create_color();
+        let c = egraph.create_color(None);
         let fx = egraph.colored_add(c, S::new("f", vec![x]));
         egraph.colored_union(c, fx, y);
         egraph.rebuild();

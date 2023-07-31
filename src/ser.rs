@@ -37,7 +37,7 @@ impl ColorPalette {
         match self.colors.get(&color) {
            Some(cid) => *cid,
            None => {
-               let v = g.create_color();
+               let v = g.create_color(None);
                self.colors.insert(color, v);
                v
            }
