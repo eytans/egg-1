@@ -155,7 +155,7 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
             self.reg.truncate(current_state.truncate);
             self.reg.extend(current_state.to_push.drain(..));
             self.color = current_state.color;
-            let mut early = std::mem::take(&mut self.early_stop);
+            let early = std::mem::take(&mut self.early_stop);
             if let Some(f) = early.as_ref() {
                 let mut r = f.borrow_mut();
                 if r(self) {
@@ -310,7 +310,7 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                         // do nothing
                     }
                     Instruction::Or { root, out, sub_progs } => {
-                        let mut done: Rc<RefCell<BTreeSet<(Option<ColorId>, Id)>>> = Default::default();
+                        let done: Rc<RefCell<BTreeSet<(Option<ColorId>, Id)>>> = Default::default();
                         let cloned = done.clone();
                         let out = *out;
                         let early_stop = Rc::new(RefCell::new(move |machine: &Machine<'a, L, A>| {

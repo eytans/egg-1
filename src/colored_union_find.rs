@@ -1,7 +1,10 @@
+#[allow(unused_imports)]
 use std::borrow::BorrowMut;
 use std::cell::Cell;
 use std::fmt::Debug;
+#[allow(unused_imports)]
 use std::sync::atomic::{AtomicU32, Ordering};
+#[allow(unused_imports)]
 use std::sync::atomic::Ordering::Relaxed;
 use indexmap::IndexMap;
 use itertools::Itertools;
