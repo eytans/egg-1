@@ -174,12 +174,7 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for MultiPattern<L> {
     }
 
     fn colored_search_eclass(&self, egraph: &EGraph<L, A>, eclass: Id, color: ColorId) -> Option<SearchMatches> {
-        let eq_classes = egraph.get_color(color).unwrap().black_ids(egraph, eclass);
-        let todo: Box<dyn Iterator<Item=Id>> = if let Some(ids) = eq_classes {
-            Box::new(ids.iter().copied())
-        } else {
-            Box::new(std::iter::once(eclass))
-        };
+        let todo = egraph.get_color(color).unwrap().black_ids(egraph, eclass);
         let mut res = vec![];
         for id in todo {
             let substs = self.program.colored_run(egraph, id, Some(color));

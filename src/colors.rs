@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 pub use crate::{Id, EGraph, Language, Analysis, ColorId};
 use crate::Singleton;
 use crate::util::JoinDisp;
@@ -27,10 +28,25 @@ pub struct Color<L: Language, N: Analysis<L>> {
     pub(crate) black_colored_classes: IndexMap<Id, Id>,
     pub(crate) children: Vec<ColorId>,
     pub(crate) parent: Option<ColorId>,
+    parents: Vec<ColorId>,
     phantom: std::marker::PhantomData<(L, N)>,
 }
 
 impl<L: Language, N: Analysis<L>> Color<L, N> {
+    pub(crate) fn collect_decendents(&self, egraph: &EGraph<L, N>) -> Vec<ColorId> {
+        let mut res = self.children.clone();
+        for c in self.children.iter() {
+            res.extend(egraph.get_color(*c).unwrap().collect_decendents(egraph));
+        }
+        res
+    }
+}
+
+impl<L: Language, N: Analysis<L>> Color<L, N> {
+    pub fn parents(&self) -> &[ColorId] {
+        &self.parents
+    }
+
     pub(crate) fn verify_uf_minimal(&self, egraph: &EGraph<L, N>) {
         let mut parents: IndexMap<Id, usize> = IndexMap::default();
         for (k, _v) in self.union_find.iter() {
@@ -44,7 +60,12 @@ impl<L: Language, N: Analysis<L>> Color<L, N> {
 }
 
 impl<L: Language, N: Analysis<L>> Color<L, N> {
-    pub(crate) fn new(new_id: ColorId, parent: Option<ColorId>) -> Color<L, N> {
+    pub(crate) fn new(new_id: ColorId, parent: Option<ColorId>, graph: &EGraph<L, N>) -> Color<L, N> {
+        let parents = parent.map_or_else(|| vec![], |p| {
+            let mut res = graph.get_color(p).unwrap().parents.clone();
+            res.push(p);
+            res
+        });
         Color {
             color_id: new_id,
             dirty_unions: Default::default(),
@@ -53,6 +74,7 @@ impl<L: Language, N: Analysis<L>> Color<L, N> {
             black_colored_classes: Default::default(),
             children: vec![],
             parent,
+            parents,
             phantom: Default::default(),
         }
     }
@@ -187,11 +209,25 @@ impl<L: Language, N: Analysis<L>> Color<L, N> {
     }
 
     // TODO: add calls to inner_base_union and expand for all parents
-    pub fn black_ids(&self, egraph: &EGraph<L, N>, id: Id) -> Option<&IndexSet<Id>> {
-        self.equality_classes.get(&self.find(egraph, id))
+    // TODO: check that I am not repeating id in get colored eqs
+    pub fn black_ids(&self, egraph: &EGraph<L, N>, id: Id) -> Box<dyn Iterator<Item = Id>> {
+        let parent = self.parent();
+        let fixed_id = self.find(egraph, id);
+        let single = BTreeSet::singleton(fixed_id);
+        let res = if let Some(ids) = self.equality_classes.get(&fixed_id) {
+            if let Some(c_id) = parent {
+                ids.into_iter().copied().flat_map(|id| egraph.get_color(c_id).unwrap().black_ids(egraph, id)).collect_vec()
+            } else {
+                ids.into_iter().copied().collect_vec()
+            }
+        } else {
+            single.into_iter().collect_vec()
+        };
+        Box::new(res.into_iter())
     }
 
     pub fn black_reps(&self) -> impl Iterator<Item=&Id> {
+        todo!("Support hierarchy");
         self.equality_classes.keys().into_iter()
     }
 
@@ -202,10 +238,9 @@ impl<L: Language, N: Analysis<L>> Color<L, N> {
     pub fn parent(&self) -> Option<ColorId> { self.parent }
 
     pub fn get_all_enodes(&self, id: Id, egraph: &EGraph<L, N>) -> Vec<L> {
-        let set: IndexSet<Id> = IndexSet::default();
         let mut res: IndexSet<L> = IndexSet::default();
-        for cls in self.black_ids(egraph, id).unwrap_or(&set) {
-            res.extend(egraph[*cls].nodes.iter().map(|n: &L| egraph.colored_canonize(self.color_id, n)));
+        for cls in self.black_ids(egraph, id) {
+            res.extend(egraph[cls].nodes.iter().map(|n: &L| egraph.colored_canonize(self.color_id, n)));
         }
         return res.into_iter().collect_vec();
     }

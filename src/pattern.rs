@@ -367,14 +367,10 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
     /// Searches all equivalent EClasses under the colored assumption. Returns all results under
     /// the representative of eclass in color.
     fn colored_search_eclass(&self, egraph: &EGraph<L, A>, eclass: Id, color: ColorId) -> Option<SearchMatches> {
-        let eq_classes = egraph.get_color(color).unwrap().black_ids(egraph, eclass);
-        let todo: Box<dyn Iterator<Item=Id>> = if let Some(ids) = eq_classes {
-            Box::new(ids.iter().copied())
-        } else {
-            Box::new(std::iter::once(eclass))
-        };
+        let todo = egraph.get_base_equalities(Some(color), eclass)
+            .map(|x| x.collect_vec()).unwrap_or(vec![(color, eclass)]);
         let mut res = vec![];
-        for id in todo {
+        for (_, id) in todo {
             let substs = self.program.colored_run(egraph, id, Some(color));
             if !substs.is_empty() {
                 res.extend(substs)

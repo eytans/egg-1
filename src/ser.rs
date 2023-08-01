@@ -76,9 +76,10 @@ impl Serialization for EGraph<SymbolLang, ()> {
                     writeln!(out, "clr#{i} {color_id}")?;
                     color_id
                 };
+            todo!("Not supported with hierarchies");
             for id in color.black_reps() {
                 writeln!(out, "?~ {color_id} {members}",
-                         members = color.black_ids(self, *id).unwrap().iter().join(" "))?;
+                         members = color.black_ids(self, *id).join(" "))?;
             }
         }
         Ok(())
