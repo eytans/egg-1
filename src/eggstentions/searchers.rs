@@ -1,5 +1,4 @@
-use crate::{EGraph, Id, Pattern, Searcher, SearchMatches, Subst, Var, Language, Analysis, ColorId};
-use itertools::{Itertools};
+use crate::{EGraph, Id, Pattern, Searcher, SearchMatches, Var, Language, Analysis, ColorId};
 
 use smallvec::alloc::fmt::Formatter;
 use std::rc::Rc;

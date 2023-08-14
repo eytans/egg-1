@@ -8,6 +8,7 @@ use invariants::dassert;
 use itertools::Itertools;
 use thiserror::Error;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 
 use crate::*;
 use crate::expression_ops::{IntoTree, Tree};
@@ -32,7 +33,7 @@ use crate::searchers::ToDyn;
 /// searcher are unioned with that e-class.
 ///
 /// Multipatterns currently do not support the explanations feature.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct MultiPattern<L> {
     asts: Vec<(Var, PatternAst<L>)>,
     or_asts: Vec<(Var, Vec<PatternAst<L>>)>,
@@ -174,7 +175,7 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for MultiPattern<L> {
     }
 
     fn colored_search_eclass(&self, egraph: &EGraph<L, A>, eclass: Id, color: ColorId) -> Option<SearchMatches> {
-        let todo = egraph.get_color(color).unwrap().black_ids(egraph, eclass);
+        let todo = egraph.get_color(color).unwrap().equality_class(egraph, eclass);
         let mut res = vec![];
         for id in todo {
             let substs = self.program.colored_run(egraph, id, Some(color));

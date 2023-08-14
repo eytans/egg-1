@@ -5,7 +5,6 @@ use crate::util::JoinDisp;
 use invariants::dassert;
 use itertools::Itertools;
 use std::fmt::Formatter;
-use bimap::BiMap;
 use indexmap::{IndexMap, IndexSet};
 use crate::colored_union_find::ColoredUnionFind;
 
@@ -17,8 +16,6 @@ pub struct Color<L: Language, N: Analysis<L>> {
     /// Used for rebuilding uf
     pub(crate) dirty_unions: Vec<Id>,
     /// Maintain which classes in black are represented in colored class (including rep)
-    // TODO: Update how we collect/access equality classes (hierarchy)
-    // TODO: Update how we update equality classes on union (hierarchy)
     pub(crate) equality_classes: IndexMap<Id, IndexSet<Id>>,
     /// Used to implement a union find. Opposite function of `equality_classes`.
     /// Supports removal of elements when they are not needed.
@@ -39,23 +36,6 @@ impl<L: Language, N: Analysis<L>> Color<L, N> {
             res.extend(egraph.get_color(*c).unwrap().collect_decendents(egraph));
         }
         res
-    }
-}
-
-impl<L: Language, N: Analysis<L>> Color<L, N> {
-    pub fn parents(&self) -> &[ColorId] {
-        &self.parents
-    }
-
-    pub(crate) fn verify_uf_minimal(&self, egraph: &EGraph<L, N>) {
-        let mut parents: IndexMap<Id, usize> = IndexMap::default();
-        for (k, _v) in self.union_find.iter() {
-            let v = self.find(egraph, k);
-            *parents.entry(v).or_default() += 1;
-        }
-        for (k, v) in parents {
-            assert!(v >= 1, "Found {} parents for {}", v, k);
-        }
     }
 }
 
@@ -85,6 +65,21 @@ impl<L: Language, N: Analysis<L>> Color<L, N> {
 
     pub fn children(&self) -> &[ColorId] {
         &self.children
+    }
+
+    pub fn parents(&self) -> &[ColorId] {
+        &self.parents
+    }
+
+    pub(crate) fn verify_uf_minimal(&self, egraph: &EGraph<L, N>) {
+        let mut parents: IndexMap<Id, usize> = IndexMap::default();
+        for (k, _v) in self.union_find.iter() {
+            let v = self.find(egraph, k);
+            *parents.entry(v).or_default() += 1;
+        }
+        for (k, v) in parents {
+            assert!(v >= 1, "Found {} parents for {}", v, k);
+        }
     }
 
     pub fn find(&self, egraph: &EGraph<L, N>, id: Id) -> Id {
@@ -172,7 +167,7 @@ impl<L: Language, N: Analysis<L>> Color<L, N> {
         if colored_to != colored_from {
             if from_existed {
                 // Only need to update children in "this" union find.
-                let ids = self.base_ids(egraph, colored_to).map(|x| x.iter().copied().collect_vec());
+                let ids = self.base_equality_class(egraph, colored_to).map(|x| x.iter().copied().collect_vec());
                 self.union_find.remove(&base_from, ids.map(|x| x.into_iter()));
             }
             self.dirty_unions.push(colored_to);
@@ -188,7 +183,7 @@ impl<L: Language, N: Analysis<L>> Color<L, N> {
         todo_res
     }
 
-    // Assumed id1 and id2 are black canonized
+    // Assumed id1 and id2 are parent canonized
     pub(crate) fn inner_colored_union(&mut self, id1: Id, id2: Id) -> (Id, Id, bool, Vec<(Id, Id)>) {
         // Parent classes will be updated in black union to come.
         self.union_find.insert(id1);
@@ -204,25 +199,24 @@ impl<L: Language, N: Analysis<L>> Color<L, N> {
         (to, from, changed, g_todo)
     }
 
-    fn base_ids(&self, egraph: &EGraph<L, N>, id: Id) -> Option<&IndexSet<Id>> {
+    pub(crate) fn base_equality_class(&self, egraph: &EGraph<L, N>, id: Id) -> Option<&IndexSet<Id>> {
         self.equality_classes.get(&self.find(egraph, id))
     }
 
-    // TODO: add calls to inner_base_union and expand for all parents
-    // TODO: check that I am not repeating id in get colored eqs
-    pub fn black_ids(&self, egraph: &EGraph<L, N>, id: Id) -> Box<dyn Iterator<Item = Id>> {
+    pub fn equality_class(&self, egraph: &EGraph<L, N>, id: Id) -> Box<dyn Iterator<Item = Id>> {
         let parent = self.parent();
         let fixed_id = self.find(egraph, id);
         let single = BTreeSet::singleton(fixed_id);
         let res = if let Some(ids) = self.equality_classes.get(&fixed_id) {
             if let Some(c_id) = parent {
-                ids.into_iter().copied().flat_map(|id| egraph.get_color(c_id).unwrap().black_ids(egraph, id)).collect_vec()
+                ids.into_iter().copied().flat_map(|id| egraph.get_color(c_id).unwrap().equality_class(egraph, id)).collect_vec()
             } else {
                 ids.into_iter().copied().collect_vec()
             }
         } else {
             single.into_iter().collect_vec()
         };
+        dassert!(res.len() == res.iter().unique().count());
         Box::new(res.into_iter())
     }
 
@@ -239,7 +233,7 @@ impl<L: Language, N: Analysis<L>> Color<L, N> {
 
     pub fn get_all_enodes(&self, id: Id, egraph: &EGraph<L, N>) -> Vec<L> {
         let mut res: IndexSet<L> = IndexSet::default();
-        for cls in self.black_ids(egraph, id) {
+        for cls in self.equality_class(egraph, id) {
             res.extend(egraph[cls].nodes.iter().map(|n: &L| egraph.colored_canonize(self.color_id, n)));
         }
         return res.into_iter().collect_vec();

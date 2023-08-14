@@ -7,6 +7,7 @@ use invariants::dassert;
 use itertools::{Either, Itertools};
 use itertools::Either::{Right, Left};
 use log::trace;
+use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
 use crate::expression_ops::{IntoTree, RecExpSlice, Tree};
 
@@ -27,16 +28,16 @@ struct Machine<'a, L: Language, N: Analysis<L>> {
     early_stop: Option<EarlyStopFn<'a, L, N>>,
 }
 
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 struct Reg(u32);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Program<L> {
     instructions: Vec<Instruction<L>>,
     subst: Subst,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 enum Instruction<L> {
     Bind { node: L, eclass: Reg, out: Reg },
     Compare { i: Reg, j: Reg },
@@ -48,7 +49,7 @@ enum Instruction<L> {
     Or { root: Var, sub_progs: Vec<Program<L>>, out: Reg },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 enum ENodeOrReg<L> {
     ENode(L),
     Reg(Reg),
@@ -230,7 +231,7 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                         trace!("Instruction index {} - Comparing (color: {:?}) reg {} and reg {} (found to be {} and {})", index, self.color, i.0, j.0, fixed_i, fixed_j);
                         if fixed_i != fixed_j {
                             if let Some(eqs) = egraph.get_base_equalities(self.color, fixed_i) {
-                                if eqs.into_iter().any(|(c, id)| id == fixed_j) {
+                                if eqs.into_iter().any(|id| id == fixed_j) {
                                     trace!("Found base match for compare");
                                     continue;
                                 }
@@ -273,10 +274,19 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                     }
                     Instruction::ColorJump { orig, out } => {
                         let id = egraph.find(self.reg(*orig));
-                        let eq_it = if !add_colors {
-                            egraph.get_base_equalities(self.color, id).map(Box::new)
+                        let eq_it: Option<Box<dyn Iterator<Item=(ColorId, Id)>>> = if !add_colors {
+                            if let Some(c) = self.color {
+                                let c = c;
+                                if let Some(b) = egraph.get_base_equalities(self.color, id) {
+                                    Some(Box::new(b.map(move |id| (c, id))))
+                                } else {
+                                    None
+                                }
+                            } else {
+                                Some(Box::new(std::iter::empty()))
+                            }
                         } else {
-                            egraph.get_lineage_equalities(self.color, id).map(Box::new)
+                            egraph.get_lineage_equalities(self.color, id)
                         };
                         trace!("Instruction index {} - Color jumping from reg {}={} (color: {:?})", index, orig.0, self.reg(*orig), self.color);
                         if let Some(eqs) = eq_it {
@@ -321,7 +331,10 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                             }
                             if let Some(c) = machine.color {
                                 if let Some(mut eqs) = machine.egraph.get_base_equalities(Some(c), id) {
-                                    if eqs.any(|(c, id)| done.borrow().contains(&(Some(c), id))) {
+                                    let parents = machine.egraph.get_colors_parents(c);
+                                    if eqs.any(|id| done.borrow().contains(&(None, id)) ||
+                                        done.borrow().contains(&(Some(c), id)) ||
+                                        parents.iter().any(|p| done.borrow().contains(&(Some(*p), id)))) {
                                         return true;
                                     }
                                 }
@@ -338,7 +351,7 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                         for (color, id) in done.borrow().iter() {
                             if let Some(c) = color {
                                 if let Some(eqs) = egraph.get_base_equalities(Some(*c), *id) {
-                                    for (c_id, eq) in eqs {
+                                    for eq in eqs {
                                         if done.borrow().contains(&(None, eq)) ||
                                             egraph.get_colors_parents(*c)
                                                 .into_iter()

@@ -72,7 +72,7 @@ use thiserror::Error;
 /// [`Searcher`]: trait.Searcher.html
 /// [`Applier`]: trait.Applier.html
 /// [`Language`]: trait.Language.html
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Pattern<L> {
     /// The actual pattern as a [`RecExpr`](struct.RecExpr.html)
     pub ast: PatternAst<L>,
@@ -115,7 +115,7 @@ impl<L: Language> Pattern<L> {
 /// The language of [`Pattern`]s.
 ///
 /// [`Pattern`]: struct.Pattern.html
-#[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ENodeOrVar<L> {
     /// An enode from the underlying [`Language`](trait.Language.html)
     ENode(L, Option<String>),
@@ -368,9 +368,9 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
     /// the representative of eclass in color.
     fn colored_search_eclass(&self, egraph: &EGraph<L, A>, eclass: Id, color: ColorId) -> Option<SearchMatches> {
         let todo = egraph.get_base_equalities(Some(color), eclass)
-            .map(|x| x.collect_vec()).unwrap_or(vec![(color, eclass)]);
+            .map(|x| x.collect_vec()).unwrap_or(vec![eclass]);
         let mut res = vec![];
-        for (_, id) in todo {
+        for id in todo {
             let substs = self.program.colored_run(egraph, id, Some(color));
             if !substs.is_empty() {
                 res.extend(substs)
