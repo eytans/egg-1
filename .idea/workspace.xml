@@ -12,18 +12,9 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Finished pass of colored equalities and black ids hierarchy">
+    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Fixed hierarchy search and rebuild">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/colors.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/colors.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/eggstentions/reconstruct.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/eggstentions/reconstruct.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/eggstentions/searchers.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/eggstentions/searchers.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/egraph.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/egraph.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/machine.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/machine.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/multipattern.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/multipattern.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/pattern.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/pattern.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ser.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/ser.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/tools.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/tools.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -223,7 +214,7 @@
       <workItem from="1690780940886" duration="44541000" />
       <workItem from="1691392587563" duration="66000" />
       <workItem from="1691392672432" duration="42190000" />
-      <workItem from="1691955732638" duration="8871000" />
+      <workItem from="1691955732638" duration="10626000" />
     </task>
     <task id="LOCAL-00001" summary="Colored congruence should take less memory due to better implementation">
       <created>1682546837181</created>
@@ -456,7 +447,14 @@
       <option name="project" value="LOCAL" />
       <updated>1690906952311</updated>
     </task>
-    <option name="localTasksCounter" value="34" />
+    <task id="LOCAL-00034" summary="Fixed hierarchy search and rebuild">
+      <created>1692015015246</created>
+      <option name="number" value="00034" />
+      <option name="presentableId" value="LOCAL-00034" />
+      <option name="project" value="LOCAL" />
+      <updated>1692015015247</updated>
+    </task>
+    <option name="localTasksCounter" value="35" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -474,7 +472,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="More multipattern tests. Fixed bug in Scan setting machine color" />
     <MESSAGE value="colored_add_expr should actually return black id" />
     <MESSAGE value="Bug fix in colored_equivalence update. Added invariant" />
     <MESSAGE value="Added uniquify for multipattern results" />
@@ -499,19 +496,20 @@
     <MESSAGE value="Cleanup" />
     <MESSAGE value="Basic hierarchy support in union and find operations. Still need to support other operations" />
     <MESSAGE value="Finished pass of colored equalities and black ids hierarchy" />
-    <option name="LAST_COMMIT_MESSAGE" value="Finished pass of colored equalities and black ids hierarchy" />
+    <MESSAGE value="Fixed hierarchy search and rebuild" />
+    <option name="LAST_COMMIT_MESSAGE" value="Fixed hierarchy search and rebuild" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
           <url>file://$PROJECT_DIR$/src/egraph.rs</url>
-          <line>2174</line>
+          <line>2185</line>
           <option name="timeStamp" value="20" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
           <url>file://$PROJECT_DIR$/src/egraph.rs</url>
-          <line>2312</line>
+          <line>2323</line>
           <option name="timeStamp" value="24" />
         </line-breakpoint>
       </breakpoints>

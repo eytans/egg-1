@@ -538,10 +538,21 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         let enode = enode.borrow_mut();
         enode.update_children(|id| self.find(id));
         self.memo.get(enode).map(|id| self.find(*id)).or_else(|| {
+            for p in self.get_colors_parents(color) {
+                enode.update_children(|id| self.colored_find(*p, id));
+                // We need to find the black representative of the colored edge (yes, confusing).
+                if let Some(id) = self.colored_memo[&color]
+                    .get(enode)
+                    .or_else(|| self.memo.get(enode))
+                    .map(|id| self.find(*id)) {
+                    return Some(id);
+                }
+            }
             enode.update_children(|id| self.colored_find(color, id));
             // We need to find the black representative of the colored edge (yes, confusing).
             self.colored_memo[&color]
-                .get(&*enode)
+                .get(enode)
+                .or_else(|| self.memo.get(enode))
                 .map(|id| self.find(*id))
         })
     }
