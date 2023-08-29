@@ -1142,7 +1142,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         // Verify colors on nodes and in memo only differ by dirty colors
         self.memo_classes_agree();
 
-        while self.colors().any(|c| c.is_dirty()) || !self.dirty_unions.is_empty() {
+        while !self.dirty_unions.is_empty() || self.colors().any(|c| c.is_dirty()) {
             let _merged = self.process_unions();
             self.memo_black_canonized();
             self.process_colored_unions();
@@ -1580,7 +1580,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                         dassert!(
                             ids.iter()
                                 .map(|id| {
-                                    if self[*id].color.is_some() && !self[*id].nodes.is_empty() {
+                                    if self[*id].color.is_some() && !self[*id].nodes.is_empty() && self[*id].color().unwrap() == c.get_id() {
                                         1
                                     } else {
                                         0
@@ -1635,7 +1635,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     #[allow(missing_docs)]
     pub fn create_sub_color(&mut self, color: ColorId) -> ColorId {
         let new_color_id = self.create_color(Some(color));
-        self.get_color_mut(color).unwrap().children.push(new_color_id);
         new_color_id
     }
 
@@ -1655,6 +1654,9 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         let c_id = self.colors.last().unwrap().as_ref().unwrap().get_id();
         if parent_black {
             self.base_colors.push(c_id);
+        }
+        if let Some(p) = parent {
+            self.get_color_mut(p).unwrap().children.push(c_id);
         }
         self.colored_memo.insert(c_id, Default::default());
         return c_id;
@@ -1707,11 +1709,13 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             .inner_colored_union(fixed1, fixed2);
         dassert!({
             let fixed = self.colored_find(color, id1);
-            self[fixed].color.is_none() || self[fixed].color().unwrap() == color
+            let c_color = self[fixed].color;
+            c_color.is_none() || c_color.unwrap() == color || self.get_colors_parents(color).contains(&c_color.unwrap())
         });
         dassert!({
             let fixed = self.colored_find(color, id2);
-            self[fixed].color.is_none() || self[fixed].color().unwrap() == color
+            let c_color = self[fixed].color;
+            c_color.is_none() || c_color.unwrap() == color || self.get_colors_parents(color).contains(&c_color.unwrap())
         });
         if changed {
             // Update class
@@ -1732,7 +1736,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             }
         }
         for (id1, id2) in todo {
-            wassert!(self[id1].color().unwrap() == color);
             wassert!(
                 self[id1].color().unwrap() == self[id2].color().unwrap(),
                 "Todo returned from colored union should be two colored 'black' classes"
@@ -1941,6 +1944,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         self.colored_equivalences.iter().map(|(_, v)| v.len()).sum()
     }
 
+    #[allow(dead_code)]
     pub(crate) fn verify_colored_equivalences(&self, to: Id, from: Id) {
         // assert!(self.is_clean());
         for (id, colors) in &self.colored_equivalences {
@@ -2918,5 +2922,74 @@ mod tests {
         egraph.rebuild();
         egraph.verify_colored_equivalences(x, y);
         invariants::set_max_level(invariants_level);
+    }
+
+    #[test]
+    fn test_plus_reduction_in_hierarchy() {
+        init_logger();
+
+        // Create egraph with x + y expression, then create 12 colors, 6 for "forward" 6 for "backward
+        let mut egraph: EGraph<SymbolLang, ()> = EGraph::new(());
+        let x = egraph.add_expr(&"x".parse().unwrap());
+        let y = egraph.add_expr(&"y".parse().unwrap());
+        let plus = egraph.add_expr(&"(plus x y)".parse().unwrap());
+        let color1 = egraph.create_color(None);
+        let color2 = egraph.create_color(Some(color1));
+        let color3 = egraph.create_color(Some(color2));
+        let color4 = egraph.create_color(Some(color3));
+        let x1 = egraph.colored_add_expr(color1, &"x1".parse().unwrap());
+        let y1 = egraph.colored_add_expr(color1, &"y1".parse().unwrap());
+        let sx = egraph.colored_add_expr(color1, &"(S x)".parse().unwrap());
+        let sy1 = egraph.colored_add_expr(color1, &"(S y1)".parse().unwrap());
+        egraph.colored_union(color1, sx, x1);
+        egraph.colored_union(color1, y, sy1);
+        egraph.colored_add_expr(color1, &"(plus x1 y)".parse().unwrap());
+        let x2 = egraph.colored_add_expr(color2, &"x2".parse().unwrap());
+        let y2 = egraph.colored_add_expr(color2, &"y2".parse().unwrap());
+        let sx1 = egraph.colored_add_expr(color2, &"(S x1)".parse().unwrap());
+        let sy2 = egraph.colored_add_expr(color2, &"(S y2)".parse().unwrap());
+        egraph.colored_union(color2, sx1, x2);
+        egraph.colored_union(color2, y1, sy2);
+        egraph.colored_add_expr(color2, &"(plus x2 y)".parse().unwrap());
+        let x3 = egraph.colored_add_expr(color3, &"x3".parse().unwrap());
+        let y3 = egraph.colored_add_expr(color3, &"y3".parse().unwrap());
+        let sx2 = egraph.colored_add_expr(color3, &"(S x2)".parse().unwrap());
+        let sy3 = egraph.colored_add_expr(color3, &"(S y3)".parse().unwrap());
+        egraph.colored_union(color3, sx2, x3);
+        egraph.colored_union(color3, y2, sy3);
+        egraph.colored_add_expr(color3, &"(plus x3 y)".parse().unwrap());
+        egraph.rebuild();
+
+        // Reduction by plus rules
+        let rules = vec![
+            rewrite!("rule2"; "(plus Z ?x)" => "?x"),
+            rewrite!("rule5"; "(plus (S ?x) ?y)" => "(S (plus ?x ?y))"),
+        ];
+        egraph = Runner::default()
+            .with_iter_limit(8)
+            .with_node_limit(400000)
+            .with_egraph(egraph)
+            .run(&rules)
+            .egraph;
+
+        // Now assert some facts on these numbers
+
+        // Lookup zero has no matches
+        let z_p: Pattern<SymbolLang> = "Z".parse().unwrap();
+        let z_p = z_p.search(&egraph).is_none();
+
+        // S of something appears in 3 colors but not in black
+        let s_p: Pattern<SymbolLang> = "(S ?x)".parse().unwrap();
+        let s_res = s_p.search(&egraph).unwrap();
+        let s_colors = s_res.matches.iter().flat_map(|(k, v)| v.iter().map(|s| s.color())).unique().collect_vec();
+        assert_eq!(s_colors.len(), 3);
+
+        // y is S S S of something
+        let sx_p: Pattern<SymbolLang> = "(S (S (S x)))".parse().unwrap();
+        let sx_res = sx_p.search(&egraph).unwrap();
+        assert_eq!(sx_res.matches.len(), 1);
+        assert_eq!(sx_res.matches.first_key_value().unwrap().1.len(), 1);
+        assert_eq!(sx_res.matches.first_key_value().unwrap().1.first().unwrap().color(), Some(color3));
+
     }
 }

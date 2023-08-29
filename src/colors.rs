@@ -167,20 +167,29 @@ impl<L: Language, N: Analysis<L>> Color<L, N> {
         if colored_to != colored_from {
             if from_existed {
                 // Only need to update children in "this" union find.
-                let ids = self.base_equality_class(egraph, colored_to).map(|x| x.iter().copied().collect_vec());
+                let ids = self.equality_classes.get(&colored_to).map(|x| x.iter().copied().collect_vec());
                 self.union_find.remove(&base_from, ids.map(|x| x.into_iter()));
             }
             self.dirty_unions.push(colored_to);
+
+            // If both color classes existed it will update colored enodes classes.
+            let mut todo_res = {
+                let opt = self.update_black_classes(colored_to, colored_from);
+                if let Some((id1, id2)) = opt {
+                    vec![(id1, id2)]
+                } else {
+                    vec![]
+                }
+            };
+
+            for c in self.children() {
+                todo_res.extend(egraph.inner_base_union(*c, colored_to, colored_from).into_iter());
+            }
+
+            return todo_res;
         }
 
-        // If both color classes existed it will update colored enodes classes.
-        let mut todo_res = self.update_black_classes(colored_to, colored_from).into_iter().collect_vec();
-
-        for c in self.children() {
-            todo_res.extend(egraph.inner_base_union(*c, colored_from, colored_to).into_iter());
-        }
-
-        todo_res
+        return Default::default();
     }
 
     // Assumed id1 and id2 are parent canonized
@@ -199,7 +208,7 @@ impl<L: Language, N: Analysis<L>> Color<L, N> {
         (to, from, changed, g_todo)
     }
 
-    pub(crate) fn base_equality_class(&self, egraph: &EGraph<L, N>, id: Id) -> Option<&IndexSet<Id>> {
+    pub fn base_equality_class(&self, egraph: &EGraph<L, N>, id: Id) -> Option<&IndexSet<Id>> {
         self.equality_classes.get(&self.find(egraph, id))
     }
 
@@ -220,8 +229,9 @@ impl<L: Language, N: Analysis<L>> Color<L, N> {
         Box::new(res.into_iter())
     }
 
-    pub fn black_reps(&self) -> impl Iterator<Item=&Id> {
-        todo!("Support hierarchy");
+    /// Returns the black representative of the colored e-class of the current color only. Does not
+    /// include the parents equality classes.
+    pub fn current_black_reps(&self) -> impl Iterator<Item=&Id> {
         self.equality_classes.keys().into_iter()
     }
 

@@ -12,9 +12,12 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Fixed hierarchy search and rebuild">
+    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Hierarchical colored lookup">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/colors.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/colors.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/egraph.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/egraph.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ser.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/ser.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/tools.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/tools.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -73,7 +76,7 @@
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
-  <component name="RunManager" selected="Cargo.test">
+  <component name="RunManager" selected="Cargo.Test egraph::tests::test_plus_reduction_in_hierarchy">
     <configuration name="Test egraph::tests::color_congruence_closure" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package egg --lib egraph::tests::color_congruence_closure -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -108,8 +111,8 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test multipattern::tests::check_refcell_clone" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package egg --lib multipattern::tests::check_refcell_clone -- --exact" />
+    <configuration name="Test egraph::tests::test_plus_reduction_in_hierarchy" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib egraph::tests::test_plus_reduction_in_hierarchy -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <option name="emulateTerminal" value="false" />
       <option name="channel" value="DEFAULT" />
@@ -160,19 +163,19 @@
       </method>
     </configuration>
     <list>
+      <item itemvalue="Cargo.Test egraph::tests::test_plus_reduction_in_hierarchy" />
       <item itemvalue="Cargo.Test egraph::tests::color_congruence_closure" />
       <item itemvalue="Cargo.Test egraph::tests::test_colored_vacuity_check_sanity" />
-      <item itemvalue="Cargo.Test multipattern::tests::check_refcell_clone" />
       <item itemvalue="Cargo.test" />
       <item itemvalue="Cargo.Test multipattern::tests::test_second_or_matches" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test egraph::tests::test_plus_reduction_in_hierarchy" />
         <item itemvalue="Cargo.test" />
         <item itemvalue="Cargo.Test egraph::tests::test_colored_vacuity_check_sanity" />
         <item itemvalue="Cargo.Test egraph::tests::color_congruence_closure" />
         <item itemvalue="Cargo.Test multipattern::tests::test_second_or_matches" />
-        <item itemvalue="Cargo.Test multipattern::tests::check_refcell_clone" />
       </list>
     </recent_temporary>
   </component>
@@ -214,7 +217,13 @@
       <workItem from="1690780940886" duration="44541000" />
       <workItem from="1691392587563" duration="66000" />
       <workItem from="1691392672432" duration="42190000" />
-      <workItem from="1691955732638" duration="10626000" />
+      <workItem from="1691955732638" duration="14109000" />
+      <workItem from="1692110387460" duration="122000" />
+      <workItem from="1692110523537" duration="5679000" />
+      <workItem from="1692255784195" duration="9206000" />
+      <workItem from="1692429835446" duration="95000" />
+      <workItem from="1692429950538" duration="933000" />
+      <workItem from="1693294059735" duration="8131000" />
     </task>
     <task id="LOCAL-00001" summary="Colored congruence should take less memory due to better implementation">
       <created>1682546837181</created>
@@ -454,7 +463,14 @@
       <option name="project" value="LOCAL" />
       <updated>1692015015247</updated>
     </task>
-    <option name="localTasksCounter" value="35" />
+    <task id="LOCAL-00035" summary="Hierarchical colored lookup">
+      <created>1692080178935</created>
+      <option name="number" value="00035" />
+      <option name="presentableId" value="LOCAL-00035" />
+      <option name="project" value="LOCAL" />
+      <updated>1692080178935</updated>
+    </task>
+    <option name="localTasksCounter" value="36" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -472,7 +488,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="colored_add_expr should actually return black id" />
     <MESSAGE value="Bug fix in colored_equivalence update. Added invariant" />
     <MESSAGE value="Added uniquify for multipattern results" />
     <MESSAGE value="Fixed multipattern to string and cleanup" />
@@ -497,19 +512,20 @@
     <MESSAGE value="Basic hierarchy support in union and find operations. Still need to support other operations" />
     <MESSAGE value="Finished pass of colored equalities and black ids hierarchy" />
     <MESSAGE value="Fixed hierarchy search and rebuild" />
-    <option name="LAST_COMMIT_MESSAGE" value="Fixed hierarchy search and rebuild" />
+    <MESSAGE value="Hierarchical colored lookup" />
+    <option name="LAST_COMMIT_MESSAGE" value="Hierarchical colored lookup" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
           <url>file://$PROJECT_DIR$/src/egraph.rs</url>
-          <line>2185</line>
+          <line>2189</line>
           <option name="timeStamp" value="20" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
           <url>file://$PROJECT_DIR$/src/egraph.rs</url>
-          <line>2323</line>
+          <line>2327</line>
           <option name="timeStamp" value="24" />
         </line-breakpoint>
       </breakpoints>

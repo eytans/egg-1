@@ -100,7 +100,7 @@ pub mod tools {
             (v, p.ast)
         }).collect_vec();
         let res = (0..patterns.len()).map(|i| {
-            let mut new_patterns = patterns.iter().map(|(v, x)| x).cloned().collect_vec();
+            let mut new_patterns = patterns.iter().map(|(_v, x)| x).cloned().collect_vec();
             let main = new_patterns.remove(i);
             MultiPattern::new_with_specials(vec![(v, main)], vec![(v, new_patterns)], vec![])
         }).collect_vec();
