@@ -318,6 +318,8 @@ mod tests {
 
     #[test]
     fn eq_two_trees_one_common() {
+        init_logger();
+
         let searcher: MultiPattern<SymbolLang> =  "?x = (a ?b ?c), ?x = (a ?c ?d)".parse().unwrap();
         let mut egraph: EGraph<SymbolLang, ()> = EGraph::default();
         let x = egraph.add_expr(&RecExpr::from_str("x").unwrap());
@@ -348,6 +350,8 @@ mod tests {
 
     #[test]
     fn find_ind_hyp() {
+        init_logger();
+
         let mut egraph: EGraph<SymbolLang, ()> = EGraph::default();
         let full_pl = egraph.add_expr(&"(pl (S p0) Z)".parse().unwrap());
         let after_pl = egraph.add_expr(&"(S (pl p0 Z))".parse().unwrap());
@@ -363,6 +367,8 @@ mod tests {
 
     #[test]
     fn pattern_to_matcher_sanity() {
+        init_logger();
+
         let mut graph: EGraph<SymbolLang, ()> = EGraph::default();
         graph.add_expr(&RecExpr::from_str("(+ 1 (+ 2 3))").unwrap());
         graph.add_expr(&RecExpr::from_str("(+ 31 (+ 32 33))").unwrap());

@@ -372,10 +372,12 @@ where
 mod test {
     use std::str::FromStr;
 
-    use crate::{SymbolLang, EGraph, RecExpr};
+    use crate::{SymbolLang, EGraph, RecExpr, init_logger};
 
     #[test]
     fn draw_if_xy_then_a_else_b() {
+        init_logger();
+
         let mut egraph: EGraph<SymbolLang, ()> = EGraph::new(());
         let if_statement = egraph.add_expr(&RecExpr::from_str("(if (< x y) hello world)").unwrap());
         egraph.dot().to_dot("if.dot").unwrap();
@@ -394,6 +396,8 @@ mod test {
 
     #[test]
     fn draw_max() {
+        init_logger();
+
         let mut egraph: EGraph<SymbolLang, ()> = EGraph::new(());
         let max_st = egraph.add_expr(&RecExpr::from_str("(max x y)").unwrap());
         let min_st = egraph.add_expr(&RecExpr::from_str("(min x y)").unwrap());
@@ -467,6 +471,8 @@ mod test {
 
     #[test]
     fn filter_edges() {
+        init_logger();
+
         let mut egraph: EGraph<SymbolLang, ()> = EGraph::new(());
         let _max_st = egraph.add_expr(&RecExpr::from_str("(max x y)").unwrap());
         let _min_st = egraph.add_expr(&RecExpr::from_str("(min x y)").unwrap());
