@@ -12,12 +12,10 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Hierarchical colored lookup">
+    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Cleanup + assertbug fix + fix in colored union_find remove call">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/colors.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/colors.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/egraph.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/egraph.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ser.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/ser.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/tools.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/tools.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/colored_union_find.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/colored_union_find.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/run.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/run.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -76,7 +74,7 @@
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
-  <component name="RunManager" selected="Cargo.Test egraph::tests::test_plus_reduction_in_hierarchy">
+  <component name="RunManager" selected="Cargo.test">
     <configuration name="Test egraph::tests::color_congruence_closure" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package egg --lib egraph::tests::color_congruence_closure -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -171,8 +169,8 @@
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Cargo.Test egraph::tests::test_plus_reduction_in_hierarchy" />
         <item itemvalue="Cargo.test" />
+        <item itemvalue="Cargo.Test egraph::tests::test_plus_reduction_in_hierarchy" />
         <item itemvalue="Cargo.Test egraph::tests::test_colored_vacuity_check_sanity" />
         <item itemvalue="Cargo.Test egraph::tests::color_congruence_closure" />
         <item itemvalue="Cargo.Test multipattern::tests::test_second_or_matches" />
@@ -223,7 +221,7 @@
       <workItem from="1692255784195" duration="9206000" />
       <workItem from="1692429835446" duration="95000" />
       <workItem from="1692429950538" duration="933000" />
-      <workItem from="1693294059735" duration="8131000" />
+      <workItem from="1693294059735" duration="21070000" />
     </task>
     <task id="LOCAL-00001" summary="Colored congruence should take less memory due to better implementation">
       <created>1682546837181</created>
@@ -470,7 +468,14 @@
       <option name="project" value="LOCAL" />
       <updated>1692080178935</updated>
     </task>
-    <option name="localTasksCounter" value="36" />
+    <task id="LOCAL-00036" summary="Cleanup + assertbug fix + fix in colored union_find remove call">
+      <created>1693311419117</created>
+      <option name="number" value="00036" />
+      <option name="presentableId" value="LOCAL-00036" />
+      <option name="project" value="LOCAL" />
+      <updated>1693311419117</updated>
+    </task>
+    <option name="localTasksCounter" value="37" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -488,7 +493,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Bug fix in colored_equivalence update. Added invariant" />
     <MESSAGE value="Added uniquify for multipattern results" />
     <MESSAGE value="Fixed multipattern to string and cleanup" />
     <MESSAGE value="Removed DiffSearcher" />
@@ -513,7 +517,8 @@
     <MESSAGE value="Finished pass of colored equalities and black ids hierarchy" />
     <MESSAGE value="Fixed hierarchy search and rebuild" />
     <MESSAGE value="Hierarchical colored lookup" />
-    <option name="LAST_COMMIT_MESSAGE" value="Hierarchical colored lookup" />
+    <MESSAGE value="Cleanup + assertbug fix + fix in colored union_find remove call" />
+    <option name="LAST_COMMIT_MESSAGE" value="Cleanup + assertbug fix + fix in colored union_find remove call" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
