@@ -21,8 +21,9 @@ once_cell = "1"
 serde = { version = "1", features = ["derive"] }
 serde_cbor = "0.11.2"
 # for the reports feature
-multimap = "0.8.2"
-itertools = "0.9.0"
+multimap = "0.9.0"
+itertools = "0.11.0"
+either = {version = "1.9.0", features = ["serde"] }
 global_counter = "0.2.1"
 bimap = {version = "0.6.2", features = ["serde"]}
 bitvec = "1.0.0"

@@ -7,6 +7,7 @@ use invariants::dassert;
 use itertools::{Either, Itertools};
 use itertools::Either::{Right, Left};
 use log::trace;
+use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
 use crate::expression_ops::{IntoTree, RecExpSlice, Tree};
 
@@ -22,21 +23,21 @@ struct Machine<'a, L: Language, N: Analysis<L>> {
     egraph: &'a EGraph<L, N>,
     instructions: &'a [Instruction<L>],
     subst: Subst,
-    colored_jumps: bool,
+    add_colors: bool,
     stack: Vec<MachineContext>,
     early_stop: Option<EarlyStopFn<'a, L, N>>,
 }
 
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 struct Reg(u32);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Program<L> {
     instructions: Vec<Instruction<L>>,
     subst: Subst,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 enum Instruction<L> {
     Bind { node: L, eclass: Reg, out: Reg },
     Compare { i: Reg, j: Reg },
@@ -48,7 +49,7 @@ enum Instruction<L> {
     Or { root: Var, sub_progs: Vec<Program<L>>, out: Reg },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 enum ENodeOrReg<L> {
     ENode(L),
     Reg(Reg),
@@ -119,7 +120,7 @@ impl<'a, L: Language, A: Analysis<L>> Machine<'a, L, A> {
         egraph: &'a EGraph<L, A>,
         instructions: &'a [Instruction<L>],
         subst: Subst,
-        colored_jumps: bool,
+        add_colors: bool,
     ) -> Self {
         let mut stack: Vec<MachineContext> = Vec::with_capacity(4096);
         stack.push(MachineContext::new(0, color, 1, SmallVec::new()));
@@ -130,7 +131,7 @@ impl<'a, L: Language, A: Analysis<L>> Machine<'a, L, A> {
             egraph,
             instructions,
             subst,
-            colored_jumps,
+            add_colors,
             stack,
             early_stop: None,
         }
@@ -148,14 +149,14 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
     fn next(&mut self) -> Option<Self::Item> {
         let egraph = self.egraph;
         let instructions = self.instructions;
-        let colored_jumps = self.colored_jumps;
+        let add_colors = self.add_colors;
         while !self.stack.is_empty() {
             let mut current_state = self.stack.pop().unwrap();
             trace!("Instruction index {} - Popped state with color {:?}", current_state.instruction_index, current_state.color);
             self.reg.truncate(current_state.truncate);
             self.reg.extend(current_state.to_push.drain(..));
             self.color = current_state.color;
-            let mut early = std::mem::take(&mut self.early_stop);
+            let early = std::mem::take(&mut self.early_stop);
             if let Some(f) = early.as_ref() {
                 let mut r = f.borrow_mut();
                 if r(self) {
@@ -170,7 +171,8 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                     Instruction::Bind { eclass, out, node } => {
                         let class_color = egraph[self.reg(*eclass)].color();
                         trace!("Instruction index {} - Binding (cur color: {:?}) node {} @ {} (color: {:?}) for out reg {}", index, self.color, node.display_op(), self.reg(*eclass), class_color, out.0);
-                        dassert!(class_color.is_none() || class_color == self.color);
+                        dassert!(class_color.is_none() || class_color == self.color
+                            || (self.color.is_some() && egraph.get_colors_parents(self.color.unwrap()).contains(&class_color.unwrap())));
                         for_each_matching_node(&egraph[self.reg(*eclass)], node, |matched| {
                             let out = *out;
                             trace!("Pusing to stack color: {:?}, truncate to {} and push {}", self.color, out.0, matched.children().iter().join(", "));
@@ -183,11 +185,14 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                         let run = |machine: &mut Machine<L, A>, id| {
                             let cur_color = machine.color;
                             let cls_color = egraph[id].color();
-                            if (cur_color.is_some() && cls_color.is_some() && cur_color != cls_color) ||
-                                (cls_color.is_some() && !colored_jumps) {
+                            let cls_is_parent = cls_color.is_none() || (cur_color.is_some() &&
+                                egraph.get_colors_parents(cur_color.unwrap()).contains(&cls_color.unwrap()));
+                            // Not in lineage or no adding colors and is decendant
+                            if cls_color.is_some() && cls_color != cur_color && (!cls_is_parent) &&
+                                ((!add_colors) || (cur_color.is_some() && !machine.egraph.get_colors_parents(cls_color.unwrap()).contains(&cur_color.unwrap()))) {
                                 return;
                             }
-                            let new_color = if cls_color.is_none() {
+                            let new_color = if cls_is_parent {
                                 machine.color
                             } else {
                                 cls_color
@@ -221,12 +226,18 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                         break;
                     }
                     Instruction::Compare { i, j } => {
-                        let fixed_i = egraph.opt_colored_find(self.color.clone(), self.reg(*i));
-                        let fixed_j = egraph.opt_colored_find(self.color.clone(), self.reg(*j));
+                        let fixed_i = egraph.opt_colored_find(self.color, self.reg(*i));
+                        let fixed_j = egraph.opt_colored_find(self.color, self.reg(*j));
                         trace!("Instruction index {} - Comparing (color: {:?}) reg {} and reg {} (found to be {} and {})", index, self.color, i.0, j.0, fixed_i, fixed_j);
                         if fixed_i != fixed_j {
-                            if colored_jumps && self.color.is_none() {
-                                if let Some(eqs) = egraph.get_colored_equalities(fixed_i) {
+                            if let Some(eqs) = egraph.get_base_equalities(self.color, fixed_i) {
+                                if eqs.into_iter().any(|id| id == fixed_j) {
+                                    trace!("Found base match for compare");
+                                    continue;
+                                }
+                            }
+                            if add_colors {
+                                if let Some(eqs) = egraph.get_decendent_colored_equalities(self.color, fixed_i) {
                                     for (cid, _id) in eqs.into_iter().filter(|(_cid, id)| *id == fixed_j) {
                                         trace!("Pushing to stack with new color {:?}", cid);
                                         self.stack.push(MachineContext::new(index + 1, Some(cid), self.reg.len(), smallvec![]));
@@ -238,7 +249,7 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                     }
                     Instruction::Lookup { term, i } => {
                         assert!(self.color.is_none(), "Lookup instruction is an optimization for non colored search");
-                        assert!(!colored_jumps, "Lookup instruction is an optimization for non colored search");
+                        assert!(!add_colors, "Lookup instruction is an optimization for non colored search");
                         trace!("Instruction index {} - Looking up {:?} in reg {}", index, term, i.0);
                         self.lookup.clear();
                         for node in term {
@@ -262,36 +273,35 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                         }
                     }
                     Instruction::ColorJump { orig, out } => {
-                        if !colored_jumps {
-                            self.reg.push(self.reg(*orig));
-                            index += 1;
-                            continue;
-                        }
-                        trace!("Instruction index {} - Color jumping from reg {}={} (color: {:?})", index, orig.0, self.reg(*orig), self.color);
-
                         let id = egraph.find(self.reg(*orig));
-                        if let Some(color) = self.color.as_ref() {
-                            // Will also run id as it is part of black_ids
-                            if let Some(eqs) = egraph.get_color(*color).unwrap().black_ids(egraph, id) {
-                                let _orig = *orig;
-                                for jump_id in eqs {
-                                    if *jump_id == id {
-                                        continue;
-                                    }
-                                    trace!("Pushing to stack with new id (same color) reg {}={}", out.0, jump_id);
-                                    self.stack.push(MachineContext::new(index + 1, self.color, out.0 as usize, smallvec![*jump_id]));
+                        let eq_it: Option<Box<dyn Iterator<Item=(ColorId, Id)>>> = if !add_colors {
+                            if let Some(c) = self.color {
+                                let c = c;
+                                if let Some(b) = egraph.get_base_equalities(self.color, id) {
+                                    Some(Box::new(b.map(move |id| (c, id))))
+                                } else {
+                                    None
                                 }
+                            } else {
+                                Some(Box::new(std::iter::empty()))
                             }
                         } else {
-                            if let Some(eqs) = egraph.get_colored_equalities(id) {
-                                for (c_id, jumped_id) in eqs {
-                                    let jumped_id = egraph.find(jumped_id);
-                                    if jumped_id == id {
-                                        continue;
-                                    }
-                                    trace!("Pushing to stack with new id (new color {:?}) reg {}={}", c_id, orig.0, jumped_id);
-                                    self.stack.push(MachineContext::new(index + 1, Some(c_id), out.0 as usize, smallvec![jumped_id]));
+                            egraph.get_lineage_equalities(self.color, id)
+                        };
+                        trace!("Instruction index {} - Color jumping from reg {}={} (color: {:?})", index, orig.0, self.reg(*orig), self.color);
+                        if let Some(eqs) = eq_it {
+                            for (c_id, jumped_id) in eqs {
+                                let jumped_id = egraph.find(jumped_id);
+                                if jumped_id == id {
+                                    continue;
                                 }
+                                trace!("Pushing to stack with new id (new color {:?}) reg {}={}", c_id, orig.0, jumped_id);
+                                let color = if self.color.is_none() || egraph.get_colors_parents(c_id).len() > egraph.get_colors_parents(self.color.unwrap()).len() {
+                                    Some(c_id)
+                                } else {
+                                    self.color
+                                };
+                                self.stack.push(MachineContext::new(index + 1, color, out.0 as usize, smallvec![jumped_id]));
                             }
                         }
                         trace!("Done color jump continuing run with color {:?} and reg {}={}", self.color, orig.0, self.reg(*orig));
@@ -300,9 +310,7 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                         // Not breaking so will continue to next instruction with current setup.
                     }
                     Instruction::Not { sub_prog } => {
-                        // TODO: support hierarchy such that color doesn't "deepen"
-                        let run_color = self.color.is_some();
-                        if sub_prog.inner_run_from(egraph, self, run_color).next().is_some() {
+                        if sub_prog.inner_run_from(egraph, self, false).next().is_some() {
                             break;
                         }
                     }
@@ -310,7 +318,7 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                         // do nothing
                     }
                     Instruction::Or { root, out, sub_progs } => {
-                        let mut done: Rc<RefCell<BTreeSet<(Option<ColorId>, Id)>>> = Default::default();
+                        let done: Rc<RefCell<BTreeSet<(Option<ColorId>, Id)>>> = Default::default();
                         let cloned = done.clone();
                         let out = *out;
                         let early_stop = Rc::new(RefCell::new(move |machine: &Machine<'a, L, A>| {
@@ -318,16 +326,16 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                                 return false;
                             }
                             let id = machine.reg(out);
-                            // TODO: support hierarchy
-                            if done.borrow().contains(&(machine.color.clone(), id)) {
+                            if done.borrow().contains(&(machine.color.clone(), id)) || done.borrow().contains(&(None, id)) {
                                 return true;
                             }
                             if let Some(c) = machine.color {
-                                if let Some(eqs) = machine.egraph.get_color(c).unwrap().black_ids(machine.egraph, id) {
-                                    for eq in eqs {
-                                        if done.borrow().contains(&(None, *eq)) || done.borrow().contains(&(Some(c), *eq)) {
-                                            return true;
-                                        }
+                                if let Some(mut eqs) = machine.egraph.get_base_equalities(Some(c), id) {
+                                    let parents = machine.egraph.get_colors_parents(c);
+                                    if eqs.any(|id| done.borrow().contains(&(None, id)) ||
+                                        done.borrow().contains(&(Some(c), id)) ||
+                                        parents.iter().any(|p| done.borrow().contains(&(Some(*p), id)))) {
+                                        return true;
                                     }
                                 }
                             }
@@ -335,17 +343,19 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                         }));
                         let done = cloned;
                         sub_progs.iter().for_each(|p| {
-                            p.run_for_or(egraph, self, colored_jumps, early_stop.clone())
+                            p.run_for_or(egraph, self, add_colors, early_stop.clone())
                                 .for_each(|s| {
                                     done.borrow_mut().insert((s.color.clone(), *s.get(*root).unwrap()));
                                 })
                         });
                         for (color, id) in done.borrow().iter() {
-                            // TODO: filter by hierarchy
                             if let Some(c) = color {
-                                if let Some(eqs) = egraph.get_color(*c).unwrap().black_ids(egraph, *id) {
+                                if let Some(eqs) = egraph.get_base_equalities(Some(*c), *id) {
                                     for eq in eqs {
-                                        if done.borrow().contains(&(None, *eq)) {
+                                        if done.borrow().contains(&(None, eq)) ||
+                                            egraph.get_colors_parents(*c)
+                                                .into_iter()
+                                                .any(|p| done.borrow().contains(&(Some(*p), eq))) {
                                             continue;
                                         }
                                     }
@@ -727,12 +737,12 @@ impl<L: Language> Program<L> {
         &'a self,
         egraph: &'a EGraph<L, A>,
         old_machine: &Machine<'a, L, A>,
-        run_color: bool,
+        add_colors: bool,
     ) -> impl Iterator<Item = Subst> + 'a
         where
             A: Analysis<L>,
     {
-        let mut machine = Machine::new(old_machine.color, egraph, &self.instructions, self.subst.clone(), run_color);
+        let mut machine = Machine::new(old_machine.color, egraph, &self.instructions, self.subst.clone(), add_colors);
         machine.reg = old_machine.reg.clone();
         machine.stack[0].truncate = machine.reg.len();
         machine

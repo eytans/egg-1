@@ -441,7 +441,9 @@ pub fn new(analysis: N) -> Self {
         let mut matches = Vec::new();
         for rule in rules {
             trace!("Searching with rule {:?}", rule.name());
+            let rule_start = Instant::now();
             let ms = self.scheduler.search_rewrite(i, &self.egraph, rule);
+            debug!("Searching rule {} took {} ms", rule.name(), rule_start.elapsed().as_millis());
             matches.push(ms);
             if self.check_limits().is_err() {
                 // bail on searching, make sure applying doesn't do anything

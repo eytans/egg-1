@@ -72,7 +72,7 @@ use thiserror::Error;
 /// [`Searcher`]: trait.Searcher.html
 /// [`Applier`]: trait.Applier.html
 /// [`Language`]: trait.Language.html
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Pattern<L> {
     /// The actual pattern as a [`RecExpr`](struct.RecExpr.html)
     pub ast: PatternAst<L>,
@@ -115,7 +115,7 @@ impl<L: Language> Pattern<L> {
 /// The language of [`Pattern`]s.
 ///
 /// [`Pattern`]: struct.Pattern.html
-#[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ENodeOrVar<L> {
     /// An enode from the underlying [`Language`](trait.Language.html)
     ENode(L, Option<String>),
@@ -367,12 +367,8 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
     /// Searches all equivalent EClasses under the colored assumption. Returns all results under
     /// the representative of eclass in color.
     fn colored_search_eclass(&self, egraph: &EGraph<L, A>, eclass: Id, color: ColorId) -> Option<SearchMatches> {
-        let eq_classes = egraph.get_color(color).unwrap().black_ids(egraph, eclass);
-        let todo: Box<dyn Iterator<Item=Id>> = if let Some(ids) = eq_classes {
-            Box::new(ids.iter().copied())
-        } else {
-            Box::new(std::iter::once(eclass))
-        };
+        let todo = egraph.get_base_equalities(Some(color), eclass)
+            .map(|x| x.collect_vec()).unwrap_or(vec![eclass]);
         let mut res = vec![];
         for id in todo {
             let substs = self.program.colored_run(egraph, id, Some(color));
@@ -507,7 +503,7 @@ mod tests {
         let w = egraph.add(S::leaf("w"));
         let _plus2 = egraph.add(S::new("+", vec![z, w]));
 
-        let c = egraph.create_color();
+        let c = egraph.create_color(None);
         egraph.colored_union(c, y, z);
         egraph.rebuild();
 
@@ -559,7 +555,7 @@ mod tests {
         let z = egraph.add(S::leaf("z"));
         let y = egraph.add(S::leaf("y"));
         let equ = egraph.add(S::new("=", vec![z, y]));
-        let c = egraph.create_color();
+        let c = egraph.create_color(None);
         egraph.colored_union(c, x, y);
         egraph.colored_union(c, x, z);
         egraph.rebuild();
@@ -581,7 +577,7 @@ mod tests {
         let mut egraph = EGraph::default();
         let x = egraph.add(S::leaf("x"));
         let y = egraph.add(S::leaf("y"));
-        let c = egraph.create_color();
+        let c = egraph.create_color(None);
         let fx = egraph.colored_add(c, S::new("f", vec![x]));
         egraph.colored_union(c, fx, y);
         egraph.rebuild();

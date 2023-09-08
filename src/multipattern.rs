@@ -8,6 +8,7 @@ use invariants::dassert;
 use itertools::Itertools;
 use thiserror::Error;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 
 use crate::*;
 use crate::expression_ops::{IntoTree, Tree};
@@ -32,7 +33,7 @@ use crate::searchers::ToDyn;
 /// searcher are unioned with that e-class.
 ///
 /// Multipatterns currently do not support the explanations feature.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct MultiPattern<L> {
     asts: Vec<(Var, PatternAst<L>)>,
     or_asts: Vec<(Var, Vec<PatternAst<L>>)>,
@@ -174,12 +175,7 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for MultiPattern<L> {
     }
 
     fn colored_search_eclass(&self, egraph: &EGraph<L, A>, eclass: Id, color: ColorId) -> Option<SearchMatches> {
-        let eq_classes = egraph.get_color(color).unwrap().black_ids(egraph, eclass);
-        let todo: Box<dyn Iterator<Item=Id>> = if let Some(ids) = eq_classes {
-            Box::new(ids.iter().copied())
-        } else {
-            Box::new(std::iter::once(eclass))
-        };
+        let todo = egraph.get_color(color).unwrap().equality_class(egraph, eclass);
         let mut res = vec![];
         for id in todo {
             let substs = self.program.colored_run(egraph, id, Some(color));
@@ -381,7 +377,7 @@ mod tests {
         let sms = pattern.search(&egraph);
         assert!(sms.is_none());
 
-        let small_big_color = egraph.create_color();
+        let small_big_color = egraph.create_color(None);
         egraph.colored_union(small_big_color, l, g);
         egraph.rebuild();
 
@@ -398,7 +394,7 @@ mod tests {
         assert!(sm.substs.first().unwrap().get("?d".parse().unwrap()).is_some());
         assert!(sm.substs.first().unwrap().get("?k".parse().unwrap()).is_some());
 
-        let big_small_color = egraph.create_color();
+        let big_small_color = egraph.create_color(None);
         egraph.colored_union(big_small_color, y, f);
         egraph.rebuild();
 
@@ -423,7 +419,7 @@ mod tests {
         let k = egraph.add_expr(&"k".parse().unwrap());
         let _f = egraph.add_expr(&"(f (p k) l)".parse().unwrap());
 
-        let color = egraph.create_color();
+        let color = egraph.create_color(None);
         let t = egraph.colored_add_expr(color, &"true".parse().unwrap());
         egraph.colored_union(color, k, t);
         egraph.rebuild();
@@ -455,7 +451,7 @@ mod tests {
         let yz = egraph.add_expr(&"(y z)".parse().unwrap());
         let t = egraph.add_expr(&"true".parse().unwrap());
         egraph.add_expr(&"(f (g x) true)".parse().unwrap());
-        let color = egraph.create_color();
+        let color = egraph.create_color(None);
         egraph.colored_union(color, yz, t);
         egraph.verify_colored_uf_minimal();
         egraph.rebuild();
@@ -482,7 +478,7 @@ mod tests {
         let root = egraph.add_expr(&"(f l (foo b))".parse().unwrap());
         let g = egraph.add_expr(&"(foo b)".parse().unwrap());
         let b = egraph.add_expr(&"b".parse().unwrap());
-        let color = egraph.create_color();
+        let color = egraph.create_color(None);
         let t = egraph.colored_add_expr(color, &"true".parse().unwrap());
         egraph.colored_union(color, b, t);
         egraph.verify_colored_uf_minimal();
@@ -529,7 +525,7 @@ mod tests {
         assert!(pattern.search(&egraph).is_none());
 
         let pattern: MultiPattern<S> = "?v1 = x, ?v2 = (f ?y), ?v2 != w".parse().unwrap();
-        let color = egraph.create_color();
+        let color = egraph.create_color(None);
         egraph.add_expr(&"(f y)".parse().unwrap());
         let p = egraph.colored_add_expr(color, &"(f p)".parse().unwrap());
         let w = egraph.colored_add_expr(color, &"w".parse().unwrap());
@@ -560,7 +556,7 @@ mod tests {
         egraph.add_expr(&"(f X (g Z W))".parse().unwrap());
         egraph.add_expr(&"(f X (g Z (cons L)))".parse().unwrap());
         egraph.add_expr(&"(f X (g Z (cons (f z))))".parse().unwrap());
-        let color = egraph.create_color();
+        let color = egraph.create_color(None);
         egraph.rebuild();
 
         let sms = pattern.search(&egraph);
@@ -615,7 +611,7 @@ mod tests {
         assert_eq!(sms.len(), 1);
         assert_eq!(sms.first().unwrap().substs.len(), 1);
 
-        let color = egraph.create_color();
+        let color = egraph.create_color(None);
         let cons = egraph.colored_add_expr(color, &"(cons JJH)".parse().unwrap());
         egraph.rebuild();
         let sms = pattern.search(&egraph).expect("should have found a match");
