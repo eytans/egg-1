@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use std::sync::atomic::{AtomicU32, Ordering};
 #[allow(unused_imports)]
 use std::sync::atomic::Ordering::Relaxed;
-use bimap::BiMap;
+use bimap::{BiBTreeMap, BiMap};
 use indexmap::IndexMap;
 use invariants::tassert;
 use itertools::Itertools;
@@ -77,7 +77,7 @@ fn new_id(id: u32) -> AtomicId {
 /// }
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ColoredUnionFind {
-    translation: BiMap<Id, usize>,
+    translation: BiBTreeMap<Id, usize>,
     // The parents of each node. The index is T and we keep the maybe updated leader + rank.
     parents: Vec<AtomicId>,
 }
@@ -124,9 +124,6 @@ impl ColoredUnionFind {
 
     // Find the leader of the set that t is in. This is amortized to O(log*(n))
     pub fn find(&self, current: &Id) -> Option<Id> {
-        tassert!(self.parents.iter().enumerate().all(|(i, id)|
-            (!self.translation.contains_right(&i)) || self.translation.contains_right(&(load_id(id) as usize))
-        ));
         self.translation.get_by_left(current)
             .map(|x| self.inner_find(*x))
             .map(|x| self.translation.get_by_right(&x)).flatten().copied()
@@ -135,19 +132,21 @@ impl ColoredUnionFind {
     /// Given two ids, unions the two eclasses making the bigger class the leader.
     /// If one of the items is missing returns None, otherwize return Some(to, from).
     pub fn union(&mut self, x: &Id, y: &Id) -> Option<(Id, Id)> {
-        let x_key = *self.translation.get_by_left(x)?;
-        let y_key = *self.translation.get_by_left(y)?;
-        let mut x = self.inner_find(x_key);
-        let mut y = self.inner_find(y_key);
-        if x > y {
-            std::mem::swap(&mut x, &mut y);
+        let mut x_key = *self.translation.get_by_left(x)?;
+        let mut y_key = *self.translation.get_by_left(y)?;
+        x_key = self.inner_find(x_key);
+        y_key = self.inner_find(y_key);
+        let mut x_res = self.translation.get_by_right(&x_key).unwrap();
+        let mut y_res = self.translation.get_by_right(&y_key).unwrap();
+        if x_res > y_res {
+            std::mem::swap(&mut x_key, &mut y_key);
+            std::mem::swap(&mut x_res, &mut y_res);
         }
-        if x != y {
-            store_id(&self.parents[y], x as u32);
-            store_id(&self.parents[x], x as u32);
+        if x_key != y_key {
+            store_id(&self.parents[y_key], x_key as u32);
+            store_id(&self.parents[x_key], x_key as u32);
         }
-        return Some((*self.translation.get_by_right(&x).unwrap(),
-                     *self.translation.get_by_right(&y).unwrap()));
+        return Some((*x_res, *y_res));
     }
 
     /// Remove a node from the union-find. It will not remove the group, but it will remove a single node.
