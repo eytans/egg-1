@@ -15,9 +15,9 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Improved colored_union_find.rs to be more local during find">
+    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Fixed bugs and improved runtime">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/colored_union_find.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/colored_union_find.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/egraph.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/egraph.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -259,7 +259,7 @@
       <workItem from="1690276506621" duration="47991000" />
       <workItem from="1694085124316" duration="42000" />
       <workItem from="1694085184325" duration="6399000" />
-      <workItem from="1694196525765" duration="4806000" />
+      <workItem from="1694196525765" duration="6935000" />
     </task>
     <task id="LOCAL-00001" summary="Colored congruence should take less memory due to better implementation">
       <created>1682546837181</created>
@@ -472,7 +472,15 @@
       <option name="project" value="LOCAL" />
       <updated>1694105544254</updated>
     </task>
-    <option name="localTasksCounter" value="31" />
+    <task id="LOCAL-00031" summary="Fixed bugs and improved runtime">
+      <option name="closed" value="true" />
+      <created>1694291295017</created>
+      <option name="number" value="00031" />
+      <option name="presentableId" value="LOCAL-00031" />
+      <option name="project" value="LOCAL" />
+      <updated>1694291295017</updated>
+    </task>
+    <option name="localTasksCounter" value="32" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -490,7 +498,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Temporary change trying to be 0.9.5" />
     <MESSAGE value="Mostly working multipattern.rs for colored egraphs. Still needs special tests&#10;&#10;Using thiserror for parse error handling&#10;Added some helper functions in Language to help rec expression work with multipatterns&#10;Updated Machine to work for multipatterns. This includes:&#10; * A new Scan command for multipatterns&#10; * Updated compiler from egraphs-good/egg that supports MultiPatterns but also inserts ColorJump between Binds&#10; * A lookup command that is mostly disabled. It is an optimization that cannot work with colors&#10; Updated macros to support multipattern and changes to Language&#10; Added MultiPattern struct itself (as opposed to machine implementation)" />
     <MESSAGE value="MultiPattern colored test + search_eclass bug fix + machine compile bug fix&#10;&#10;Added test for searching in multipattern.rs where there is a colored jump between two patterns.&#10;Fixed a bug where the colored jump was not inserted when the pattern was bound to a var&#10;Fixed a bug in multipattern.rs search eclass where the machine was not colored_run" />
     <MESSAGE value="More multipattern tests. Fixed bug in Scan setting machine color" />
@@ -515,7 +522,8 @@
     <MESSAGE value="Turned machine context into stack only for efficiency" />
     <MESSAGE value="Implemented early stop for or" />
     <MESSAGE value="Improved colored_union_find.rs to be more local during find" />
-    <option name="LAST_COMMIT_MESSAGE" value="Improved colored_union_find.rs to be more local during find" />
+    <MESSAGE value="Fixed bugs and improved runtime" />
+    <option name="LAST_COMMIT_MESSAGE" value="Fixed bugs and improved runtime" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

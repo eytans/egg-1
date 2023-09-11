@@ -6,9 +6,7 @@ use std::fmt::Debug;
 use std::sync::atomic::{AtomicU32, Ordering};
 #[allow(unused_imports)]
 use std::sync::atomic::Ordering::Relaxed;
-use bimap::{BiBTreeMap, BiMap};
-use indexmap::IndexMap;
-use invariants::tassert;
+use bimap::BiBTreeMap;
 use itertools::Itertools;
 use crate::Id;
 

@@ -153,7 +153,7 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     classes: SparseVec<EClass<L, N::Data>>,
     dirty_unions: Vec<Id>,
     repairs_since_rebuild: usize,
-    pub(crate) classes_by_op: IndexMap<OpId, IndexSet<Id>>,
+    pub(crate) classes_by_op: BTreeMap<OpId, IndexSet<Id>>,
 
     /// To be used as a mechanism for case splitting.
     /// Need to rebuild these, but can probably use original memo for that purpose.
@@ -165,7 +165,7 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     #[cfg(feature= "colored")]
     base_colors: Vec<ColorId>,
     #[cfg(feature = "colored")]
-    pub(crate) colored_memo: IndexMap<ColorId, IndexMap<L, Id>>,
+    pub(crate) colored_memo: BTreeMap<ColorId, IndexMap<L, Id>>,
     /// For each id in the egraph, what are the ids that are equivalent to it, and in what color.
     /// Should include all colors for which
     #[cfg(feature = "colored")]
@@ -243,13 +243,13 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             classes,
             dirty_unions: vec![],
             repairs_since_rebuild: 0,
-            classes_by_op: IndexMap::new(),
+            classes_by_op: Default::default(),
             #[cfg(feature = "colored")]
             colors: vec![],
             #[cfg(feature = "colored")]
             base_colors: Default::default(),
             #[cfg(feature = "colored")]
-            colored_memo: IndexMap::new(),
+            colored_memo: Default::default(),
             #[cfg(feature = "colored")]
             colored_equivalences: Default::default(),
             filterer: None,
@@ -263,7 +263,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// Return a new map of `OpId` (operation id) to `Id` (eclass id) for all eclasses.
-    pub fn classes_by_op_id(&self) -> IndexMap<OpId, IndexSet<Id>> {
+    pub fn classes_by_op_id(&self) -> BTreeMap<OpId, IndexSet<Id>> {
         self.classes_by_op.clone()
     }
 }
@@ -297,7 +297,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             colors: Default::default(),
             base_colors: Default::default(),
             dirty_unions: Default::default(),
-            classes_by_op: IndexMap::default(),
+            classes_by_op: Default::default(),
             repairs_since_rebuild: 0,
             colored_memo: Default::default(),
             colored_equivalences: Default::default(),
@@ -623,7 +623,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     .push((enode.clone(), id));
             });
 
-            assert!(self.colored_memo[&color].insert(enode, id).is_none());
+            assert!(self.colored_memo.get_mut(&color).unwrap().insert(enode, id).is_none());
             N::modify(self, id);
             id
         };
@@ -1218,8 +1218,11 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     pub fn colored_cong_closure(&mut self, c_id: ColorId) {
         self.get_color(c_id).unwrap().assert_black_ids(self);
         let color_parents = self.get_colors_parents(c_id).into_iter().copied().collect_vec();
-        let cur_colors = color_parents.iter().copied()
-            .chain(std::iter::once(c_id)).collect_vec();
+        let cur_colors = {
+            let mut temp = color_parents.clone();
+            temp.push(c_id);
+            temp
+        };
         let mut to_union = vec![];
         // We need to build memo ahead of time because even a single merge might miss needed unions.
         // Need to do some merging and initial color deletion here because we are deleting duplicate
@@ -1291,7 +1294,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                         if let Some(memo_id) = memo.remove(&p) {
                             to_union.push((fixed_id, memo_id));
                         }
-                        self.colored_memo[&c_id].remove(&p);
+                        self.colored_memo.get_mut(&c_id).unwrap().remove(&p);
                         self.colored_update_node(c_id, &mut p);
                         if let Some(memo_id) = memo.remove(&p) {
                             to_union.push((fixed_id, memo_id));
@@ -1308,7 +1311,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                     for (n, p_id) in pars {
                         trace!("Removing colored parent from memo: {:?} {:?}", n, p_id);
                         #[allow(unused_variables)]
-                        let opt_old = self.colored_memo[&c_id].remove(&n);
+                        let opt_old = self.colored_memo.get_mut(&c_id).unwrap().remove(&n);
                         #[cfg(debug_assertions)]
                         if let Some(m_id) = opt_old {
                             let fixed_m_id = self.colored_find(c_id, m_id);
@@ -1387,7 +1390,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                             n,
                             e
                         );
-                        let old = self.colored_memo[&c_id].insert(n.clone(), e);
+                        let old = self.colored_memo.get_mut(&c_id).unwrap().insert(n.clone(), e);
                         if let Some(old) = old {
                             to_union.push((old, e));
                         }
