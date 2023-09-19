@@ -199,7 +199,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 }
 
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
-    pub(crate) fn inner_new(
+    fn inner_new(
         uf: UnionFind,
         classes: Vec<Option<Box<EClass<SymbolLang, ()>>>>,
         memo: IndexMap<SymbolLang, Id>,

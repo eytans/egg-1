@@ -33,7 +33,7 @@ mod machine;
 mod pattern;
 mod rewrite;
 mod run;
-mod ser;
+pub mod ser;
 mod subst;
 mod unionfind;
 mod util;

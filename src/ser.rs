@@ -1,7 +1,8 @@
 use std::io::{Read, Write, BufReader, Result, BufRead};
 use indexmap::IndexMap;
 use itertools::Itertools;
-use crate::{EGraph, Analysis, Language, Id, EClass, SymbolLang, ColorId};
+use std::str::FromStr;
+use crate::{EGraph, Analysis, Language, Id, EClass, SymbolLang, RecExpr, ColorId};
 use crate::unionfind::UnionFind;
 
 /// A trait for EGraphs that can be serialized.
@@ -29,19 +30,42 @@ pub struct ColorPalette {
 }
 
 impl ColorPalette {
-    fn new() -> Self {
+    pub fn new() -> Self {
         ColorPalette { colors: Default::default() }
     }
 
-    fn get<L: Language, N: Analysis<L>>(&mut self, g: &mut EGraph<L, N>, color: Id) -> ColorId {
+    pub fn get<L: Language, N: Analysis<L>>(&mut self, g: &mut EGraph<L, N>, color: Id) -> ColorId {
+        self.get_hier(g, color, None)
+    }
+
+    pub fn get_sub<L: Language, N: Analysis<L>>(&mut self, g: &mut EGraph<L, N>, color: Id, parent: ColorId) -> ColorId {
+        self.get_hier(g, color, Some(parent))
+    }
+
+    pub fn get_hier<L: Language, N: Analysis<L>>(&mut self, g: &mut EGraph<L, N>, color: Id, parent: Option<ColorId>) -> ColorId {
         match self.colors.get(&color) {
            Some(cid) => *cid,
            None => {
-               let v = g.create_color(None);
+               let v = g.create_color(parent);
                self.colors.insert(color, v);
                v
            }
         }
+    }
+
+    pub fn get_named<N: Analysis<SymbolLang>>(&mut self, g: &mut EGraph<SymbolLang, N>,
+                                              name: &str) -> ColorId {
+        self.get_named_hier(g, name, None)
+    }
+    pub fn get_named_sub<N: Analysis<SymbolLang>>(&mut self, g: &mut EGraph<SymbolLang, N>,
+                                                  name: &str, parent: ColorId) -> ColorId {
+        self.get_named_hier(g, name, Some(parent))
+    }
+
+    pub fn get_named_hier<N: Analysis<SymbolLang>>(&mut self, g: &mut EGraph<SymbolLang, N>,
+                                                   name: &str, parent: Option<ColorId>) -> ColorId {
+        let cid = g.add_expr(&RecExpr::from_str(name).unwrap());
+        self.get_hier(g, cid, parent)
     }
 }
 
@@ -76,7 +100,7 @@ impl Serialization for EGraph<SymbolLang, ()> {
                     writeln!(out, "clr#{i} {color_id}")?;
                     color_id
                 };
-            todo!("Not supported with hierarchies");
+            //todo!("Not supported with hierarchies");
             #[allow(unreachable_code)]
             for id in color.current_black_reps() {
                 writeln!(out, "?~ {_color_id} {members}",
@@ -105,23 +129,16 @@ impl Deserialization for EGraph<SymbolLang, ()> {
             for id in vertices { builder.add_class(*id); }
             let target = vertices[0];
             let sources = vertices[1..].to_vec();
-            let enode = builder.add_node(target, SymbolLang::new(op, sources));
+            let enode = SymbolLang::new(op, sources);
             if enode.is_leaf() { leaf_ops.push(enode.op_id()) }
+            builder.add_node(target, enode);
         }
         let mut g = builder.build();
-        //g.rebuild_classes();
-        g.rebuild();
-        for op in leaf_ops {
-            let eclass = g.classes_by_op.get(&op).unwrap();
-            let min = *eclass.iter().min().unwrap();
-            let others = eclass.iter().filter_map(|u| { if *u != min { Some(*u) } else { None } })
-                               .collect::<Vec<Id>>();
-            others.iter().for_each(|u| { g.union(min, *u); g.rebuild(); });
-        }
-        g.rebuild();
+
         // Performed deferred color merges
         let mut palette = ColorPalette::new();
         for vertices in color_unions {
+            let vertices = builder.gids(vertices);
             let v0 = g.find(vertices[0]);
             let c = palette.get(&mut g, v0);
             let u = vertices[1];
@@ -147,50 +164,32 @@ impl Deserialization for EGraph<SymbolLang, ()> {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Default)]
 struct EGraphBuilder {
-    unionfind: UnionFind,
-    classes: Vec<Option<Box<EClass<SymbolLang, ()>>>>,
-    memo: IndexMap<SymbolLang, Id>,
-    _palette: ColorPalette,
+    egraph: EGraph<SymbolLang, ()>,
+    map: IndexMap<Id, Id>
 }
 
 impl EGraphBuilder {
-    /// For `Deserialization`
-    pub(crate) fn add_class<'a>(&'a mut self, id: Id) {
-        let idx = usize::from(id);
-        while self.classes.len() <= idx { self.classes.push(None) }
-        if self.classes[idx].is_none() {
-            self.classes[idx] = Some(Box::new(EClass {
-                id: id,
-                nodes: vec![],
-                data: (),
-                parents: vec![],
-                color: None,
-                colored_parents: Default::default(),
-                changed_parents: Default::default(),
-                colord_changed_parents: Default::default(),
-            }));
-            self.unionfind.make_set_at(id);
-        }
+    pub(crate) fn add_class(&mut self, id: Id) {
+        // temp hack
+        let gid = self.egraph.add(SymbolLang::new(format!("_{id}"), vec![]));
+        self.map.insert(id, gid);
     }
 
-    /// For `Deserialization`
-    pub(crate) fn add_node(&mut self, eclass: Id, enode: SymbolLang) -> &SymbolLang {
-        self.update_parents(eclass, &enode);
-        EGraph::<SymbolLang, ()>::update_memo_from_parent(&mut self.memo, &enode, &eclass);
-        let class = self.classes[usize::from(eclass)].as_mut().unwrap();
-        class.nodes.push(enode);
-        return class.nodes.last().unwrap();
+    pub(crate) fn add_node(&mut self, eclass: Id, enode: SymbolLang) {
+        let enode = SymbolLang::new(enode.op, enode.children.iter().map(
+            |id|self.gid(*id)).collect());
+        let gid = self.egraph.add(enode);
+        self.egraph.union(gid, *self.map.get(&eclass).unwrap());
+        self.egraph.rebuild();
     }
 
-    fn update_parents(&mut self, parent: Id, enode: &SymbolLang) {
-        enode.children().iter().for_each(|u| self.classes[usize::from(*u)].as_mut().unwrap()
-            .parents.push((enode.clone(), parent)));
-    }
+    pub(crate) fn build(&self) -> EGraph<SymbolLang, ()> { self.egraph.clone() }
 
-    pub fn build(self) -> EGraph<SymbolLang, ()> {
-        EGraph::<SymbolLang, ()>::inner_new(self.unionfind, self.classes, self.memo)
+    pub(crate) fn gid(&self, id: Id) -> Id { *self.map.get(&id).unwrap() }
+    pub(crate) fn gids(&self, ids: Vec<Id>) -> Vec<Id> {
+        ids.iter().map(|id| self.gid(*id)).collect()
     }
 }
 
