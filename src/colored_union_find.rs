@@ -33,7 +33,7 @@ fn store_id(id: &AtomicId, new: u32) {
     }
 }
 
-#[ignore = dead_code]
+#[ignore = "dead_code"]
 #[inline(always)]
 fn new_id(id: u32) -> AtomicId {
     #[cfg(feature = "concurrent_cufind")]
