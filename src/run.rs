@@ -350,7 +350,6 @@ pub fn new(analysis: N) -> Self {
         let rules = rules.into_iter().collect::<Vec<_>>();
         #[cfg(feature = "keep_splits")]
         {
-            assert!(self.hooks.is_empty(), "hooks must be added before run");
             let mut sched = std::mem::replace(&mut self.scheduler, Box::new(SimpleScheduler::default()));
             for g in self.egraph.all_splits.iter_mut() {
                 let mut runner: Runner<L, N> = Runner::new(g.analysis.clone())
