@@ -24,6 +24,16 @@ pub struct Rewrite<L, N> {
     pub applier: Arc<dyn Applier<L, N> + Sync + Send>,
 }
 
+impl<L, N> Display for Rewrite<L, N>
+where
+    L: Language + 'static,
+    N: Analysis<L> + 'static,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Rewrite({}, {} => {})", self.name, self.searcher, self.applier)
+    }
+}
+
 impl<L, N> Debug for Rewrite<L, N>
 where
     L: Language + 'static,
