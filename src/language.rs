@@ -28,7 +28,7 @@ use thiserror::Error;
 ///
 /// See [`SymbolLang`] for quick-and-dirty use cases.
 #[allow(clippy::len_without_is_empty)]
-pub trait Language: Debug + Clone + Eq + Ord + Hash {
+pub trait Language: Debug + Clone + Eq + Ord + Hash + Display {
     /// Returns true if this enode matches another enode.
     /// This should only consider the operator, not the children `Id`s.
     fn matches(&self, other: &Self) -> bool;
@@ -370,7 +370,7 @@ pub struct RecExpr<L> {
 }
 
 #[cfg(feature = "serde-1")]
-impl<L: Language + Display> serde::Serialize for RecExpr<L> {
+impl<L: Language> serde::Serialize for RecExpr<L> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -454,7 +454,7 @@ impl<L: Language> IndexMut<Id> for RecExpr<L> {
     }
 }
 
-impl<L: Language + Display> Display for RecExpr<L> {
+impl<L: Language> Display for RecExpr<L> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.nodes.is_empty() {
             Display::fmt("()", f)
@@ -465,7 +465,7 @@ impl<L: Language + Display> Display for RecExpr<L> {
     }
 }
 
-impl<L: Language + Display> RecExpr<L> {
+impl<L: Language> RecExpr<L> {
     /// Convert this RecExpr into an Sexp
     pub(crate) fn to_sexp(&self) -> Sexp {
         let last = self.nodes.len() - 1;

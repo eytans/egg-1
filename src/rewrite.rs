@@ -26,7 +26,7 @@ pub struct Rewrite<L, N> {
 
 impl<L, N> Debug for Rewrite<L, N>
 where
-    L: Language + Display + 'static,
+    L: Language + 'static,
     N: Analysis<L> + 'static,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -159,7 +159,7 @@ where
 /// matching substitutions.
 /// Right now the only significant [`Searcher`] is [`Pattern`].
 ///
-pub trait Searcher<L, N>
+pub trait Searcher<L, N> : Display
 where
     L: Language,
     N: Analysis<L>,
@@ -321,7 +321,7 @@ where
 /// let start = "(+ x (* y z))".parse().unwrap();
 /// Runner::default().with_expr(&start).run(rules);
 /// ```
-pub trait Applier<L, N>
+pub trait Applier<L, N> : Display
 where
     L: Language,
     N: Analysis<L>,
@@ -416,6 +416,16 @@ pub struct ConditionalApplier<C, A> {
     pub applier: A,
 }
 
+impl<C, A> Display for ConditionalApplier<C, A>
+where
+    C: Display,
+    A: Display
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ConditionalApplier({}, {})", self.condition, self.applier)
+    }
+}
+
 impl<C, A, N, L> Applier<L, N> for ConditionalApplier<C, A>
 where
     L: Language,
@@ -459,7 +469,7 @@ where
 ///
 /// [`check`]: Condition::check()
 /// [`Fn`]: std::ops::Fn
-pub trait Condition<L, N>
+pub trait Condition<L, N> : Display
 where
     L: Language,
     N: Analysis<L>,
@@ -482,16 +492,34 @@ where
     }
 }
 
-impl<L, F, N> Condition<L, N> for F
+pub struct LambdaCond<L, N> where
+    L: Language,
+    N: Analysis<L>,
+{
+    pub f: Box<dyn Fn(&mut EGraph<L, N>, Id, &Subst) -> bool + Send + Sync>,
+    pub d: String
+}
+
+impl<L, N> Display for LambdaCond<L, N>
 where
     L: Language,
     N: Analysis<L>,
-    F: Fn(&mut EGraph<L, N>, Id, &Subst) -> bool,
 {
-    fn check(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
-        self(egraph, eclass, subst)
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "LambdaCond({})", self.d)
     }
 }
+
+impl<L, N> Condition<L, N> for LambdaCond<L, N>
+where
+    L: Language,
+    N: Analysis<L>,
+{
+    fn check(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
+        (self.f)(egraph, eclass, subst)
+    }
+}
+
 
 /// A [`Condition`] that checks if two terms are equivalent.
 ///
@@ -520,6 +548,15 @@ impl<L: FromOp> ConditionEqual<L> {
             p1: a1.parse().unwrap(),
             p2: a2.parse().unwrap(),
         }
+    }
+}
+
+impl<L> Display for ConditionEqual<L>
+where
+    L: Language,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({} = {})", self.p1, self.p2)
     }
 }
 

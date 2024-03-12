@@ -122,7 +122,7 @@ impl<L: Language> Pattern<L> {
     }
 }
 
-impl<L: Language + Display> Pattern<L> {
+impl<L: Language> Pattern<L> {
     /// Pretty print this pattern as a sexp with the given width
     pub fn pretty(&self, width: usize) -> String {
         self.ast.pretty(width)
@@ -159,7 +159,7 @@ impl<L: Language> Language for ENodeOrVar<L> {
     }
 }
 
-impl<L: Language + Display> Display for ENodeOrVar<L> {
+impl<L: Language> Display for ENodeOrVar<L> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::ENode(node) => Display::fmt(node, f),
@@ -240,7 +240,7 @@ impl<L: Language> TryFrom<Pattern<L>> for RecExpr<L> {
     }
 }
 
-impl<L: Language + Display> Display for Pattern<L> {
+impl<L: Language> Display for Pattern<L> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Display::fmt(&self.ast, f)
     }

@@ -100,7 +100,19 @@ impl<L: Language + FromOp> FromStr for MultiPattern<L> {
     }
 }
 
-impl<L: Language, A: Analysis<L>> Searcher<L, A> for MultiPattern<L> {
+impl<L: Language + std::fmt::Display> std::fmt::Display for MultiPattern<L> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (i, (v, pat)) in self.asts.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{} = {}", v, pat)?;
+        }
+        Ok(())
+    }
+}
+
+impl<L: Language + std::fmt::Display, A: Analysis<L>> Searcher<L, A> for MultiPattern<L> {
     fn search_eclass_with_limit(
         &self,
         egraph: &EGraph<L, A>,

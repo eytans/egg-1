@@ -61,7 +61,7 @@ pub struct Dot<'a, L: Language, N: Analysis<L>> {
 
 impl<'a, L, N> Dot<'a, L, N>
 where
-    L: Language + Display,
+    L: Language,
     N: Analysis<L>,
 {
     /// Writes the `Dot` to a .dot file with the given filename.
@@ -178,7 +178,7 @@ impl<'a, L: Language, N: Analysis<L>> Debug for Dot<'a, L, N> {
 
 impl<'a, L, N> Display for Dot<'a, L, N>
 where
-    L: Language + Display,
+    L: Language,
     N: Analysis<L>,
 {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {

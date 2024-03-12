@@ -928,7 +928,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     }
 }
 
-impl<L: Language + Display, N: Analysis<L>> EGraph<L, N> {
+impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// Panic if the given eclass doesn't contain the given patterns
     ///
     /// Useful for testing.

@@ -34,7 +34,7 @@ pub fn test_runner<L, A>(
     check_fn: Option<fn(Runner<L, A, ()>)>,
     should_check: bool,
 ) where
-    L: Language + Display + FromOp + 'static,
+    L: Language + FromOp + 'static,
     A: Analysis<L> + Default,
 {
     let _ = env_logger::builder().is_test(true).try_init();

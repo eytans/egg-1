@@ -112,14 +112,14 @@ pub struct Explanation<L: Language> {
     flat_explanation: Option<FlatExplanation<L>>,
 }
 
-impl<L: Language + Display + FromOp> Display for Explanation<L> {
+impl<L: Language + FromOp> Display for Explanation<L> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let s = self.get_sexp().to_string();
         f.write_str(&s)
     }
 }
 
-impl<L: Language + Display + FromOp> Explanation<L> {
+impl<L: Language + FromOp> Explanation<L> {
     /// Get each flattened term in the explanation as an s-expression string.
     ///
     /// The s-expression format mirrors the format of each [`FlatTerm`].
@@ -591,7 +591,7 @@ pub struct FlatTerm<L: Language> {
     pub children: FlatExplanation<L>,
 }
 
-impl<L: Language + Display + FromOp> Display for FlatTerm<L> {
+impl<L: Language + FromOp> Display for FlatTerm<L> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let s = self.get_sexp().to_string();
         write!(f, "{}", s)
@@ -648,7 +648,7 @@ impl<L: Language> Default for Explain<L> {
     }
 }
 
-impl<L: Language + Display + FromOp> FlatTerm<L> {
+impl<L: Language + FromOp> FlatTerm<L> {
     /// Convert this FlatTerm to an S-expression.
     /// See [`get_flat_string`](Explanation::get_flat_string) for the format of these expressions.
     pub fn get_string(&self) -> String {
@@ -692,7 +692,7 @@ impl<L: Language + Display + FromOp> FlatTerm<L> {
     }
 }
 
-impl<L: Language + Display + FromOp> Display for TreeTerm<L> {
+impl<L: Language + FromOp> Display for TreeTerm<L> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut buf = String::new();
         let width = 80;
@@ -701,7 +701,7 @@ impl<L: Language + Display + FromOp> Display for TreeTerm<L> {
     }
 }
 
-impl<L: Language + Display + FromOp> TreeTerm<L> {
+impl<L: Language + FromOp> TreeTerm<L> {
     /// Convert this TreeTerm to an S-expression.
     fn get_sexp(&self) -> Sexp {
         self.get_sexp_with_bindings(&Default::default())
