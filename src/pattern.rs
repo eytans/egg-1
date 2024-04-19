@@ -362,7 +362,7 @@ where
                     id = id_temp;
                 } else {
                     id = apply_pat(&mut id_buf, ast, egraph, subst);
-                    did_something = egraph.union(id, mat.eclass);
+                    did_something = egraph.union(id, mat.eclass, None);
                 }
 
                 if did_something {
@@ -393,7 +393,7 @@ where
             } else {
                 vec![]
             }
-        } else if egraph.union(eclass, id) {
+        } else if egraph.union(eclass, id, None) {
             vec![eclass]
         } else {
             vec![]

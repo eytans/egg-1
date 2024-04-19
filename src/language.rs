@@ -673,7 +673,7 @@ impl Analysis<SimpleMath> for ConstantFolding {
     fn modify(egraph: &mut EGraph<SimpleMath, Self>, id: Id) {
         if let Some(i) = egraph[id].data {
             let added = egraph.add(SimpleMath::Num(i));
-            egraph.union(id, added);
+            egraph.union(id, added, None);
         }
     }
 }

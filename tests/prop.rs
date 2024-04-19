@@ -112,7 +112,7 @@ fn prove_something(name: &str, start: &str, rewrites: &[Rewrite], goals: &[&str]
     // this is needed for the soundness of lem_imply
     let true_id = runner.egraph.add(Prop::Bool(true));
     let root = runner.roots[0];
-    runner.egraph.union(root, true_id);
+    runner.egraph.union(root, true_id, None);
     runner.egraph.rebuild();
 
     let egraph = runner.run(rewrites).egraph;

@@ -108,7 +108,7 @@ impl Analysis<Lambda> for LambdaAnalysis {
                 );
             } else {
                 let const_id = egraph.add(c.0);
-                egraph.union(id, const_id);
+                egraph.union(id, const_id, None);
             }
         }
     }

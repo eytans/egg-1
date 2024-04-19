@@ -93,7 +93,7 @@ impl Analysis<Math> for ConstantFold {
                 );
             } else {
                 let added = egraph.add(Math::Constant(c));
-                egraph.union(id, added);
+                egraph.union(id, added, None);
             }
             // to not prune, comment this out
             egraph[id].nodes.retain(|n| n.is_leaf());
@@ -517,13 +517,13 @@ fn test_medium_intersect() {
     let a = egraph1.add_expr(&"(sqrt (sin pi))".parse().unwrap());
     let b = egraph1.add_expr(&"(* 1 pi)".parse().unwrap());
     let pi = egraph1.add_expr(&"pi".parse().unwrap());
-    egraph1.union(a, b);
-    egraph1.union(a, pi);
+    egraph1.union(a, b, None);
+    egraph1.union(a, pi, None);
     let c = egraph1.add_expr(&"(+ pi pi)".parse().unwrap());
-    egraph1.union(ln, c);
+    egraph1.union(ln, c, None);
     let k = egraph1.add_expr(&"k".parse().unwrap());
     let one = egraph1.add_expr(&"1".parse().unwrap());
-    egraph1.union(k, one);
+    egraph1.union(k, one, None);
     egraph1.rebuild();
 
     assert_eq!(
@@ -535,11 +535,11 @@ fn test_medium_intersect() {
     let ln = egraph2.add_expr(&"(ln 2)".parse().unwrap());
     let k = egraph2.add_expr(&"k".parse().unwrap());
     let mk1 = egraph2.add_expr(&"(* k 1)".parse().unwrap());
-    egraph2.union(mk1, k);
+    egraph2.union(mk1, k, None);
     let two = egraph2.add_expr(&"2".parse().unwrap());
-    egraph2.union(mk1, two);
+    egraph2.union(mk1, two, None);
     let mul2pi = egraph2.add_expr(&"(+ (* 2 pi) (* 2 pi))".parse().unwrap());
-    egraph2.union(ln, mul2pi);
+    egraph2.union(ln, mul2pi, None);
     egraph2.rebuild();
 
     assert_eq!(

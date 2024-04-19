@@ -121,7 +121,7 @@ let pat: Pattern<SymbolLang> = "(foo ?x ?x)".parse().unwrap();
 let matches = pat.search(&egraph);
 assert!(matches.is_empty());
 
-egraph.union(a, b);
+egraph.union(a, b, None);
 // recall that rebuild must be called to "see" the effects of adds or unions
 egraph.rebuild();
 

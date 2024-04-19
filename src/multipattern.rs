@@ -151,7 +151,7 @@ impl<L: Language, A: Analysis<L>> Applier<L, A> for MultiPattern<L> {
         &self,
         egraph: &mut EGraph<L, A>,
         matches: &[SearchMatches<L>],
-        _rule_name: Symbol,
+        rule_name: Symbol,
     ) -> Vec<Id> {
         // TODO explanations?
         // the ids returned are kinda garbage
@@ -164,7 +164,7 @@ impl<L: Language, A: Analysis<L>> Applier<L, A> for MultiPattern<L> {
                     id_buf.resize(p.as_ref().len(), 0.into());
                     let id1 = crate::pattern::apply_pat(&mut id_buf, p.as_ref(), egraph, &subst);
                     if let Some(id2) = subst.insert(*v, id1) {
-                        egraph.union(id1, id2);
+                        egraph.union(id1, id2, Some(rule_name));
                     }
                     if i == 0 {
                         added.push(id1)
@@ -225,7 +225,7 @@ mod tests {
         let _ = egraph.add_expr(&"(f a a)".parse().unwrap());
         let ab = egraph.add_expr(&"(f a b)".parse().unwrap());
         let ac = egraph.add_expr(&"(f a c)".parse().unwrap());
-        egraph.union(ab, ac);
+        egraph.union(ab, ac, None);
         egraph.rebuild();
 
         let n_matches = |multipattern: &str| -> usize {
@@ -272,8 +272,8 @@ mod tests {
         let x1 = egraph.add_string("(tag x ctx1)");
         let y1 = egraph.add_string("(tag y ctx1)");
         let z1 = egraph.add_string("(tag z ctx2)");
-        egraph.union(x1, y1);
-        egraph.union(y2, z2);
+        egraph.union(x1, y1, None);
+        egraph.union(y2, z2, None);
         let rules = vec![multi_rewrite!("context-transfer"; 
                      "?x = (tag ?a ?ctx1) = (tag ?b ?ctx1), 
                       ?t = (lte ?ctx1 ?ctx2), 

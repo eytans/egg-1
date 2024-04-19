@@ -309,7 +309,7 @@ where
 ///             let b0c0 = egraph.add(Math::Mul([b0, c0]));
 ///             let a0b0c0 = egraph.add(Math::Add([a0, b0c0]));
 ///             // Don't forget to union the new node with the matched node!
-///             if egraph.union(matched_id, a0b0c0) {
+///             if egraph.union(matched_id, a0b0c0, None) {
 ///                 vec![a0b0c0]
 ///             } else {
 ///                 vec![]
@@ -636,7 +636,7 @@ mod tests {
                     }
                 } else {
                     let added = egraph.add(S::leaf(&s));
-                    if egraph.union(added, eclass) {
+                    if egraph.union(added, eclass, None) {
                         vec![eclass]
                     } else {
                         vec![]

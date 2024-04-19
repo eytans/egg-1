@@ -157,7 +157,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// let x = egraph.add(S::leaf("x"));
     /// let y = egraph.add(S::leaf("y"));
     /// // only one eclass
-    /// egraph.union(x, y);
+    /// egraph.union(x, y, None);
     /// egraph.rebuild();
     ///
     /// assert_eq!(egraph.total_size(), 2);
@@ -258,7 +258,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
                 let added = egraph.add(enode);
                 if let Some(existing) = ids.get(id) {
-                    egraph.union(*existing, added);
+                    egraph.union(*existing, added, Some("Egraph creation from enodes".into()));
                 } else {
                     ids.insert(*id, added);
                 }
@@ -518,7 +518,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// let y = egraph.add(S::leaf("y"));
     /// assert_ne!(egraph.find(x), egraph.find(y));
     ///
-    /// egraph.union(x, y);
+    /// egraph.union(x, y, None);
     /// egraph.rebuild();
     /// assert_eq!(egraph.find(x), egraph.find(y));
     /// ```
@@ -889,7 +889,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     ///
     /// // if the query node isn't canonical, and its passed in by &mut instead of owned,
     /// // its children will be canonicalized
-    /// egraph.union(a, b);
+    /// egraph.union(a, b, None);
     /// egraph.rebuild();
     /// assert_eq!(egraph.lookup(&mut node_f_ab), Some(id));
     /// assert_eq!(node_f_ab, SymbolLang::new("f", vec![a, a]));
@@ -958,7 +958,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// let mut egraph: EGraph<SymbolLang, ()> = EGraph::default().with_explanations_enabled();
     /// let a = egraph.add_uncanonical(SymbolLang::leaf("a"));
     /// let b = egraph.add_uncanonical(SymbolLang::leaf("b"));
-    /// egraph.union(a, b);
+    /// egraph.union(a, b, None);
     /// egraph.rebuild();
     ///
     /// let fa = egraph.add_uncanonical(SymbolLang::new("f", vec![a]));
@@ -1103,10 +1103,13 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// See [`explain_equivalence`](Runner::explain_equivalence) for a more detailed
     /// explanation of the feature.
     #[track_caller]
-    pub fn union(&mut self, id1: Id, id2: Id) -> bool {
+    pub fn union(&mut self, id1: Id, id2: Id, reason: Option<Symbol>) -> bool {
         if self.explain.is_some() {
-            let caller = std::panic::Location::caller();
-            self.union_trusted(id1, id2, caller.to_string())
+            let reason = reason.map_or_else(
+                || std::panic::Location::caller().to_string(), 
+            |x| x.to_string()
+        );
+            self.union_trusted(id1, id2, reason)
         } else {
             self.perform_union(id1, id2, None, false)
         }
@@ -1369,7 +1372,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// let ay = egraph.add_expr(&"(+ a y)".parse().unwrap());
 
     /// // Union x and y
-    /// egraph.union(x, y);
+    /// egraph.union(x, y, None);
     /// // Classes: [x y] [ax] [ay] [a]
     /// assert_eq!(egraph.find(x), egraph.find(y));
     ///

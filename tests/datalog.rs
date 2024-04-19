@@ -20,7 +20,7 @@ impl DatalogExtTrait for EGraph<Lang, ()> {
         for e in s.split(',') {
             let exp = e.trim().parse().unwrap();
             let id = self.add_expr(&exp);
-            self.union(true_id, id);
+            self.union(true_id, id, None);
         }
     }
 
