@@ -430,7 +430,7 @@ impl<L: Language> RecExpr<L> {
     }
 
     pub(crate) fn compact(mut self) -> Self {
-        let mut ids = HashMap::<Id, Id>::default();
+        let mut ids = hashmap_with_capacity::<Id, Id>(self.nodes.len());
         let mut set = IndexSet::default();
         for (i, node) in self.nodes.drain(..).enumerate() {
             let node = node.map_children(|id| ids[&id]);
@@ -765,6 +765,16 @@ pub trait Analysis<L: Language>: Sized {
     /// `Analysis::merge` when unions are performed.
     #[allow(unused_variables)]
     fn modify(egraph: &mut EGraph<L, Self>, id: Id) {}
+
+    /// Whether or not e-matching should allow finding cycles.
+    ///
+    /// By default, this returns `true`.
+    ///
+    /// Setting this to `false` can improve performance in some cases, but risks
+    /// missing some equalities depending on the use case.
+    fn allow_ematching_cycles(&self) -> bool {
+        true
+    }
 }
 
 impl<L: Language> Analysis<L> for () {
