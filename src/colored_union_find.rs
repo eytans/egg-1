@@ -1,6 +1,5 @@
 #[allow(unused_imports)]
 use std::borrow::BorrowMut;
-use std::cell::Cell;
 use std::fmt::Debug;
 #[allow(unused_imports)]
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -31,15 +30,6 @@ fn store_id(id: &AtomicId, new: u32) {
     {
         id.replace(new);
     }
-}
-
-#[ignore = "dead_code"]
-#[inline(always)]
-fn new_id(id: u32) -> AtomicId {
-    #[cfg(feature = "concurrent_cufind")]
-    return AtomicU32::new(id);
-    #[cfg(not(feature = "concurrent_cufind"))]
-    return Cell::new(id);
 }
 
 /// A type that can be used as an id in a union-find data structure.
@@ -74,7 +64,8 @@ fn new_id(id: u32) -> AtomicId {
 /// for i in 0..n {
 /// assert_eq!(uf.find(&Id(i)).unwrap(), expected[i as usize]);
 /// }
-#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(not(feature = "concurrent_cufind"), derive(Clone))]
 pub struct ColoredUnionFind {
     translation: BiBTreeMap<Id, usize>,
     // The parents of each node. The index is T and we keep the maybe updated leader + rank.
@@ -84,9 +75,27 @@ pub struct ColoredUnionFind {
 impl ColoredUnionFind {
     /// This should only be used for debug assertions and debugging
     pub(crate) fn iter(&self) -> impl Iterator<Item = (Id, Id)> + '_ {
-        let parents = self.parents.clone();
-        self.translation.iter().map(move |(k, v)| (*k, Id(load_id(&parents[*v]))))
+        let mut parents = vec![];
+        for p in &self.parents {
+            parents.push(load_id(p));
+        }
+        self.translation.iter().map(move |(k, v)| (*k, Id(load_id(&parents[*v].into()))))
     }
+}
+
+#[cfg(feature = "concurrent_cufind")]
+impl Clone for ColoredUnionFind {
+    fn clone(&self) -> Self {
+        let mut parents = vec![];
+        for p in &self.parents {
+            parents.push(p.load(Relaxed));
+        }
+        Self {
+            translation: self.translation.clone(),
+            parents: parents.into_iter().map(|x| AtomicU32::new(x)).collect(),
+        }
+    }
+    
 }
 
 impl ColoredUnionFind {
@@ -101,7 +110,15 @@ impl ColoredUnionFind {
             return;
         }
         self.translation.insert(t, self.parents.len());
-        self.parents.push(Cell::new(self.parents.len() as u32));
+        
+        self.parents.push(Self::into_wrapped(self.parents.len()));
+    }
+    
+    fn into_wrapped(x: usize) -> AtomicId {
+        #[cfg(feature = "concurrent_cufind")]
+        return AtomicU32::new(x as u32);
+        #[cfg(not(feature = "concurrent_cufind"))]
+        return Cell::new(x as u32);
     }
 
     fn inner_find(&self, current: usize) -> usize {

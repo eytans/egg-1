@@ -35,13 +35,16 @@ lazy_static = "1.4.0"
 thiserror = "1.0.31"
 serde_json = "1.0.100"
 regex = "1.9.1"
+rayon = { version = "1.10.0", optional = true }
+crossbeam = { version = "0.8.4", optional = true, features = ["crossbeam-channel"] }
+num_cpus = "1.16.0"
 
 [dev-dependencies]
 env_logger = {version = "0.7", default-features = false}
 ordered-float = "1"
 
 [features]
-default = ["colored"]
+default = ["colored", "parallel"]
 #default = ["colored", "colored_no_cremove"]
 #default = ["colored", "colored_no_cmemo"]
 upward-merging = []
@@ -51,3 +54,5 @@ colored = []
 colored_no_cremove = ["colored"]
 colored_no_cmemo = ["colored", "colored_no_cremove"]
 keep_splits = []
+parallel = ["rayon", "crossbeam", "concurrent_cufind"]
+concurrent_cufind = []

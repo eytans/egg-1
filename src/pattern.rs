@@ -330,11 +330,11 @@ impl SearchMatches {
 }
 
 impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
-    fn search_eclass(&self, egraph: &EGraph<L, A>, eclass: Id) -> Option<SearchMatches> {
+    fn search_eclass_with_limit(&self, egraph: &EGraph<L, A>, eclass: Id, limit: usize) -> Option<SearchMatches> {
         let substs = if cfg!(feature = "colored") {
-            self.program.colored_run(egraph, eclass, None)
+            self.program.colored_run_with_limit(egraph, eclass, None, limit)
         }  else {
-            self.program.run(egraph, eclass)
+            self.program.run_with_limit(egraph, eclass, limit)
         };
         if substs.is_empty() {
             None
@@ -366,12 +366,12 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
 
     /// Searches all equivalent EClasses under the colored assumption. Returns all results under
     /// the representative of eclass in color.
-    fn colored_search_eclass(&self, egraph: &EGraph<L, A>, eclass: Id, color: ColorId) -> Option<SearchMatches> {
+    fn colored_search_eclass_with_limit(&self, egraph: &EGraph<L, A>, eclass: Id, color: ColorId, limit: usize) -> Option<SearchMatches> {
         let todo = egraph.get_base_equalities(Some(color), eclass)
             .map(|x| x.collect_vec()).unwrap_or(vec![eclass]);
         let mut res = vec![];
         for id in todo {
-            let substs = self.program.colored_run(egraph, id, Some(color));
+            let substs = self.program.colored_run_with_limit(egraph, id, Some(color), limit);
             if !substs.is_empty() {
                 res.extend(substs)
             }

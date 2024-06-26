@@ -3,7 +3,6 @@ use std::{any::Any, sync::Arc};
 
 use crate::{Analysis, EGraph, Id, Language, Pattern, SearchMatches, Subst, Var, ColorId};
 use std::fmt::Formatter;
-use itertools::Itertools;
 use invariants::iassert;
 
 /// A rewrite that searches for the lefthand side and applies the righthand side.
@@ -27,9 +26,9 @@ pub struct Rewrite<L: Language, N: Analysis<L>> {
     /// The name of the rewrite.
     pub name: String,
     /// The searcher (left-hand side) of the rewrite.
-    pub searcher: Arc<dyn Searcher<L, N>>,
+    pub searcher: Arc<dyn Searcher<L, N> + Send + Sync>,
     /// The applier (right-hand side) of the rewrite.
-    pub applier: Arc<dyn Applier<L, N>>,
+    pub applier: Arc<dyn Applier<L, N> + Send + Sync>,
 }
 
 impl<L, N> fmt::Debug for Rewrite<L, N>
@@ -72,8 +71,8 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> Rewrite<L, N> {
     /// [`rewrite!`]: macro.rewrite.html
     pub fn new(
         name: impl Into<String>,
-        searcher: impl Searcher<L, N> + 'static,
-        applier: impl Applier<L, N> + 'static,
+        searcher: impl Searcher<L, N> + 'static + Send + Sync,
+        applier: impl Applier<L, N> + 'static + Send + Sync,
     ) -> Result<Self, String> {
         let name = name.into();
         let searcher = Arc::new(searcher);
@@ -99,6 +98,13 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> Rewrite<L, N> {
     /// [`search`]: trait.Searcher.html#method.search
     pub fn search(&self, egraph: &EGraph<L, N>) -> Option<SearchMatches> {
         self.searcher.search(egraph)
+    }
+
+    /// Call [`search_with_limit`] on the [`Searcher`].
+    ///
+    /// [`search_with_limit`]: Searcher::search_with_limit()
+    pub fn search_with_limit(&self, egraph: &EGraph<L, N>, limit: usize) -> Option<SearchMatches> {
+        self.searcher.search_with_limit(egraph, limit)
     }
 
     /// Call [`apply_matches`] on the [`Applier`].
@@ -133,6 +139,37 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> Rewrite<L, N> {
     }
 }
 
+/// Searches the given list of e-classes with a limit.
+pub(crate) fn search_eclasses_with_limit<I, S, L, N>(
+    searcher: &S,
+    egraph: &EGraph<L, N>,
+    eclasses: I,
+    mut limit: usize,
+) -> Option<SearchMatches>
+where
+    L: Language,
+    N: Analysis<L>,
+    S: Searcher<L, N> + ?Sized,
+    I: IntoIterator<Item = Id>,
+{
+    let mut ms = vec![];
+    for eclass in eclasses {
+        if limit == 0 {
+            break;
+        }
+        match searcher.search_eclass_with_limit(egraph, eclass, limit) {
+            None => continue,
+            Some(m) => {
+                let len = m.total_substs();
+                assert!(len <= limit);
+                limit -= len;
+                ms.push(m);
+            }
+        }
+    }
+    SearchMatches::merge_matches(ms)
+}
+
 impl<L: Language, N: Analysis<L>> std::fmt::Display for Rewrite<L, N> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "Rewrite({}, {}, {})", self.name, self.searcher, self.applier)
@@ -155,7 +192,23 @@ pub trait Searcher<L, N>: std::fmt::Display
 {
     /// Search one eclass, returning None if no matches can be found.
     /// This should not return a SearchMatches with no substs.
-    fn search_eclass(&self, egraph: &EGraph<L, N>, eclass: Id) -> Option<SearchMatches>;
+    fn search_eclass(&self, egraph: &EGraph<L, N>, eclass: Id) -> Option<SearchMatches> {
+        self.search_eclass_with_limit(egraph, eclass, usize::MAX)
+    }
+
+    /// Similar to [`search_eclass`], but return at most `limit` many matches.
+    ///
+    /// Implementation of [`Searcher`] should implement
+    /// [`search_eclass_with_limit`].
+    ///
+    /// [`search_eclass`]: Searcher::search_eclass
+    /// [`search_eclass_with_limit`]: Searcher::search_eclass_with_limit
+    fn search_eclass_with_limit(
+        &self,
+        egraph: &EGraph<L, N>,
+        eclass: Id,
+        limit: usize,
+    ) -> Option<SearchMatches>;
 
     /// Search the whole [`EGraph`], returning a list of all the
     /// [`SearchMatches`] where something was found.
@@ -165,16 +218,25 @@ pub trait Searcher<L, N>: std::fmt::Display
     /// [`search_eclass`]: trait.Searcher.html#tymethod.search_eclass
     /// [`SearchMatches`]: struct.SearchMatches.html
     fn search(&self, egraph: &EGraph<L, N>) -> Option<SearchMatches> {
-        let matches = egraph
-            .classes()
-            .filter_map(|e| self.search_eclass(egraph, e.id))
-            .collect_vec();
-        SearchMatches::merge_matches(matches)
+        self.search_with_limit(egraph, usize::MAX)
+    }
+
+    /// Similar to [`search`], but return at most `limit` many matches.
+    ///
+    /// [`search`]: Searcher::search
+    fn search_with_limit(&self, egraph: &EGraph<L, N>, limit: usize) -> Option<SearchMatches> {
+        search_eclasses_with_limit(self, egraph, egraph.classes().map(|e| e.id), limit)
     }
 
     /// Search one eclass with starting color
     /// This should also check all color-equal classes
-    fn colored_search_eclass(&self, egraph: &EGraph<L, N>, eclass: Id, color: ColorId) -> Option<SearchMatches>;
+    fn colored_search_eclass(&self, egraph: &EGraph<L, N>, eclass: Id, color: ColorId) -> Option<SearchMatches> {
+        self.colored_search_eclass_with_limit(egraph, eclass, color, usize::MAX)
+    }
+
+    /// Search one eclass with starting color
+    /// This should also check all color-equal classes
+    fn colored_search_eclass_with_limit(&self, egraph: &EGraph<L, N>, eclass: Id, color: ColorId, limit: usize) -> Option<SearchMatches>;
 
     /// Returns a list of the variables bound by this Searcher
     fn vars(&self) -> Vec<Var>;

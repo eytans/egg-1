@@ -33,16 +33,16 @@ impl<L: Language, N: Analysis<L>> std::fmt::Display for PointerSearcher<L, N> {
 }
 
 impl<L: Language, N: Analysis<L>> Searcher<L, N> for PointerSearcher<L, N> {
-    fn search_eclass(&self, egraph: &EGraph<L, N>, eclass: Id) -> Option<SearchMatches> {
-        self.searcher.search_eclass(egraph, eclass)
+    fn search_eclass_with_limit(&self, egraph: &EGraph<L, N>, eclass: Id, limit: usize) -> Option<SearchMatches> {
+        self.searcher.search_eclass_with_limit(egraph, eclass, limit)
     }
 
     fn search(&self, egraph: &EGraph<L, N>) -> Option<SearchMatches> {
         self.searcher.search(egraph)
     }
 
-    fn colored_search_eclass(&self, egraph: &EGraph<L, N>, eclass: Id, color: ColorId) -> Option<SearchMatches> {
-        self.searcher.colored_search_eclass(egraph, eclass, color)
+    fn colored_search_eclass_with_limit(&self, egraph: &EGraph<L, N>, eclass: Id, color: ColorId, limit: usize) -> Option<SearchMatches> {
+        self.searcher.colored_search_eclass_with_limit(egraph, eclass, color, limit)
     }
 
     fn vars(&self) -> Vec<Var> {

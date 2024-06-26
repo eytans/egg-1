@@ -1,8 +1,9 @@
 use indexmap::IndexMap;
 use instant::{Duration, Instant};
 use log::*;
-
-use crate::{Analysis, EGraph, Id, Language, RecExpr, Rewrite, SearchMatches};
+use rayon::iter::{IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator};
+use rayon::iter::IndexedParallelIterator;
+use crate::{language, Analysis, EGraph, Id, Language, RecExpr, Rewrite, SearchMatches};
 
 /** Faciliates running rewrites over an [`EGraph`].
 
@@ -447,24 +448,15 @@ pub fn new(analysis: N) -> Self {
         let start_time = Instant::now();
 
         let mut matches = Vec::new();
-        for rule in rules {
-            trace!("Searching with rule {:?}", rule.name());
-            let rule_start = Instant::now();
-            let ms = self.scheduler.search_rewrite(i, &self.egraph, rule);
-            let elapsed = rule_start.elapsed();
-            // Update global stats
-            unsafe {
-                SEARCH_MATCHES += ms.as_ref().iter().map(|m| m.total_substs()).sum::<usize>();
-                SEARCH_TIME += elapsed.as_millis();
-            }
-            debug!("Searching rule {} took {} ms", rule.name(), elapsed.as_millis());
-            matches.push(ms);
-            if self.check_limits().is_err() {
-                // bail on searching, make sure applying doesn't do anything
-                matches.clear();
-                break;
-            }
-        }
+
+        // From now on scheduler may not access the runner and the other way around
+        // Note this limits check_limits
+        let mut sched = std::mem::replace(&mut self.scheduler, Box::new(SimpleScheduler {}));
+        sched.search_rewrites(i, &self.egraph, rules, &mut matches, self.start_time.unwrap(), self.time_limit)?;
+        self.scheduler = sched;
+        // Done with sched limitation
+
+        self.check_limits()?;
 
         let search_time = start_time.elapsed().as_secs_f64();
         info!("Search time: {}", search_time);
@@ -474,7 +466,7 @@ pub fn new(analysis: N) -> Self {
 
         let mut applied = IndexMap::new();
         for (rw, ms) in rules.iter().zip(matches) {
-            let total_matches: usize = ms.as_ref().map_or(0, |ms| ms.total_substs());
+            let total_matches: usize = ms.as_ref().map(|x| x.total_substs()).unwrap_or(0);
             if total_matches == 0 {
                 continue;
             }
@@ -630,6 +622,38 @@ where
         rewrite.search(egraph)
     }
 
+    /// A Hook allowing you to customize the rewrite searching behaviour for all rewrites at once.
+    /// This is similar to [`search_rewrite`](RewriteScheduler::search_rewrite()), but
+    /// requires that the schedualer handle limitation checks of the runner
+    fn search_rewrites<'a, 'b>(
+        &mut self,
+        iteration: usize,
+        egraph: &EGraph<L, N>,
+        rewrites: &[&'a Rewrite<L, N>],
+        matches: &mut Vec<Option<SearchMatches>>,
+        start_time: Instant,
+        time_limit: Duration
+    ) -> RunnerResult<()> {
+        rewrites.iter().try_for_each(|rw| {
+            trace!("Searching with rule {:?}", rw.name);
+            let ms = self.search_rewrite(iteration, egraph, rw);
+            let elapsed = start_time.elapsed();
+            unsafe {
+                SEARCH_MATCHES += ms.as_ref().map(|x| x.total_substs()).unwrap_or(0);
+                SEARCH_TIME += elapsed.as_millis();
+            }
+            matches.push(ms);
+            // Update global stats
+            trace!("Searching rule {} took {} ms", rw.name(), elapsed.as_millis());
+
+            if elapsed > time_limit {
+                Err(StopReason::TimeLimit(elapsed.as_secs_f64()))
+            } else {
+                Ok(())
+            }
+        })
+    }
+
     /// A hook allowing you to customize rewrite application behavior.
     /// Useful to implement rule management.
     ///
@@ -689,7 +713,8 @@ pub struct BackoffScheduler {
     stats: IndexMap<String, RuleStats>,
 }
 
-struct RuleStats {
+/// Rule statistics
+pub struct RuleStats {
     times_applied: usize,
     banned_until: usize,
     times_banned: usize,
@@ -742,6 +767,49 @@ impl BackoffScheduler {
     pub fn rule_ban_length(mut self, name: &str, length: usize) -> Self {
         self.rule_stats(name).ban_length = length;
         self
+    }
+
+
+    /// Search with a rewrite given a limit and stats. Useful for parallel search as normal API is
+    /// insufficient.
+    pub fn search_with_stats<'a, L: Language, N: Analysis<L> + 'static>(
+        iteration: usize,
+        egraph: &EGraph<L, N>,
+        rewrite: &'a Rewrite<L, N>,
+        stats: &mut RuleStats
+    ) -> Option<SearchMatches> {
+        if iteration < stats.banned_until {
+            debug!(
+                "Skipping {} ({}-{}), banned until {}...",
+                rewrite.name, stats.times_applied, stats.times_banned, stats.banned_until,
+            );
+            return None;
+        }
+
+        let threshold = stats
+            .match_limit
+            .checked_shl(stats.times_banned as u32)
+            .unwrap();
+        let matches = rewrite.search_with_limit(egraph, threshold.saturating_add(1));
+        let total_len: usize = matches.iter().map(|m| m.total_substs()).sum();
+        if total_len > threshold {
+            let ban_length = stats.ban_length << stats.times_banned;
+            stats.times_banned += 1;
+            stats.banned_until = iteration + ban_length;
+            info!(
+                "Banning {} ({}-{}) for {} iters: {} < {}",
+                rewrite.name,
+                stats.times_applied,
+                stats.times_banned,
+                ban_length,
+                threshold,
+                total_len,
+            );
+            None
+        } else {
+            stats.times_applied += 1;
+            matches
+        }
     }
 }
 
@@ -802,46 +870,152 @@ where
         }
     }
 
-    fn search_rewrite(
+    fn search_rewrite<'a>(
         &mut self,
         iteration: usize,
         egraph: &EGraph<L, N>,
-        rewrite: &Rewrite<L, N>,
+        rewrite: &'a Rewrite<L, N>,
     ) -> Option<SearchMatches> {
-        let stats = self.rule_stats(rewrite.name());
+        let stats = self.rule_stats(&rewrite.name);
+        Self::search_with_stats(iteration, egraph, rewrite, stats)
+    }
+}
 
-        if iteration < stats.banned_until {
-            debug!(
-                "Skipping {} ({}-{}), banned until {}...",
-                rewrite.name(),
-                stats.times_applied,
-                stats.times_banned,
-                stats.banned_until,
-            );
-            return None;
+/// A wrapper for a ['RewriteScheduler'] that runs rewrite_search in parallel.
+/// This requires that the underlying scheduler is thread safe, and that the language implements
+/// [Send] and [Sync].
+#[derive(Debug, Clone, Default, Copy)]
+pub struct ParallelScheduler {}
+
+#[cfg(feature = "parallel")]
+impl<L, N> RewriteScheduler<L, N> for ParallelScheduler
+where L: Language + Send + Sync,
+      N: Analysis<L> + Sync + 'static,
+      <N as language::Analysis<L>>::Data: Sync,
+{
+    fn search_rewrites<'a, 'b>(
+        &mut self,
+        iteration: usize,
+        egraph: &EGraph<L, N>,
+        rewrites: &[&'a Rewrite<L, N>],
+        matches: &mut Vec<Option<SearchMatches>>,
+        start_time: Instant,
+        time_limit: Duration,
+    ) -> RunnerResult<()> {
+        // rewrites.iter().try_for_each(|rw| {
+        //     debug!("Searching rw {}", rw.name);
+        //     matches.push(self.search_rewrite(iteration, egraph, rw));
+        //     check_limits()
+        // })
+        debug!("Searching rewrites in parallel. Creating channel with size {}", rewrites.len());
+        let channel = crossbeam::channel::bounded(rewrites.len());
+        let res = rewrites.par_iter().enumerate().try_for_each(|(i, rw)| {
+            debug!("Searching rw {}", rw.name);
+            let results = rw.search(egraph);
+            if results.is_some() {
+                channel.0.send((i, results.unwrap())).expect("Channel should be big enough for all messages");
+            }
+            let elapsed = start_time.elapsed();
+            if elapsed > time_limit {
+                Err(StopReason::TimeLimit(elapsed.as_secs_f64()))
+            } else {
+                Ok(())
+            }
+        });
+        drop(channel.0);
+        debug!("Finished searching rewrites in parallel. Collecting results");
+        matches.resize_with(rewrites.len(), || Default::default());
+        for (i, ms) in channel.1 {
+            matches[i] = Some(ms);
         }
 
-        let matches = rewrite.search(egraph);
-        let total_len: usize = matches.as_ref().map_or(0, |m| m.total_substs());
-        let threshold = stats.match_limit << stats.times_banned;
-        if total_len > threshold {
-            let ban_length = stats.ban_length << stats.times_banned;
-            stats.times_banned += 1;
-            stats.banned_until = iteration + ban_length;
-            info!(
-                "Banning {} ({}-{}) for {} iters: {} < {}",
-                rewrite.name(),
-                stats.times_applied,
-                stats.times_banned,
-                ban_length,
-                threshold,
-                total_len,
-            );
-            None
-        } else {
-            stats.times_applied += 1;
-            matches
+        res
+    }
+}
+
+
+/// A wrapper for a ['RewriteScheduler'] that runs rewrite_search in parallel.
+#[cfg(feature = "parallel")]
+pub struct ParallelBackoffScheduler {
+    scheduler: BackoffScheduler,
+    thread_limit: usize,
+}
+
+impl Default for ParallelBackoffScheduler {
+    fn default() -> Self {
+        ParallelBackoffScheduler {scheduler: Default::default(), thread_limit: num_cpus::get()}
+    }
+}
+
+
+impl ParallelBackoffScheduler {
+    fn init_rule_stats(&mut self, names: &[&str]) {
+        for name in names {
+            self.scheduler.rule_stats(name);
         }
+    }
+
+    /// Set the amount of threads to use during search
+    pub fn with_thread_limit(mut self, thread_limit: usize) -> Self {
+        self.thread_limit = thread_limit;
+        self
+    }
+}
+
+impl<L, N> RewriteScheduler<L, N> for ParallelBackoffScheduler where
+    L: Language + Send + Sync,
+    N: Analysis<L> + Sync + 'static,
+    <N as language::Analysis<L>>::Data: Sync,
+{
+    fn can_stop(&mut self, iteration: usize) -> bool {
+        <BackoffScheduler as RewriteScheduler<L, N>>::can_stop(&mut self.scheduler, iteration)
+    }
+
+    fn search_rewrite<'a>(
+        &mut self,
+        iteration: usize,
+        egraph: &EGraph<L, N>,
+        rewrite: &'a Rewrite<L, N>,
+    ) -> Option<SearchMatches> {
+        self.scheduler.search_rewrite(iteration, egraph, rewrite)
+    }
+
+    fn search_rewrites<'a, 'b>(&mut self, iteration: usize, egraph: &EGraph<L, N>, rewrites: &[&'a Rewrite<L, N>], matches: &mut Vec<Option<SearchMatches>>, start_time: Instant, time_limit: Duration) -> RunnerResult<()> {
+        debug!("Searching rewrites in parallel. Creating channel with size {}", rewrites.len());
+        self.init_rule_stats(&rewrites.iter().map(|rw| rw.name.as_str()).collect::<Vec<_>>());
+        let channel = crossbeam::channel::bounded(rewrites.len());
+        let mut with_stats = rewrites.iter().map(|rw| {
+            // Assuming no dup names
+            let stats = self.scheduler.stats.remove(&rw.name).unwrap();
+            (*rw, stats)
+        }).collect::<Vec<_>>();
+        let pool = rayon::ThreadPoolBuilder::new().num_threads(self.thread_limit).build().unwrap();
+        let res = pool.install(|| {
+            with_stats.par_iter_mut().enumerate().try_for_each(|(i, (rw, stats))| {
+                debug!("Searching rw {}", rw.name);
+                let results = BackoffScheduler::search_with_stats(iteration, egraph, rw, stats);
+                if results.is_some() {
+                    channel.0.send((i, results)).expect("Channel should be big enough for all messages");
+                }
+                let elapsed = start_time.elapsed();
+                if elapsed > time_limit {
+                    Err(StopReason::TimeLimit(elapsed.as_secs_f64()))
+                } else {
+                    Ok(())
+                }
+            })
+        });
+        drop(channel.0);
+        debug!("Finished searching rewrites in parallel. Collecting results");
+        matches.resize_with(rewrites.len(), || Default::default());
+        for (i, ms) in channel.1 {
+            matches[i] = ms;
+        }
+        // Return stats
+        for (rw, stats) in with_stats {
+            self.scheduler.stats.insert(rw.name.clone(), stats);
+        }
+        res
     }
 }
 

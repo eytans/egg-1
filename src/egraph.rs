@@ -24,7 +24,7 @@ use crate::{OpId, SymbolLang};
 
 pub use crate::colors::{Color, ColorId};
 use itertools::Itertools;
-
+use multimap::MultiMap;
 use serde::{Deserialize, Serialize};
 
 /** A data structure to keep track of equalities between expressions.
@@ -215,9 +215,6 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     /// Should include all colors for which
     #[cfg(feature = "colored")]
     colored_equivalences: IndexMap<Id, BTreeSet<ColorId>>,
-    /// A filter function used when creating dots.
-    #[serde(skip_serializing, skip_deserializing)]
-    pub filterer: Option<Rc<dyn Fn(&EGraph<L, N>, Id) -> bool + 'static>>,
     /// What operations are not allowed to be equal (for vacuity check).
     pub vacuity_ops: Vec<MultiPattern<L>>,
     #[cfg(feature = "keep_splits")]
@@ -297,7 +294,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             colored_memo: Default::default(),
             #[cfg(feature = "colored")]
             colored_equivalences: Default::default(),
-            filterer: None,
             vacuity_ops: Default::default(),
             #[cfg(feature = "keep_splits")]
             all_splits: vec![],
@@ -346,7 +342,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             repairs_since_rebuild: 0,
             colored_memo: Default::default(),
             colored_equivalences: Default::default(),
-            filterer: None,
             vacuity_ops: Default::default(),
             #[cfg(feature = "keep_splits")]
             all_splits: vec![],
@@ -601,6 +596,36 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 .map(|id| self.find(*id))
         })
     }
+    
+    pub fn opt_colored_lookup<B>(&self, color: Option<ColorId>, enode: B) -> Option<Id>
+    where
+        B: BorrowMut<L>,
+    {
+        match color {
+            Some(color) => self.colored_lookup(color, enode),
+            None => self.lookup(enode),
+        }
+    }
+
+    /// Lookup the eclass of the given [`RecExpr`].
+    ///
+    /// Equivalent to the last value in [`EGraph::lookup_expr_ids`].
+    pub fn lookup_expr(&self, color: Option<ColorId>, expr: &RecExpr<L>) -> Option<Id> {
+        self.lookup_expr_ids(color, expr)
+            .and_then(|ids| ids.last().copied())
+    }
+
+    /// Lookup the eclasses of all the nodes in the given [`RecExpr`].
+    pub fn lookup_expr_ids(&self, color: Option<ColorId>, expr: &RecExpr<L>) -> Option<Vec<Id>> {
+        let nodes = expr.as_ref();
+        let mut new_ids = Vec::with_capacity(nodes.len());
+        for node in nodes {
+            let node = node.clone().map_children(|i| new_ids[usize::from(i)]);
+            let id = self.opt_colored_lookup(color, node)?;
+            new_ids.push(id)
+        }
+        Some(new_ids)
+    }
 
     /// Adds an enode to the [`EGraph`].
     ///
@@ -765,7 +790,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             to.extend(from);
         }
 
-        let (to, from) = self.unionfind.union(id1, id2);
+        let to = self.unionfind.union(id1, id2);
+        let from= if to == id1 { id2 } else { id1 };
         let changed = to != from;
         tassert!(to == self.find(id1));
         tassert!(to == self.find(id2));
@@ -870,6 +896,61 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         let res = color.inner_base_union(self, to, from);
         self.colors[color_id.0] = Some(color);
         res
+    }
+
+    /// Performs the union between two egraphs.
+    pub fn egraph_union(&mut self, other: &EGraph<L, N>) {
+        unimplemented!();
+        let mut translator = IndexMap::new();
+        let mut todo = vec![];
+        let mut blocked = MultiMap::new();
+
+        // This is going to be a bit annoying. For each enode we need to know whether it is blocked
+        // or not. We are going to have to manage this and when an enode is unblocked add it to the
+        // self egraph.
+        for (color, node, id) in other.memo.iter().map(|(n, id)| (None, n, id))
+            .chain(other.colored_memo.iter().flat_map(|(c, m)| m.iter().map(move |(n, id)| (Some(*c), n, id)))) {
+            if node.children().iter().all(|id| translator.contains_key(id)) {
+                todo.push((color, node.clone(), *id));
+            } else {
+                for cid in node.children() {
+                    if let None = translator.get(id) {
+                        blocked.insert(*cid, (color.clone(), node.clone(), *id));
+                    }
+                }
+            }
+        }
+
+        while !todo.is_empty() {
+            let (color, node, id) = todo.pop().unwrap();
+            let new_id = if let Some(c) = color {
+                self.colored_add(c, node)
+            } else {
+                self.add(node)
+            };
+            if translator.contains_key(&id) {
+                self.opt_colored_union(color, new_id, translator[&id]);
+            } else {
+                translator.insert(id, new_id);
+            }
+            for (color, node, id) in blocked.remove(&id).unwrap() {
+                if node.children().iter().all(|id| translator.contains_key(id)) {
+                    todo.push((color, node, id));
+                }
+            }
+        }
+
+        assert!(blocked.is_empty());
+
+        // for (left, right, why) in right_unions {
+        //     self.union_instantiations(
+        //         &other.id_to_pattern(left, &Default::default()).0.ast,
+        //         &other.id_to_pattern(right, &Default::default()).0.ast,
+        //         &Default::default(),
+        //         why,
+        //     );
+        // }
+        self.rebuild();
     }
 }
 
@@ -1945,38 +2026,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     }
 
     #[allow(dead_code)]
-    /// For `Deserialization`
-    pub(crate) fn add_class<'a>(&'a mut self, id: Id) {
-        let idx = usize::from(id);
-        while self.classes.len() <= idx {
-            self.classes.push(None)
-        }
-        if self.classes[idx].is_none() {
-            let dummy_node = L::from_op_str("?", vec![]).unwrap();
-            self.classes[idx] = Some(Box::new(EClass {
-                id: id,
-                nodes: vec![],
-                data: N::make(self, &dummy_node),
-                parents: vec![],
-                color: None,
-                colored_parents: Default::default(),
-                changed_parents: Default::default(),
-                colord_changed_parents: Default::default(),
-            }));
-            self.unionfind.make_set_at(id);
-        }
-    }
-
-    #[allow(dead_code)]
-    /// For `Deserialization`
-    pub(crate) fn add_node(&mut self, eclass: Id, enode: L) -> &L {
-        self.update_parents(eclass, &enode);
-        EGraph::<L, ()>::update_memo_from_parent(&mut self.memo, &enode, &eclass);
-        let class = self.classes[usize::from(eclass)].as_mut().unwrap();
-        class.nodes.push(enode);
-        return class.nodes.last().unwrap();
-    }
-
     fn update_parents(&mut self, parent: Id, enode: &L) {
         enode.children().iter().for_each(|u| {
             self.classes[usize::from(*u)]
@@ -2978,13 +3027,13 @@ mod tests {
 
         // Create egraph with x + y expression, then create 12 colors, 6 for "forward" 6 for "backward
         let mut egraph: EGraph<SymbolLang, ()> = EGraph::new(());
-        let x = egraph.add_expr(&"x".parse().unwrap());
+        let _x = egraph.add_expr(&"x".parse().unwrap());
         let y = egraph.add_expr(&"y".parse().unwrap());
-        let plus = egraph.add_expr(&"(plus x y)".parse().unwrap());
+        let _plus = egraph.add_expr(&"(plus x y)".parse().unwrap());
         let color1 = egraph.create_color(None);
         let color2 = egraph.create_color(Some(color1));
         let color3 = egraph.create_color(Some(color2));
-        let color4 = egraph.create_color(Some(color3));
+        let _color4 = egraph.create_color(Some(color3));
         let x1 = egraph.colored_add_expr(color1, &"x1".parse().unwrap());
         let y1 = egraph.colored_add_expr(color1, &"y1".parse().unwrap());
         let sx = egraph.colored_add_expr(color1, &"(S x)".parse().unwrap());
@@ -3000,7 +3049,7 @@ mod tests {
         egraph.colored_union(color2, y1, sy2);
         egraph.colored_add_expr(color2, &"(plus x2 y)".parse().unwrap());
         let x3 = egraph.colored_add_expr(color3, &"x3".parse().unwrap());
-        let y3 = egraph.colored_add_expr(color3, &"y3".parse().unwrap());
+        let _y3 = egraph.colored_add_expr(color3, &"y3".parse().unwrap());
         let sx2 = egraph.colored_add_expr(color3, &"(S x2)".parse().unwrap());
         let sy3 = egraph.colored_add_expr(color3, &"(S y3)".parse().unwrap());
         egraph.colored_union(color3, sx2, x3);
@@ -3024,12 +3073,12 @@ mod tests {
 
         // Lookup zero has no matches
         let z_p: Pattern<SymbolLang> = "Z".parse().unwrap();
-        let z_p = z_p.search(&egraph).is_none();
+        let _z_p = z_p.search(&egraph).is_none();
 
         // S of something appears in 3 colors but not in black
         let s_p: Pattern<SymbolLang> = "(S ?x)".parse().unwrap();
         let s_res = s_p.search(&egraph).unwrap();
-        let s_colors = s_res.matches.iter().flat_map(|(k, v)| v.iter().map(|s| s.color())).unique().collect_vec();
+        let s_colors = s_res.matches.iter().flat_map(|(_k, v)| v.iter().map(|s| s.color())).unique().collect_vec();
         assert_eq!(s_colors.len(), 3);
 
         // y is S S S of something

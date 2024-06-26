@@ -686,6 +686,19 @@ impl<L: Language> Program<L> {
         compiler.extract()
     }
 
+    pub fn run_with_limit<A>(
+        &self,
+        egraph: &EGraph<L, A>,
+        eclass: Id,
+        limit: usize,
+    ) -> Vec<Subst>
+    where
+        A: Analysis<L>,
+    {
+        self.inner_run(egraph, eclass, None, false, limit)
+    }
+
+    #[allow(dead_code)]
     pub fn run<A>(
         &self,
         egraph: &EGraph<L, A>,
@@ -694,18 +707,19 @@ impl<L: Language> Program<L> {
         where
             A: Analysis<L>,
     {
-        self.inner_run(egraph, eclass, None, false)
+        self.run_with_limit(egraph, eclass, usize::MAX)
     }
 
-    pub fn colored_run<A>(&self,
+    pub fn colored_run_with_limit<A>(&self,
                           egraph: &EGraph<L, A>,
                           eclass: Id,
                           color: Option<ColorId>,
+                          limit: usize,
     ) -> Vec<Subst>
         where
             A: Analysis<L>,
     {
-        self.inner_run(egraph, eclass, color, true)
+        self.inner_run(egraph, eclass, color, true, limit)
     }
 
     fn inner_run<A>(
@@ -714,6 +728,7 @@ impl<L: Language> Program<L> {
         eclass: Id,
         opt_color: Option<ColorId>,
         run_color: bool,
+        limit: usize,
     ) -> Vec<Subst>
         where
             A: Analysis<L>,
@@ -728,7 +743,7 @@ impl<L: Language> Program<L> {
         assert_eq!(machine.reg.len(), 0);
         machine.reg.push(eclass);
 
-        let matches = machine.collect_vec();
+        let matches = machine.take(limit).collect_vec();
         log::trace!("Ran program, found {:?}", matches);
         matches
     }
