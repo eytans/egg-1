@@ -775,7 +775,7 @@ where
 pub struct BackoffScheduler {
     default_match_limit: usize,
     default_ban_length: usize,
-    stats: IndexMap<Symbol, RuleStats>,
+    pub(crate) stats: IndexMap<Symbol, RuleStats>,
 }
 
 #[derive(Debug)]
@@ -832,6 +832,46 @@ impl BackoffScheduler {
     pub fn rule_ban_length(mut self, name: impl Into<Symbol>, length: usize) -> Self {
         self.rule_stats(name.into()).ban_length = length;
         self
+    }
+
+    pub fn search_with_stats<'a, L: Language, N: Analysis<L>>(
+        iteration: usize,
+        egraph: &EGraph<L, N>,
+        rewrite: &'a Rewrite<L, N>,
+        stats: &mut RuleStats
+    ) -> Vec<SearchMatches<'a, L>> {
+        if iteration < stats.banned_until {
+            debug!(
+                "Skipping {} ({}-{}), banned until {}...",
+                rewrite.name, stats.times_applied, stats.times_banned, stats.banned_until,
+            );
+            return vec![];
+        }
+
+        let threshold = stats
+            .match_limit
+            .checked_shl(stats.times_banned as u32)
+            .unwrap();
+        let matches = rewrite.search_with_limit(egraph, threshold.saturating_add(1));
+        let total_len: usize = matches.iter().map(|m| m.substs.len()).sum();
+        if total_len > threshold {
+            let ban_length = stats.ban_length << stats.times_banned;
+            stats.times_banned += 1;
+            stats.banned_until = iteration + ban_length;
+            info!(
+                "Banning {} ({}-{}) for {} iters: {} < {}",
+                rewrite.name,
+                stats.times_applied,
+                stats.times_banned,
+                ban_length,
+                threshold,
+                total_len,
+            );
+            vec![]
+        } else {
+            stats.times_applied += 1;
+            matches
+        }
     }
 }
 
@@ -899,39 +939,7 @@ where
         rewrite: &'a Rewrite<L, N>,
     ) -> Vec<SearchMatches<'a, L>> {
         let stats = self.rule_stats(rewrite.name);
-
-        if iteration < stats.banned_until {
-            debug!(
-                "Skipping {} ({}-{}), banned until {}...",
-                rewrite.name, stats.times_applied, stats.times_banned, stats.banned_until,
-            );
-            return vec![];
-        }
-
-        let threshold = stats
-            .match_limit
-            .checked_shl(stats.times_banned as u32)
-            .unwrap();
-        let matches = rewrite.search_with_limit(egraph, threshold.saturating_add(1));
-        let total_len: usize = matches.iter().map(|m| m.substs.len()).sum();
-        if total_len > threshold {
-            let ban_length = stats.ban_length << stats.times_banned;
-            stats.times_banned += 1;
-            stats.banned_until = iteration + ban_length;
-            info!(
-                "Banning {} ({}-{}) for {} iters: {} < {}",
-                rewrite.name,
-                stats.times_applied,
-                stats.times_banned,
-                ban_length,
-                threshold,
-                total_len,
-            );
-            vec![]
-        } else {
-            stats.times_applied += 1;
-            matches
-        }
+        Self::search_with_stats(iteration, egraph, rewrite, stats)
     }
 }
 
@@ -957,11 +965,6 @@ where L: Language + Send + Sync,
         start_time: Instant,
         time_limit: Duration,
     ) -> RunnerResult<()> {
-        // rewrites.iter().try_for_each(|rw| {
-        //     debug!("Searching rw {}", rw.name);
-        //     matches.push(self.search_rewrite(iteration, egraph, rw));
-        //     check_limits()
-        // })
         debug!("Searching rewrites in parallel. Creating channel with size {}", rewrites.len());
         let channel = crossbeam::channel::bounded(rewrites.len());
         let res = rewrites.par_iter().enumerate().try_for_each(|(i, rw)| {
@@ -987,6 +990,82 @@ where L: Language + Send + Sync,
         res
     }
 }
+
+#[cfg(feature = "parallel")]
+pub struct ParallelBackoffScheduler {
+    scheduler: BackoffScheduler,
+}
+
+impl Default for ParallelBackoffScheduler {
+    fn default() -> Self {
+        ParallelBackoffScheduler {scheduler: Default::default()}
+    }
+}
+
+
+impl ParallelBackoffScheduler {
+    fn init_rule_stats(&mut self, names: &[Symbol]) {
+        for name in names {
+            self.scheduler.rule_stats(*name);
+        }
+    }
+}
+
+impl<L, N> RewriteScheduler<L, N> for ParallelBackoffScheduler where
+    L: Language + Send + Sync,
+    N: Analysis<L> + Sync,
+    <L as language::Language>::Discriminant: Sync,
+    <N as language::Analysis<L>>::Data: Sync,
+{
+    fn can_stop(&mut self, iteration: usize) -> bool {
+        <BackoffScheduler as run::RewriteScheduler<L, N>>::can_stop(&mut self.scheduler, iteration)
+    }
+
+    fn search_rewrite<'a>(
+        &mut self,
+        iteration: usize,
+        egraph: &EGraph<L, N>,
+        rewrite: &'a Rewrite<L, N>,
+    ) -> Vec<SearchMatches<'a, L>> {
+        self.scheduler.search_rewrite(iteration, egraph, rewrite)
+    }
+
+    fn search_rewrites<'a, 'b>(&mut self, iteration: usize, egraph: &EGraph<L, N>, rewrites: &[&'a Rewrite<L, N>], matches: &mut Vec<Vec<SearchMatches<'a, L>>>, start_time: Instant, time_limit: Duration) -> RunnerResult<()> {
+        debug!("Searching rewrites in parallel. Creating channel with size {}", rewrites.len());
+        self.init_rule_stats(&rewrites.iter().map(|rw| rw.name).collect::<Vec<_>>());
+        let channel = crossbeam::channel::bounded(rewrites.len());
+        let mut with_stats = rewrites.iter().map(|rw| {
+            // Assuming no dup names
+            let stats = self.scheduler.stats.remove(&rw.name).unwrap();
+            (*rw, stats)
+        }).collect::<Vec<_>>();
+        let res = with_stats.par_iter_mut().enumerate().try_for_each(|(i, (rw, stats))| {
+            debug!("Searching rw {}", rw.name);
+            let results = BackoffScheduler::search_with_stats(iteration, egraph, rw, stats);
+            if results.len() > 0 {
+                channel.0.send((i, results)).expect("Channel should be big enough for all messages");
+            }
+            let elapsed = start_time.elapsed();
+            if elapsed > time_limit {
+                Err(StopReason::TimeLimit(elapsed.as_secs_f64()))
+            } else {
+                Ok(())
+            }
+        });
+        drop(channel.0);
+        debug!("Finished searching rewrites in parallel. Collecting results");
+        matches.resize_with(rewrites.len(), || Default::default());
+        for (i, ms) in channel.1 {
+            matches[i] = ms;
+        }
+        // Return stats
+        for (rw, stats) in with_stats {
+            self.scheduler.stats.insert(rw.name, stats);
+        }
+        res
+    }
+}
+
 
 /// Custom data to inject into the [`Iteration`]s recorded by a [`Runner`]
 ///
