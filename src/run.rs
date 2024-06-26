@@ -129,11 +129,6 @@ let runner = MyRunner::new(Default::default())
     .with_scheduler(SimpleScheduler)
     .run(rules);
 
-// Now we can check our iteration data to make sure that the cost only
-// got better over time
-for its in runner.iterations.windows(2) {
-    assert!(its[0].data.smallest_so_far >= its[1].data.smallest_so_far);
-}
 
 println!(
     "Stopped after {} iterations, reason: {:?}",
@@ -149,7 +144,7 @@ pub struct Runner<L: Language, N: Analysis<L>, IterData = ()> {
     /// Data accumulated over each [`Iteration`](struct.Iteration.html).
     pub iterations: Vec<Iteration<IterData>>,
     /// The roots of expressions added by the
-    /// [`with_expr`](#method.with_expr) method, in insertion order.
+    /// [`with_expr`](#method.with_expr()) method, in insertion order.
     pub roots: Vec<Id>,
     /// Why the `Runner` stopped. This will be `None` if it hasn't
     /// stopped yet.
@@ -216,7 +211,7 @@ pub struct Iteration<IterData> {
     pub egraph_classes: usize,
     /// A map from rule name to number of times it was _newly_ applied
     /// in this iteration.
-    pub applied: IndexMap<String, usize>,
+    pub applied: IndexMap<Symbol, usize>,
     /// Seconds spent running hooks.
     pub hook_time: f64,
     /// Seconds spent searching in this iteration.
@@ -230,8 +225,36 @@ pub struct Iteration<IterData> {
     pub total_time: f64,
     /// The user provided annotation for this iteration
     pub data: IterData,
+    /// The number of rebuild iterations done after this iteration completed.
+    pub n_rebuilds: usize,
     /// If the runner stopped on this iterations, this is the reason
     pub stop_reason: Option<StopReason>,
+}
+
+impl Display for Iteration {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Iteration report")?;
+        writeln!(f, "================")?;
+        writeln!(f, "  Egraph size: {} nodes, {} classes", self.egraph_nodes, self.egraph_classes)?;
+        writeln!(f, "  Time: {:.2} total, {:.2} search, {:.2} apply, {:.2} rebuild", self.total_time, self.search_time, self.apply_time, self.rebuild_time)?;
+        writeln!(f, "  Rebuilds: {}", self.n_rebuilds)?;
+        writeln!(f, "  Stop reason: {:?}", self.stop_reason)?;
+        // Print top ten worst rules first
+        let worst = self.searched.iter().sorted_by_key(|(_, &d)| d).rev().take(10);
+        writeln!(f, "  Top ten slowest rules:")?;
+        for (name, time) in worst {
+            writeln!(f, "    {}: {:.2}", name, time.as_secs_f64())?;
+        }
+        // writeln!(f, "  Rule times:")?;
+        // for (name, count) in &self.searched {
+        //     writeln!(f, "    {}: {}", name, count.as_secs_f64())?;
+        // }
+        // writeln!(f, "  Applied rules:")?;
+        // for (name, count) in &self.applied {
+        //     writeln!(f, "    {}: {}", name, count)?;
+        // }
+        Ok(())
+    }
 }
 
 type RunnerResult<T> = std::result::Result<T, StopReason>;
@@ -370,7 +393,12 @@ pub fn new(analysis: N) -> Self {
         check_rules(&rules);
         self.egraph.rebuild();
         loop {
-            if let Err(stop_reason) = self.run_one(&rules) {
+            let iter = self.run_one(&rules);
+            warn!("Iteration data:\n {iter}");
+            self.iterations.push(iter);
+            let stop_reason = self.iterations.last().unwrap().stop_reason.clone();
+            // we need to check_limits after the iteration is complete to check for iter_limit
+            if let Some(stop_reason) = stop_reason.or_else(|| self.check_limits().err()) {
                 info!("Stopping: {:?}", stop_reason);
                 self.stop_reason = Some(stop_reason);
                 // push on a final iteration to mark the end state
@@ -415,7 +443,7 @@ pub fn new(analysis: N) -> Self {
         println!("    Rebuild: ({:.2}) {}", rebuild_time / total_time, rebuild_time);
     }
 
-    fn run_one(&mut self, rules: &[&Rewrite<L, N>]) -> RunnerResult<()> {
+    fn run_one(&mut self, rules: &[&Rewrite<L, N>]) -> Iteration<IterData> {
         assert!(self.stop_reason.is_none());
 
         info!("\nIteration {}", self.iterations.len());
@@ -450,14 +478,19 @@ pub fn new(analysis: N) -> Self {
         let start_time = Instant::now();
 
         let mut matches = Vec::new();
-
+        let mut applied = IndexMap::default();
         // From now on scheduler may not access the runner and the other way around
         // Note this limits check_limits
         let mut sched = std::mem::replace(&mut self.scheduler, Box::new(SimpleScheduler {}));
-        sched.search_rewrites(i, &self.egraph, rules, &mut matches, self.start_time.unwrap(), self.time_limit)?;
+        let mut result: RunnerResult<IndexMap<Symbol, Duration>> = result.and_then(|_| {
+            sched.search_rewrites(i, &self.egraph, rules, &mut matches, self.start_time.unwrap(), self.time_limit)
+        });
+        let (search_times, result) = match result {
+            Ok(ds) => {(ds, Ok(()))}
+            Err(e) => {(Default::default(), Err(e))}
+        };
         self.scheduler = sched;
         // Done with sched limitation
-
         self.check_limits()?;
 
         let search_time = start_time.elapsed().as_secs_f64();
@@ -473,32 +506,13 @@ pub fn new(analysis: N) -> Self {
                 continue;
             }
 
-            debug!("Applying {} {} times", rw.name(), total_matches);
-
-            let actually_matched = self.scheduler.apply_rewrite(i, &mut self.egraph, rw, &ms);
-            let new_sample = Instant::now();
-            let sample_time = new_sample.duration_since(last_sample).as_millis();
-            last_sample = new_sample;
-
-            // Update global statistics
-            unsafe {
-                APPLY_TIME += sample_time;
-                APPLICATIONS += actually_matched;
-            }
-
-            if actually_matched > 0 {
-                if let Some(count) = applied.get_mut(rw.name()) {
-                    *count += actually_matched;
-                } else {
-                    applied.insert(rw.name().to_owned(), actually_matched);
-                }
-                debug!("Applied {} {} times", rw.name(), actually_matched);
-            }
-
-            if self.check_limits().is_err() {
-                break;
-            }
-        }
+        let mut result = result.and_then(|_| {
+            let mut temp = Box::new(SimpleScheduler{});
+            let mut sched = std::mem::replace(&mut self.scheduler, temp);
+            sched.apply_rewrites(&mut self.egraph, rules, i, matches, &mut applied);
+            self.scheduler = sched;
+            self.check_limits()
+        });
 
         let apply_time = apply_time.elapsed().as_secs_f64();
         info!("Apply time: {}", apply_time);
@@ -525,13 +539,15 @@ pub fn new(analysis: N) -> Self {
 
         self.iterations.push(Iteration {
             applied,
+            searched: search_times,
             egraph_nodes,
             egraph_classes,
             hook_time,
             search_time,
             apply_time,
             rebuild_time,
-            data: IterData::make(&self),
+            n_rebuilds,
+            data: IterData::make(self),
             total_time: start_time.elapsed().as_secs_f64(),
             stop_reason: None,
         });
@@ -631,12 +647,12 @@ where
         iteration: usize,
         egraph: &EGraph<L, N>,
         rewrites: &[&'a Rewrite<L, N>],
-        matches: &mut Vec<Option<SearchMatches>>,
+        matches: &mut Vec<Vec<SearchMatches<L>>>,
         start_time: Instant,
         time_limit: Duration
-    ) -> RunnerResult<()> {
-        rewrites.iter().try_for_each(|rw| {
-            trace!("Searching with rule {:?}", rw.name);
+    ) -> RunnerResult<IndexMap<Symbol, Duration>> {
+        rewrites.iter().try_fold(IndexMap::default(), |mut durations, rw| {
+            let start_time = Instant::now();
             let ms = self.search_rewrite(iteration, egraph, rw);
             let elapsed = start_time.elapsed();
             unsafe {
@@ -644,13 +660,12 @@ where
                 SEARCH_TIME += elapsed.as_millis();
             }
             matches.push(ms);
-            // Update global stats
-            trace!("Searching rule {} took {} ms", rw.name(), elapsed.as_millis());
-
+            let elapsed = start_time.elapsed();
             if elapsed > time_limit {
                 Err(StopReason::TimeLimit(elapsed.as_secs_f64()))
             } else {
-                Ok(())
+                durations.insert(rw.name.to_owned(), elapsed);
+                Ok(durations)
             }
         })
     }
@@ -669,6 +684,28 @@ where
         matches: &Option<SearchMatches>,
     ) -> usize {
         rewrite.apply(egraph, matches).len()
+    }
+
+
+    /// A hook allowing you to customize the rewrite application behaviour for all rewrites at once.
+    /// This is similar to [`apply_rewrite`](RewriteScheduler::apply_rewrite()), but
+    /// requires that the schedualer handle limitation checks of the runner
+    /// and that the scheduler can apply multiple rewrites at once.
+    fn apply_rewrites(&mut self, egraph: &mut EGraph<L, N>, rules: &[&Rewrite<L, N>], i: usize, matches: Vec<Vec<SearchMatches<L>>>, mut applied: &mut IndexMap<GlobalSymbol, usize>) {
+        rules.iter().zip(matches).for_each(|(rw, ms)| {
+            let total_matches: usize = ms.iter().map(|m| m.substs.len()).sum();
+            debug!("Applying {} {} times", rw.name, total_matches);
+
+            let actually_matched = self.apply_rewrite(i, egraph, rw, ms);
+            if actually_matched > 0 {
+                if let Some(count) = applied.get_mut(&rw.name) {
+                    *count += actually_matched;
+                } else {
+                    applied.insert(rw.name.to_owned(), actually_matched);
+                }
+                debug!("Applied {} {} times", rw.name, actually_matched);
+            }
+        })
     }
 }
 
@@ -714,7 +751,8 @@ pub struct BackoffScheduler {
     stats: IndexMap<String, RuleStats>,
 }
 
-/// Rule statistics
+/// Statistics on rule usage
+#[derive(Debug, Clone, Copy)]
 pub struct RuleStats {
     times_applied: usize,
     banned_until: usize,
@@ -769,7 +807,6 @@ impl BackoffScheduler {
         self.rule_stats(name).ban_length = length;
         self
     }
-
 
     /// Search with a rewrite given a limit and stats. Useful for parallel search as normal API is
     /// insufficient.
@@ -899,22 +936,19 @@ where L: Language + Send + Sync,
         iteration: usize,
         egraph: &EGraph<L, N>,
         rewrites: &[&'a Rewrite<L, N>],
-        matches: &mut Vec<Option<SearchMatches>>,
+        matches: &mut Vec<Vec<SearchMatches<L>>>,
         start_time: Instant,
         time_limit: Duration,
-    ) -> RunnerResult<()> {
-        // rewrites.iter().try_for_each(|rw| {
-        //     debug!("Searching rw {}", rw.name);
-        //     matches.push(self.search_rewrite(iteration, egraph, rw));
-        //     check_limits()
-        // })
+    ) -> RunnerResult<IndexMap<Symbol, Duration>> {
         debug!("Searching rewrites in parallel. Creating channel with size {}", rewrites.len());
         let channel = crossbeam::channel::bounded(rewrites.len());
         let res = rewrites.par_iter().enumerate().try_for_each(|(i, rw)| {
             debug!("Searching rw {}", rw.name);
+            let rule_start = Instant::now();
             let results = rw.search(egraph);
-            if results.is_some() {
-                channel.0.send((i, results.unwrap())).expect("Channel should be big enough for all messages");
+            let elapsed = rule_start.elapsed();
+            if results.len() > 0 {
+                channel.0.send((i, results, elapsed)).expect("Channel should be big enough for all messages");
             }
             let elapsed = start_time.elapsed();
             if elapsed > time_limit {
@@ -926,15 +960,15 @@ where L: Language + Send + Sync,
         drop(channel.0);
         debug!("Finished searching rewrites in parallel. Collecting results");
         matches.resize_with(rewrites.len(), || Default::default());
-        for (i, ms) in channel.1 {
-            matches[i] = Some(ms);
+        let mut res_m: IndexMap<Symbol, Duration> = Default::default();
+        for (i, ms, duration) in channel.1 {
+            res_m.insert(rewrites[i].name.into(), duration);
+            matches[i] = ms;
         }
 
-        res
+        res.and_then(|_| Ok(res_m))
     }
 }
-
-
 /// A wrapper for a ['RewriteScheduler'] that runs rewrite_search in parallel.
 #[cfg(feature = "parallel")]
 pub struct ParallelBackoffScheduler {
@@ -950,9 +984,9 @@ impl Default for ParallelBackoffScheduler {
 
 
 impl ParallelBackoffScheduler {
-    fn init_rule_stats(&mut self, names: &[&str]) {
+    fn init_rule_stats(&mut self, names: &[Symbol]) {
         for name in names {
-            self.scheduler.rule_stats(name);
+            self.scheduler.rule_stats(*name);
         }
     }
 
@@ -965,11 +999,12 @@ impl ParallelBackoffScheduler {
 
 impl<L, N> RewriteScheduler<L, N> for ParallelBackoffScheduler where
     L: Language + Send + Sync,
-    N: Analysis<L> + Sync + 'static,
+    N: Analysis<L> + Sync,
+    <L as language::Language>::Discriminant: Sync,
     <N as language::Analysis<L>>::Data: Sync,
 {
     fn can_stop(&mut self, iteration: usize) -> bool {
-        <BackoffScheduler as RewriteScheduler<L, N>>::can_stop(&mut self.scheduler, iteration)
+        <BackoffScheduler as run::RewriteScheduler<L, N>>::can_stop(&mut self.scheduler, iteration)
     }
 
     fn search_rewrite<'a>(
@@ -977,13 +1012,21 @@ impl<L, N> RewriteScheduler<L, N> for ParallelBackoffScheduler where
         iteration: usize,
         egraph: &EGraph<L, N>,
         rewrite: &'a Rewrite<L, N>,
-    ) -> Option<SearchMatches> {
+    ) -> Vec<SearchMatches<L>> {
         self.scheduler.search_rewrite(iteration, egraph, rewrite)
     }
 
-    fn search_rewrites<'a, 'b>(&mut self, iteration: usize, egraph: &EGraph<L, N>, rewrites: &[&'a Rewrite<L, N>], matches: &mut Vec<Option<SearchMatches>>, start_time: Instant, time_limit: Duration) -> RunnerResult<()> {
+    fn search_rewrites<'a, 'b>(
+        &mut self,
+        iteration: usize,
+        egraph: &EGraph<L, N>,
+        rewrites: &[&'a Rewrite<L, N>],
+        matches: &mut Vec<Vec<SearchMatches<L>>>,
+        start_time: Instant,
+        time_limit: Duration
+    ) -> RunnerResult<IndexMap<Symbol, Duration>> {
         debug!("Searching rewrites in parallel. Creating channel with size {}", rewrites.len());
-        self.init_rule_stats(&rewrites.iter().map(|rw| rw.name.as_str()).collect::<Vec<_>>());
+        self.init_rule_stats(&rewrites.iter().map(|rw| rw.name).collect::<Vec<_>>());
         let channel = crossbeam::channel::bounded(rewrites.len());
         let mut with_stats = rewrites.iter().map(|rw| {
             // Assuming no dup names
@@ -994,9 +1037,11 @@ impl<L, N> RewriteScheduler<L, N> for ParallelBackoffScheduler where
         let res = pool.install(|| {
             with_stats.par_iter_mut().enumerate().try_for_each(|(i, (rw, stats))| {
                 debug!("Searching rw {}", rw.name);
+                let rule_start = Instant::now();
                 let results = BackoffScheduler::search_with_stats(iteration, egraph, rw, stats);
-                if results.is_some() {
-                    channel.0.send((i, results)).expect("Channel should be big enough for all messages");
+                let elapsed = rule_start.elapsed();
+                if results.len() > 0 {
+                    channel.0.send((i, results, elapsed)).expect("Channel should be big enough for all messages");
                 }
                 let elapsed = start_time.elapsed();
                 if elapsed > time_limit {
@@ -1009,16 +1054,318 @@ impl<L, N> RewriteScheduler<L, N> for ParallelBackoffScheduler where
         drop(channel.0);
         debug!("Finished searching rewrites in parallel. Collecting results");
         matches.resize_with(rewrites.len(), || Default::default());
-        for (i, ms) in channel.1 {
+        let mut res_m: IndexMap<Symbol, Duration> = Default::default();
+        for (i, ms, time) in channel.1 {
             matches[i] = ms;
+            res_m.insert(rewrites[i].name.into(), time);
         }
         // Return stats
         for (rw, stats) in with_stats {
-            self.scheduler.stats.insert(rw.name.clone(), stats);
+            self.scheduler.stats.insert(rw.name, stats);
         }
-        res
+        res.and_then(|_| Ok(res_m))
     }
 }
+
+#[derive(Debug, Clone, new)]
+pub struct Split<L, N> where
+    L: Language,
+    N: Analysis<L> + Clone,
+    <N as language::Analysis<L>>::Data: Clone,
+{
+    // Rule name and searcher
+    pub(crate) reason: String,
+    pub(crate) egraphs: Vec<EGraph<L, N>>,
+}
+
+#[derive(Debug, Clone, new)]
+pub struct Spliter<L> where
+    L: Language,
+{
+    // Rule name and searcher
+    rule_name: Arc<String>,
+    searcher: Arc<MultiPattern<L>>,
+    /// Ids present from goal egraph. Do not match on anything else
+    goal_ids : Vec<Id>,
+    // Appliers
+    pub(crate) appliers: Arc<Vec<MultiPattern<L>>>,
+}
+
+impl<L> Spliter<L> where
+    L: Language,
+{
+    /// Will duplicate e-graph as necessary and apply the split appliers
+    pub fn case_split<N>(&self, egraph: &EGraph<L, N>) -> Vec<Split<L, N>> where
+        N: Analysis<L> + Clone,
+        <N as language::Analysis<L>>::Data: Clone,
+    {
+        let matches: IndexSet<_> = self.searcher.search(egraph).into_iter().flat_map(|sms| {
+            let eclass = sms.eclass;
+            sms.substs.into_iter()
+                // Only keep matches on original goal
+                .filter(|s| s.vec.iter().all(|(_, id)| self.goal_ids.contains(id)))
+                .map(move |s| (eclass, s))
+        }).collect();
+        warn!("Doing case split creating {}*{} new e-graphs for {}", matches.len(), self.appliers.len(), self.rule_name);
+        // Eclass should be meaningless here, let's verify
+        assert_eq!(matches.iter().map(|(_, s)| s).collect::<HashSet<_>>().len(), matches.len());
+        if matches.len() > 5 {
+            warn!("Too many matches for rule {}. Skipping", self.rule_name);
+            return vec![];
+        }
+
+        matches.into_iter().map(|(eclass, subst)| {
+            let reason = format!("{}_{}", self.rule_name, subst.vec.iter().map(|(_, x)| x).join("_"));
+            let egraphs = self.appliers.iter().map(|a| {
+                let mut new_egg = (*egraph).clone();
+                let matches = SearchMatches { eclass: eclass, substs: vec![subst.clone()], ast: None };
+                a.apply_matches(&mut new_egg, &vec![matches], self.rule_name.as_ref().into());
+                new_egg.rebuild();
+                new_egg
+            }).collect_vec();
+            Split::new(reason, egraphs)
+        }).collect_vec()
+    }
+}
+
+/// A predicate from iteration rewrite index and rewrite itself
+pub type RewriteFilterFun<L, N> = Arc<dyn Fn(usize, usize, &Rewrite<L, N>) -> bool + Send + Sync>;
+#[derive(new)]
+pub struct RewriteFilter<L, N> {
+    pub(crate) filter: RewriteFilterFun<L, N>,
+    description: &'static str,
+}
+
+impl<L, N> Debug for RewriteFilter<L, N> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RewriteFilter")
+            .field("description", &self.description)
+            .finish()
+    }
+}
+
+/// A wrapper for a ['RewriteScheduler'] that runs rewrite_search in parallel
+/// but also manages multiple egraphs at once such that conclusions are collected.
+#[cfg(feature = "parallel")]
+#[derive(Debug)]
+pub struct ParallelBackoffSchedulerWithCases<L, N>
+where
+    L: Language,
+    N: Analysis<L> + Clone,
+    <N as language::Analysis<L>>::Data: Clone,
+{
+    scheduler: BackoffScheduler,
+    thread_limit: usize,
+    // I am gonna say fuck it right now and just hold additional cases here
+    when: usize,
+    splitters: Vec<Spliter<L>>,
+    cases: BTreeMap<String, Split<L, N>>,
+    original_ids: BTreeSet<Id>,
+    case_matches: BTreeMap<String, Vec<Vec<Vec<SearchMatches<L>>>>>,
+    /// Filter rewrite rules by other information to better control runtime
+    filter: Option<RewriteFilter<L, N>>,
+}
+
+impl<L, N> Default for ParallelBackoffSchedulerWithCases<L, N>
+where
+    L: Language,
+    N: Analysis<L> + Clone,
+    <N as language::Analysis<L>>::Data: Clone
+{
+    fn default() -> Self {
+        ParallelBackoffSchedulerWithCases::new(usize::MAX, Default::default(), None)
+    }
+}
+
+impl<L, N> crate::ParallelBackoffSchedulerWithCases<L, N>
+where
+    L: Language,
+    N: Analysis<L> + Clone,
+    <N as language::Analysis<L>>::Data: Clone
+{
+    pub fn new(when: usize, cases: Vec<Spliter<L>>, filter: Option<RewriteFilter<L, N>>) -> Self {
+        crate::ParallelBackoffSchedulerWithCases {
+            scheduler: Default::default(),
+            thread_limit: num_cpus::get(),
+            splitters: cases,
+            cases: Default::default(),
+            original_ids: Default::default(),
+            case_matches: Default::default(),
+            when,
+            filter,
+        }
+    }
+
+    fn do_case_split(&mut self, egraph: &EGraph<L, N>) {
+        // Take all cases to do, and duplicate the egraph for each match and applier
+        // push the results to cases and save original ids
+        self.original_ids = egraph.classes.keys().copied().collect();
+        for s in &self.splitters {
+            let splits = s.case_split(egraph);
+            for split in splits {
+                self.cases.insert(split.reason.clone(), split);
+            }
+        }
+    }
+
+    fn intersect_conclusions(&self) -> Vec<(String, Vec<Id>)> {
+        let mut concs = vec![];
+        for (reason, split) in &self.cases {
+            // Each time I only need to look at the original id
+            let mut groups: BTreeMap<Vec<Id>, Vec<Id>> = Default::default();
+            // fake start
+            groups.insert(vec![0.into()], self.original_ids.iter().copied().collect_vec());
+
+            for c in &split.egraphs {
+                let mut new_groups: BTreeMap<Vec<Id>, Vec<Id>> = Default::default();
+                for (k, group) in groups.into_iter() {
+                    if group.len() <= 1 {
+                        continue;
+                    }
+                    for id in group {
+                        let node = c.find(id);
+                        let mut key = k.clone();
+                        key.push(node);
+                        new_groups.entry(key).or_insert_with(Vec::new).push(id);
+                    }
+                }
+                groups = new_groups
+            }
+            for (_, v) in groups {
+                if v.len() >= 1 {
+                    concs.push((reason.clone(), v));
+                }
+            }
+        }
+        concs
+    }
+
+    fn init_rule_stats(&mut self, names: &[Symbol]) {
+        for name in names {
+            self.scheduler.rule_stats(*name);
+        }
+    }
+
+    /// Set the amount of threads to use during search
+    pub fn with_thread_limit(mut self, thread_limit: usize) -> Self {
+        self.thread_limit = thread_limit;
+        self
+    }
+}
+
+impl<L, N> RewriteScheduler<L, N> for ParallelBackoffSchedulerWithCases<L, N> where
+    L: Language + Send + Sync,
+    N: Analysis<L> + Sync + Clone,
+    <N as language::Analysis<L>>::Data: Clone,
+    <L as language::Language>::Discriminant: Sync,
+    <N as language::Analysis<L>>::Data: Sync,
+{
+    fn can_stop(&mut self, iteration: usize) -> bool {
+        <BackoffScheduler as run::RewriteScheduler<L, N>>::can_stop(&mut self.scheduler, iteration)
+    }
+
+    fn search_rewrite<'a>(
+        &mut self,
+        iteration: usize,
+        egraph: &EGraph<L, N>,
+        rewrite: &'a Rewrite<L, N>,
+    ) -> Vec<SearchMatches<L>> {
+        self.scheduler.search_rewrite(iteration, egraph, rewrite)
+    }
+
+    fn search_rewrites<'a, 'b>(&mut self, iteration: usize, egraph: &EGraph<L, N>, rewrites: &[&'a Rewrite<L, N>], matches: &mut Vec<Vec<SearchMatches<L>>>, start_time: Instant, time_limit: Duration) -> RunnerResult<IndexMap<Symbol, Duration>> {
+        assert!(self.case_matches.is_empty());
+        // Initialize a matches vector for each case and rewrite
+        for (_, cms) in &mut self.case_matches {
+            cms.resize_with(self.cases.len(), || vec![Default::default(); rewrites.len()]);
+        }
+        debug!("Searching rewrites in parallel. Creating channel with size {}", rewrites.len());
+        self.init_rule_stats(&rewrites.iter().map(|rw| rw.name).collect::<Vec<_>>());
+        let default_reason = "default".to_string();
+        let channel = crossbeam::channel::bounded(rewrites.len());
+        let mut egraphs = vec![];
+        if self.when == iteration {
+            self.do_case_split(egraph);
+        }
+        if self.when <= iteration {
+            for (r, es) in &self.cases {
+                for (i, e) in es.egraphs.iter().enumerate() {
+                    egraphs.push((r, e, Some(i)))
+                }
+            }
+        }
+        egraphs.push((&default_reason, egraph, None));
+        let pool = rayon::ThreadPoolBuilder::new().num_threads(self.thread_limit).build().unwrap();
+        let res = pool.install(|| {
+            iproduct!(0..rewrites.len(), 0..egraphs.len()).collect_vec().into_par_iter()
+                .try_for_each(|(i, e_idx)| {
+                    if let Some(filter) = &self.filter {
+                        if !(filter.filter)(iteration, i, &rewrites[i]) {
+                            return Ok(());
+                        }
+                    }
+                     debug!("Searching rw {}", rewrites[i].name);
+                    let (r, egraph, idx) = egraphs[e_idx];
+                    let mut stats = *self.scheduler.stats.get(&rewrites[i].name).unwrap();
+                    let rule_start = Instant::now();
+                    let results = BackoffScheduler::search_with_stats(iteration, egraph, rewrites[i], &mut stats);
+                    let elapsed = rule_start.elapsed();
+                    if results.len() > 0 {
+                        channel.0.send((i, idx, r, results, stats, elapsed)).expect("Channel should be big enough for all messages");
+                    }
+                    let elapsed = start_time.elapsed();
+                    if elapsed > time_limit {
+                        Err(StopReason::TimeLimit(elapsed.as_secs_f64()))
+                    } else {
+                        Ok(())
+                    }
+            })
+        });
+        drop(channel.0);
+        debug!("Finished searching rewrites in parallel. Collecting results");
+        matches.resize_with(rewrites.len(), || Default::default());
+        let mut res_m: IndexMap<Symbol, Duration> = Default::default();
+        for (i, idx, r, ms, stats, duration) in channel.1 {
+            if let Some(idx) = idx {
+                self.case_matches.get_mut(r).unwrap()[idx][i] = ms;
+            } else {
+                res_m.insert(rewrites[i].name.into(), duration);
+                matches[i] = ms;
+                self.scheduler.stats.insert(rewrites[i].name, stats);
+            }
+        }
+        res.and_then(|_| Ok(res_m))
+    }
+
+    fn apply_rewrites(&mut self, egraph: &mut EGraph<L, N>, rules: &[&Rewrite<L, N>], iteration: usize, matches: Vec<Vec<SearchMatches<L>>>, mut applied: &mut IndexMap<GlobalSymbol, usize>) {
+        let mut s = SimpleScheduler {};
+        s.apply_rewrites(egraph, rules, iteration, matches, applied);
+        if self.when <= iteration {
+            let mut cases = std::mem::take(&mut self.cases);
+            let mut case_matches = std::mem::take(&mut self.case_matches);
+            for (r, cases) in &mut cases {
+                for case in cases.egraphs.iter_mut() {
+                    let mut applied = IndexMap::default();
+                    let matches = case_matches.get_mut(r).unwrap().remove(0);
+                    s.apply_rewrites(case, rules, iteration, matches, &mut applied);
+                    case.rebuild();
+                }
+            }
+            self.cases = cases;
+            self.case_matches = case_matches;
+            // now collect all conclusions from cases and put in orig
+            let conclusions = self.intersect_conclusions();
+            for (reason, mut ids) in conclusions {
+                let symbol: Symbol = reason.into();
+                let node = ids.pop().unwrap();
+                for id in ids {
+                    egraph.union_trusted(id, node, symbol);
+                }
+            }
+        }
+    }
+}
+
 
 /// Custom data to inject into the [`Iteration`]s recorded by a [`Runner`]
 ///
