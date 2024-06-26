@@ -314,7 +314,7 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
         eclass: Id,
         limit: usize,
     ) -> Option<SearchMatches<L>> {
-        let substs = self.program.run_with_limit(egraph, eclass, limit);
+        let substs = self.program.run_with_limit(egraph, eclass, limit, 1000);
         if substs.is_empty() {
             None
         } else {

@@ -34,11 +34,14 @@ vectorize = { version = "0.2.0", optional = true }
 # for the reports feature
 serde_json = { version = "1.0.81", optional = true }
 saturating = "0.1.0"
+rayon = { version = "1.10.0", optional = true }
+crossbeam = { version = "0.8.4", optional = true, features = ["crossbeam-channel"] }
 
 [dev-dependencies]
 ordered-float = "3.0.0"
 
 [features]
+default = ["parallel"]
 # forces the use of indexmaps over hashmaps
 deterministic = []
 lp = ["coin_cbc"]
@@ -51,6 +54,7 @@ serde-1 = [
   "vectorize",
 ]
 wasm-bindgen = []
+parallel = ["rayon", "crossbeam"]
 
 # private features for testing
 test-explanations = []

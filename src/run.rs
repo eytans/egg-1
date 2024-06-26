@@ -1,6 +1,10 @@
 use std::fmt::{self, Debug, Formatter};
+use std::rc::Rc;
+use std::sync::Arc;
 
 use log::*;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 use crate::*;
 
@@ -538,13 +542,14 @@ where
 
         let mut matches = Vec::new();
         let mut applied = IndexMap::default();
+        // From now on scheduler may not access the runner and the other way around
+        // Note this limits check_limits
+        let mut sched = std::mem::replace(&mut self.scheduler, Box::new(SimpleScheduler {}));
         result = result.and_then(|_| {
-            rules.iter().try_for_each(|rw| {
-                let ms = self.scheduler.search_rewrite(i, &self.egraph, rw);
-                matches.push(ms);
-                self.check_limits()
-            })
+            sched.search_rewrites(i, &self.egraph, rules, &mut matches, self.start_time.unwrap(), self.time_limit)
         });
+        self.scheduler = sched;
+        // Done with sched limitation
 
         let search_time = start_time.elapsed().as_secs_f64();
         info!("Search time: {}", search_time);
@@ -690,6 +695,30 @@ where
         rewrite: &'a Rewrite<L, N>,
     ) -> Vec<SearchMatches<'a, L>> {
         rewrite.search(egraph)
+    }
+
+    /// A Hook allowing you to customize the rewrite searching behaviour for all rewrites at once.
+    /// This is similar to [`search_rewrite`](RewriteScheduler::search_rewrite()), but
+    /// requires that the schedualer handle limitation checks of the runner
+    fn search_rewrites<'a, 'b>(
+        &mut self,
+        iteration: usize,
+        egraph: &EGraph<L, N>,
+        rewrites: &[&'a Rewrite<L, N>],
+        matches: &mut Vec<Vec<SearchMatches<'a, L>>>,
+        start_time: Instant,
+        time_limit: Duration
+    ) -> RunnerResult<()> {
+        rewrites.iter().try_for_each(|rw| {
+            let ms = self.search_rewrite(iteration, egraph, rw);
+            matches.push(ms);
+            let elapsed = start_time.elapsed();
+            if elapsed > time_limit {
+                Err(StopReason::TimeLimit(elapsed.as_secs_f64()))
+            } else {
+                Ok(())
+            }
+        })
     }
 
     /// A hook allowing you to customize rewrite application behavior.
@@ -903,6 +932,59 @@ where
             stats.times_applied += 1;
             matches
         }
+    }
+}
+
+/// A wrapper for a ['RewriteScheduler'] that runs rewrite_search in parallel.
+/// This requires that the underlying scheduler is thread safe, and that the language implements
+/// [Send] and [Sync].
+#[derive(Debug, Clone, Default, Copy)]
+pub struct ParallelScheduler {}
+
+#[cfg(feature = "parallel")]
+impl<L, N> RewriteScheduler<L, N> for ParallelScheduler
+where L: Language + Send + Sync,
+      N: Analysis<L> + Sync,
+      <L as language::Language>::Discriminant: Sync,
+      <N as language::Analysis<L>>::Data: Sync,
+{
+    fn search_rewrites<'a, 'b>(
+        &mut self,
+        iteration: usize,
+        egraph: &EGraph<L, N>,
+        rewrites: &[&'a Rewrite<L, N>],
+        matches: &mut Vec<Vec<SearchMatches<'a, L>>>,
+        start_time: Instant,
+        time_limit: Duration,
+    ) -> RunnerResult<()> {
+        // rewrites.iter().try_for_each(|rw| {
+        //     debug!("Searching rw {}", rw.name);
+        //     matches.push(self.search_rewrite(iteration, egraph, rw));
+        //     check_limits()
+        // })
+        debug!("Searching rewrites in parallel. Creating channel with size {}", rewrites.len());
+        let channel = crossbeam::channel::bounded(rewrites.len());
+        let res = rewrites.par_iter().enumerate().try_for_each(|(i, rw)| {
+            debug!("Searching rw {}", rw.name);
+            let results = rw.search(egraph);
+            if results.len() > 0 {
+                channel.0.send((i, results)).expect("Channel should be big enough for all messages");
+            }
+            let elapsed = start_time.elapsed();
+            if elapsed > time_limit {
+                Err(StopReason::TimeLimit(elapsed.as_secs_f64()))
+            } else {
+                Ok(())
+            }
+        });
+        drop(channel.0);
+        debug!("Finished searching rewrites in parallel. Collecting results");
+        matches.resize_with(rewrites.len(), || Default::default());
+        for (i, ms) in channel.1 {
+            matches[i] = ms;
+        }
+
+        res
     }
 }
 

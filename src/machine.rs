@@ -1,13 +1,26 @@
 use crate::*;
 use std::result;
+use log::debug;
 
 type Result = result::Result<(), ()>;
 
-#[derive(Default)]
 struct Machine {
     reg: Vec<Id>,
     // a buffer to re-use for lookups
     lookup: Vec<Id>,
+    // A limit to how many enodes to visit
+    // TODO: When used it will be a good idea to randomly visit eclasses in production?
+    limit: usize,
+}
+
+impl Machine {
+    pub fn new(limit: usize) -> Self {
+        Self {
+            reg: Default::default(),
+            lookup: Default::default(),
+            limit,
+        }
+    }
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -106,6 +119,11 @@ impl Machine {
                     let remaining_instructions = instructions.as_slice();
                     return for_each_matching_node(&egraph[self.reg(*i)], node, |matched| {
                         self.reg.truncate(out.0 as usize);
+                        self.limit -= 1;
+                        if self.limit <= 0 {
+                            debug!("Limit reached. Stopping machine.");
+                            return Err(());
+                        }
                         matched.for_each(|id| self.reg.push(id));
                         self.run(egraph, remaining_instructions, subst, yield_fn)
                     });
@@ -345,18 +363,19 @@ impl<L: Language> Program<L> {
         &self,
         egraph: &EGraph<L, A>,
         eclass: Id,
-        mut limit: usize,
+        mut match_limit: usize,
+        node_limit: usize,
     ) -> Vec<Subst>
     where
         A: Analysis<L>,
     {
         assert!(egraph.clean, "Tried to search a dirty e-graph!");
 
-        if limit == 0 {
+        if match_limit == 0 {
             return vec![];
         }
 
-        let mut machine = Machine::default();
+        let mut machine = Machine::new(node_limit);
         assert_eq!(machine.reg.len(), 0);
         machine.reg.push(eclass);
 
@@ -382,8 +401,8 @@ impl<L: Language> Program<L> {
                         .map(|(v, reg_id)| (*v, machine.reg(Reg(usize::from(*reg_id) as u32))))
                         .collect();
                     matches.push(Subst { vec: subst_vec });
-                    limit -= 1;
-                    if limit != 0 {
+                    match_limit -= 1;
+                    if match_limit != 0 {
                         Ok(())
                     } else {
                         Err(())
