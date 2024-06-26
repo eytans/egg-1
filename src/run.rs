@@ -1,6 +1,4 @@
 use std::fmt::{self, Debug, Formatter};
-use std::rc::Rc;
-use std::sync::Arc;
 
 use log::*;
 #[cfg(feature = "parallel")]
@@ -775,11 +773,12 @@ where
 pub struct BackoffScheduler {
     default_match_limit: usize,
     default_ban_length: usize,
-    pub(crate) stats: IndexMap<Symbol, RuleStats>,
+    stats: IndexMap<Symbol, RuleStats>,
 }
 
+/// Statistics on rule usage
 #[derive(Debug)]
-struct RuleStats {
+pub struct RuleStats {
     times_applied: usize,
     banned_until: usize,
     times_banned: usize,
@@ -834,6 +833,8 @@ impl BackoffScheduler {
         self
     }
 
+    /// Search with a rewrite given a limit and stats. Useful for parallel search as normal API is
+    /// insufficient.
     pub fn search_with_stats<'a, L: Language, N: Analysis<L>>(
         iteration: usize,
         egraph: &EGraph<L, N>,
@@ -958,7 +959,7 @@ where L: Language + Send + Sync,
 {
     fn search_rewrites<'a, 'b>(
         &mut self,
-        iteration: usize,
+        _iteration: usize,
         egraph: &EGraph<L, N>,
         rewrites: &[&'a Rewrite<L, N>],
         matches: &mut Vec<Vec<SearchMatches<'a, L>>>,
@@ -991,6 +992,7 @@ where L: Language + Send + Sync,
     }
 }
 
+/// A wrapper for a ['RewriteScheduler'] that runs rewrite_search in parallel.
 #[cfg(feature = "parallel")]
 pub struct ParallelBackoffScheduler {
     scheduler: BackoffScheduler,
