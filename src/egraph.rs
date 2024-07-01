@@ -854,9 +854,10 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         for node in nodes {
             let new_node = node.clone().map_children(|i| new_ids[usize::from(i)]);
             let size_before = self.unionfind.size();
-            let next_id = self.add_uncanonical(new_node);
+            let next_id = self.add_uncanonical(new_node.clone());
             if self.unionfind.size() > size_before {
                 new_node_q.push(true);
+                println!("Pushed new node {new_node} to egraph");
             } else {
                 new_node_q.push(false);
             }
@@ -1144,7 +1145,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         let size_before = self.unionfind.size();
         let id2 = self.add_instantiation_noncanonical(to_pat, subst);
         let rhs_new = self.unionfind.size() > size_before;
-
         let did_union = self.perform_union(
             id1,
             id2,
@@ -1492,6 +1492,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         n_unions
     }
 
+    #[cfg(feature = "check_proof")]
     pub(crate) fn check_each_explain(&mut self, rules: &[&Rewrite<L, N>]) -> bool {
         if let Some(explain) = &mut self.explain {
             explain.with_nodes(&self.nodes).check_each_explain(rules)

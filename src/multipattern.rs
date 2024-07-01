@@ -2,6 +2,7 @@ use std::str::FromStr;
 use thiserror::Error;
 
 use crate::*;
+use crate::pattern::apply_pat;
 
 /// A set of open expressions bound to variables.
 ///
@@ -173,12 +174,23 @@ impl<L: Language, A: Analysis<L>> Applier<L, A> for MultiPattern<L> {
                 let mut id_buf = vec![];
                 for (i, (v, p)) in self.asts.iter().enumerate() {
                     id_buf.resize(p.as_ref().len(), 0.into());
-                    let id1 = crate::pattern::apply_pat(&mut id_buf, p.as_ref(), egraph, &subst);
-                    if let Some(id2) = subst.insert(*v, id1) {
-                        egraph.union(id1, id2, Some(rule_name));
-                    }
-                    if i == 0 {
-                        added.push(id1)
+                    if egraph.are_explanations_enabled() {
+                        // If we have a union to do we can use union instantiations, otherwise
+                        // we just need to add uncanonical with reason (maybe apply_pat?)
+                        let (id, did_something) = {
+                            egraph.union_instantiations(p, &self.ast, subst, rule_name)
+                        };
+                        if did_something {
+                            added.push(id)
+                        }
+                    } else {
+                        let id1 = crate::pattern::apply_pat(&mut id_buf, p.as_ref(), egraph, &subst);
+                        if let Some(id2) = subst.insert(*v, id1) {
+                            egraph.union(id1, id2, Some(rule_name));
+                        }
+                        if i == 0 {
+                            added.push(id1)
+                        }
                     }
                 }
             }

@@ -28,7 +28,7 @@ use thiserror::Error;
 ///
 /// See [`SymbolLang`] for quick-and-dirty use cases.
 #[allow(clippy::len_without_is_empty)]
-pub trait Language: Debug + Clone + Eq + Ord + Hash {
+pub trait Language: Debug + Clone + Eq + Ord + Hash + Display {
     /// Type representing the cases of this language.
     ///
     /// Used for short-circuiting the search for equivalent nodes.

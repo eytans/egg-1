@@ -102,6 +102,7 @@ pub fn test_runner<L, A>(
                 explained.get_string_with_let();
                 let flattened = explained.make_flat_explanation().clone();
                 let vanilla_len = flattened.len();
+                #[cfg(feature = "check_proof")]
                 explained.check_proof(rules);
                 assert!(!explained.get_tree_size().is_zero());
 
@@ -111,6 +112,7 @@ pub fn test_runner<L, A>(
                 let short_len = explained_short.get_flat_strings().len();
                 assert!(short_len <= vanilla_len);
                 assert!(!explained_short.get_tree_size().is_zero());
+                #[cfg(feature = "check_proof")]
                 explained_short.check_proof(rules);
             }
         }

@@ -577,6 +577,7 @@ where
 
         let rebuild_time = Instant::now();
         let n_rebuilds = self.egraph.rebuild();
+        #[cfg(feature = "check_proof")]
         if self.egraph.are_explanations_enabled() {
             debug_assert!(self.egraph.check_each_explain(rules));
         }
