@@ -1013,7 +1013,8 @@ impl ParallelBackoffScheduler {
         }
     }
 
-    fn with_thread_limit(mut self, thread_limit: usize) -> Self {
+    /// Set the amount of threads to use during search
+    pub fn with_thread_limit(mut self, thread_limit: usize) -> Self {
         self.thread_limit = thread_limit;
         self
     }
