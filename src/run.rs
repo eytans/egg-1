@@ -996,11 +996,12 @@ where L: Language + Send + Sync,
 #[cfg(feature = "parallel")]
 pub struct ParallelBackoffScheduler {
     scheduler: BackoffScheduler,
+    thread_limit: usize,
 }
 
 impl Default for ParallelBackoffScheduler {
     fn default() -> Self {
-        ParallelBackoffScheduler {scheduler: Default::default()}
+        ParallelBackoffScheduler {scheduler: Default::default(), thread_limit: num_cpus::get()}
     }
 }
 
@@ -1010,6 +1011,11 @@ impl ParallelBackoffScheduler {
         for name in names {
             self.scheduler.rule_stats(*name);
         }
+    }
+
+    fn with_thread_limit(mut self, thread_limit: usize) -> Self {
+        self.thread_limit = thread_limit;
+        self
     }
 }
 
@@ -1041,18 +1047,21 @@ impl<L, N> RewriteScheduler<L, N> for ParallelBackoffScheduler where
             let stats = self.scheduler.stats.remove(&rw.name).unwrap();
             (*rw, stats)
         }).collect::<Vec<_>>();
-        let res = with_stats.par_iter_mut().enumerate().try_for_each(|(i, (rw, stats))| {
-            debug!("Searching rw {}", rw.name);
-            let results = BackoffScheduler::search_with_stats(iteration, egraph, rw, stats);
-            if results.len() > 0 {
-                channel.0.send((i, results)).expect("Channel should be big enough for all messages");
-            }
-            let elapsed = start_time.elapsed();
-            if elapsed > time_limit {
-                Err(StopReason::TimeLimit(elapsed.as_secs_f64()))
-            } else {
-                Ok(())
-            }
+        let pool = rayon::ThreadPoolBuilder::new().num_threads(self.thread_limit).build().unwrap();
+        let res = pool.install(|| {
+            with_stats.par_iter_mut().enumerate().try_for_each(|(i, (rw, stats))| {
+                debug!("Searching rw {}", rw.name);
+                let results = BackoffScheduler::search_with_stats(iteration, egraph, rw, stats);
+                if results.len() > 0 {
+                    channel.0.send((i, results)).expect("Channel should be big enough for all messages");
+                }
+                let elapsed = start_time.elapsed();
+                if elapsed > time_limit {
+                    Err(StopReason::TimeLimit(elapsed.as_secs_f64()))
+                } else {
+                    Ok(())
+                }
+            })
         });
         drop(channel.0);
         debug!("Finished searching rewrites in parallel. Collecting results");
