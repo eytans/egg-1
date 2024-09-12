@@ -3,6 +3,8 @@ use std::str::FromStr;
 
 use crate::{Id, Symbol};
 use crate::ColorId;
+use std::fmt::Formatter;
+use serde::{Deserialize, Serialize};
 
 /// A variable for use in [`Pattern`]s or [`Subst`]s.
 ///
@@ -12,7 +14,7 @@ use crate::ColorId;
 /// [`Pattern`]: struct.Pattern.html
 /// [`Subst`]: struct.Subst.html
 /// [`FromStr`]: https://doc.rust-lang.org/std/str/trait.FromStr.html
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Var(Symbol);
 
 impl FromStr for Var {
@@ -43,10 +45,11 @@ impl fmt::Debug for Var {
 ///
 /// [`Var`]: struct.Var.html
 /// [`Id`]: struct.Id.html
-#[derive(Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Subst {
     pub(crate) vec: smallvec::SmallVec<[(Var, Id); 3]>,
-    pub(crate) colors: smallvec::SmallVec<[ColorId; 2]>,
+    #[cfg(feature = "colored")]
+    pub(crate) color: Option<ColorId>,
 }
 
 impl Subst {
@@ -54,7 +57,15 @@ impl Subst {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             vec: smallvec::SmallVec::with_capacity(capacity),
-            colors: smallvec::SmallVec::with_capacity(capacity),
+            color: None,
+        }
+    }
+
+    #[cfg(feature = "colored")]
+    pub fn colored_with_capacity(capacity: usize, color: Option<ColorId>) -> Self {
+        Self {
+            vec: smallvec::SmallVec::with_capacity(capacity),
+            color,
         }
     }
 
@@ -76,6 +87,27 @@ impl Subst {
             .iter()
             .find_map(|(v, id)| if *v == var { Some(id) } else { None })
     }
+
+    #[cfg(feature = "colored")]
+    pub fn color(&self) -> Option<ColorId> {
+        self.color
+    }
+
+    pub fn merge(&self, sub2: Subst) -> Subst {
+        assert!(self.color.is_none() || sub2.color.is_none() || self.color == sub2.color);
+        let mut new = self.clone();
+        if new.color.is_none() && sub2.color.is_some() {
+            new.color = sub2.color.clone();
+        }
+        for (var, id) in sub2.vec {
+            if let Some(vid) = self.get(var) {
+                assert!(vid == &id);
+            } else {
+                new.insert(var, id);
+            }
+        }
+        new
+    }
 }
 
 impl std::ops::Index<Var> for Subst {
@@ -89,6 +121,12 @@ impl std::ops::Index<Var> for Subst {
     }
 }
 
+impl fmt::Display for Subst {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:#?}", self)
+    }
+}
+
 impl fmt::Debug for Subst {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let len = self.vec.len();
@@ -99,6 +137,9 @@ impl fmt::Debug for Subst {
             if i < len - 1 {
                 write!(f, ", ")?;
             }
+        }
+        if cfg!(feature = "colored") {
+            write!(f, " color: {}", self.color.map_or("None".to_string(), |x| x.to_string()))?;
         }
         write!(f, "}}")
     }

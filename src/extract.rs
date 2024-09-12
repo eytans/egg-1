@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::fmt::Debug;
+use indexmap::IndexMap;
 
 use crate::{Analysis, EClass, EGraph, Id, Language, RecExpr};
 
@@ -41,7 +41,7 @@ assert_eq!(best, "10".parse().unwrap());
 **/
 pub struct Extractor<'a, CF: CostFunction<L>, L: Language, N: Analysis<L>> {
     cost_function: CF,
-    costs: HashMap<Id, (CF::Cost, L)>,
+    costs: IndexMap<Id, (CF::Cost, L)>,
     egraph: &'a EGraph<L, N>,
 }
 
@@ -105,7 +105,7 @@ pub trait CostFunction<L: Language> {
     ///
     /// [`RecExpr`]: struct.RecExpr.html
     fn cost_rec(&mut self, expr: &RecExpr<L>) -> Self::Cost {
-        let mut costs: HashMap<Id, Self::Cost> = HashMap::default();
+        let mut costs: IndexMap<Id, Self::Cost> = IndexMap::default();
         for (i, node) in expr.as_ref().iter().enumerate() {
             let cost = self.cost(node, |i| costs[&i].clone());
             costs.insert(Id::from(i), cost);
@@ -180,7 +180,7 @@ where
     /// performs the greedy search for cheapest representative of each
     /// eclass.
     pub fn new(egraph: &'a EGraph<L, N>, cost_function: CF) -> Self {
-        let costs = HashMap::default();
+        let costs = IndexMap::default();
         let mut extractor = Extractor {
             costs,
             egraph,

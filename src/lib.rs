@@ -1,5 +1,4 @@
 
-#![warn(missing_docs)]
 /*!
 
 `egg` (**e**-**g**raphs **g**ood) is a e-graph library optimized for equality saturation.
@@ -17,10 +16,16 @@ describing `egg` and some of its technical novelties.
 
 !*/
 
-mod macros;
+/* needs to be public for trait `GetOp` */
+pub mod macros;
 
 #[macro_use]
 extern crate global_counter;
+
+extern crate core;
+
+#[macro_use]
+extern crate lazy_static;
 
 pub mod tutorials;
 
@@ -33,17 +38,18 @@ mod machine;
 mod pattern;
 mod rewrite;
 mod run;
+mod ser;
 mod subst;
 mod unionfind;
 mod util;
 
 /// A key to identify [`EClass`](struct.EClass.html)es within an
 /// [`EGraph`](struct.EGraph.html).
-#[derive(Clone, Copy, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Default, Ord, PartialOrd, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Id(u32);
 
 
-#[derive(Clone, Copy, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Default, Ord, PartialOrd, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ColorId(usize);
 
 
@@ -99,25 +105,28 @@ pub(crate) use unionfind::UnionFind;
 
 pub use {
     dot::Dot,
-    eclass::EClass,
+    eclass::{EClass},
     egraph::EGraph,
     extract::*,
     language::*,
     pattern::{ENodeOrVar, Pattern, PatternAst, SearchMatches},
-    rewrite::{Applier, Condition, ConditionEqual, ConditionalApplier, Rewrite, Searcher},
+    rewrite::{Applier, ImmutableCondition, Condition, ConditionEqual, ConditionalApplier, Rewrite, Searcher, RcImmutableCondition, ToCondRc},
+    // rewrite::{Applier, ImmutableCondition, ImmutableFunctionCondition, Condition, ConditionEqual, ConditionalApplier, Rewrite, Searcher, RcImmutableCondition, ToCondRc},
     run::*,
+    ser::{Serialization, Deserialization},
     subst::{Subst, Var},
     util::*,
-    colors::{Color, ColorParents}
+    eggstentions::*,
 };
 
 #[cfg(test)]
 fn init_logger() {
-    let _ = env_logger::builder().is_test(true).try_init();
+    let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Info).try_init();
 }
 
 #[doc(hidden)]
 pub mod test;
-mod expression_ops;
 mod colors;
+mod eggstentions;
+pub mod tools;
 

@@ -1,3 +1,6 @@
+use num_traits::Float;
+use ordered_float::NotNan;
+use crate::Symbol;
 /** A macro to easily create a [`Language`].
 
 `define_language` derives `Debug`, `PartialEq`, `Eq`, `PartialOrd`, `Ord`,
@@ -61,28 +64,75 @@ define_language! {
 [`Display`]: https://doc.rust-lang.org/std/fmt/trait.Display.html
 [`Language`]: trait.Language.html
 **/
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! replace_expr {
+    ($_t:tt $sub:expr) => {$sub};
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! count {
+    ($($tts:tt)*) => {0u32 $(+ replace_expr!($tts 1u32))*};
+}
+
 #[macro_export]
 macro_rules! define_language {
     ($(#[$meta:meta])* $vis:vis enum $name:ident $variants:tt) => {
-        $crate::__define_language!($(#[$meta])* $vis enum $name $variants -> {} {} {} {} {} {});
+        $crate::__define_language!($(#[$meta])* $vis enum $name $variants -> {} {} {} {} {} {} {});
     };
 }
+
+pub trait GetOp {
+    fn get_op(&self) -> u32 { 0 /* shrug */ }
+}
+
+impl GetOp for u32 {
+    fn get_op(&self) -> u32 {
+        *self
+    }
+}
+
+impl GetOp for i32 {
+    fn get_op(&self) -> u32 {
+        self.abs() as u32
+    }
+}
+
+impl GetOp for bool {
+    fn get_op(&self) -> u32 { if *self { 1 } else { 0 } }
+}
+
+impl GetOp for Symbol {
+    fn get_op(&self) -> u32 {
+        self.0
+    }
+}
+
+impl<T: Float> GetOp for NotNan<T> { }
 
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __define_language {
     ($(#[$meta:meta])* $vis:vis enum $name:ident {} ->
-     $decl:tt {$($matches:tt)*} $children:tt $children_mut:tt
+     $decl:tt $op_id:tt {$($matches:tt)*} $children:tt $children_mut:tt
      $display_op:tt {$($from_op_str:tt)*}
     ) => {
+
         $(#[$meta])*
         #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
         $vis enum $name $decl
 
         impl $crate::Language for $name {
             #[inline(always)]
+            fn op_id(&self) -> OpId {
+                match self $op_id
+            }
+
+            #[inline(always)]
             fn matches(&self, other: &Self) -> bool {
-                ::std::mem::discriminant(self) == ::std::mem::discriminant(other) &&
+                self.op_id() == other.op_id() &&
                 match (self, other) { $($matches)* _ => false }
             }
 
@@ -114,13 +164,14 @@ macro_rules! __define_language {
          $string:literal = $variant:ident,
          $($variants:tt)*
      } ->
-     { $($decl:tt)* } { $($matches:tt)* } { $($children:tt)* } { $($children_mut:tt)* }
+     { $($decl:tt)* } { $($op_id:tt)* } { $($matches:tt)* } { $($children:tt)* } { $($children_mut:tt)* }
      { $($display_op:tt)* } { $($from_op_str:tt)* }
     ) => {
         $crate::__define_language!(
             $(#[$meta])* $vis enum $name
             { $($variants)* } ->
             { $($decl)*          $variant, }
+            { $($op_id)*         $name::$variant => count!($($op_id)*), }
             { $($matches)*       ($name::$variant, $name::$variant) => true, }
             { $($children)*      $name::$variant => &[], }
             { $($children_mut)*  $name::$variant => &mut [], }
@@ -134,13 +185,14 @@ macro_rules! __define_language {
          $string:literal = $variant:ident ($ids:ty),
          $($variants:tt)*
      } ->
-     { $($decl:tt)* } { $($matches:tt)* } { $($children:tt)* } { $($children_mut:tt)* }
+     { $($decl:tt)* } { $($op_id:tt)* } { $($matches:tt)* } { $($children:tt)* } { $($children_mut:tt)* }
      { $($display_op:tt)* } { $($from_op_str:tt)* }
     ) => {
         $crate::__define_language!(
             $(#[$meta])* $vis enum $name
             { $($variants)* } ->
             { $($decl)*          $variant($ids), }
+            { $($op_id)*         #[allow(unused_variables)] $name::$variant(ids) => count!($($op_id)*), }
             { $($matches)*       ($name::$variant(l), $name::$variant(r)) => $crate::LanguageChildren::len(l) == $crate::LanguageChildren::len(r), }
             { $($children)*      $name::$variant(ids) => $crate::LanguageChildren::as_slice(ids), }
             { $($children_mut)*  $name::$variant(ids) => $crate::LanguageChildren::as_mut_slice(ids), }
@@ -157,13 +209,14 @@ macro_rules! __define_language {
          $variant:ident ($data:ty),
          $($variants:tt)*
      } ->
-     { $($decl:tt)* } { $($matches:tt)* } { $($children:tt)* } { $($children_mut:tt)* }
+     { $($decl:tt)* } { $($op_id:tt)* } { $($matches:tt)* } { $($children:tt)* } { $($children_mut:tt)* }
      { $($display_op:tt)* } { $($from_op_str:tt)* }
     ) => {
         $crate::__define_language!(
             $(#[$meta])* $vis enum $name
             { $($variants)* } ->
             { $($decl)*          $variant($data), }
+            { $($op_id)*         $name::$variant(data) => count!($($op_id)*) + (($crate::macros::GetOp::get_op(data) << 16)), }
             { $($matches)*       ($name::$variant(data1), $name::$variant(data2)) => data1 == data2, }
             { $($children)*      $name::$variant(_data) => &[], }
             { $($children_mut)*  $name::$variant(_data) => &mut [], }
@@ -177,13 +230,14 @@ macro_rules! __define_language {
          $variant:ident ($data:ty, $ids:ty),
          $($variants:tt)*
      } ->
-     { $($decl:tt)* } { $($matches:tt)* } { $($children:tt)* } { $($children_mut:tt)* }
+     { $($decl:tt)* } { $($op_id:tt)* } { $($matches:tt)* } { $($children:tt)* } { $($children_mut:tt)* }
      { $($display_op:tt)* } { $($from_op_str:tt)* }
     ) => {
         $crate::__define_language!(
             $(#[$meta])* $vis enum $name
             { $($variants)* } ->
             { $($decl)*          $variant($data, $ids), }
+            { $($op_id)*         $name::$variant(data, _) => count!($($op_id)*) + (data.get_op() << 32), }
             { $($matches)*       ($name::$variant(d1, l), $name::$variant(d2, r)) => d1 == d2 && $crate::LanguageChildren::len(l) == $crate::LanguageChildren::len(r), }
             { $($children)*      $name::$variant(_, ids) => $crate::LanguageChildren::as_slice(ids), }
             { $($children_mut)*  $name::$variant(_, ids) => $crate::LanguageChildren::as_mut_slice(ids), }
@@ -236,6 +290,31 @@ define_language! {
 
 type EGraph = egg::EGraph<SimpleLanguage, ()>;
 
+struct NotZeroCond {
+    var: Var
+}
+
+impl NotZeroCond {
+    fn new(var: &'static str) -> Self {
+        NotZeroCond { var: var.parse().unwrap() }
+    }
+}
+
+impl Condition<SimpleLanguage, ()> for NotZeroCond {
+    fn check(&self, egraph: &mut egg::EGraph<SimpleLanguage, ()>, eclass: Id, subst: &Subst) -> bool {
+        let zero = SimpleLanguage::Num(0);
+        !egraph[subst[self.var]].nodes.contains(&zero)
+    }
+
+    fn check_colored(&self, egraph: &mut egg::EGraph<SimpleLanguage, ()>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
+        todo!("NotZeroCond::check_colored")
+    }
+
+    fn describe(&self) -> String {
+         format!("{} != 0", self.var)
+     }
+}
+
 let mut rules: Vec<Rewrite<SimpleLanguage, ()>> = vec![
     rewrite!("commute-add"; "(+ ?a ?b)" => "(+ ?b ?a)"),
     rewrite!("commute-mul"; "(* ?a ?b)" => "(* ?b ?a)"),
@@ -246,7 +325,7 @@ let mut rules: Vec<Rewrite<SimpleLanguage, ()>> = vec![
 
     rewrite!("something_conditional";
              "(/ ?a ?b)" => "(* ?a (/ 1 ?b))"
-             if is_not_zero("?b")),
+             if {NotZeroCond::new("?b")}),
 ];
 
 // rewrite! supports bidirectional rules too
@@ -261,6 +340,12 @@ struct MySillyApplier(&'static str);
 impl Applier<SimpleLanguage, ()> for MySillyApplier {
     fn apply_one(&self, _: &mut EGraph, _: Id, _: &Subst) -> Vec<Id> {
         panic!()
+    }
+}
+
+impl std::fmt::Display for MySillyApplier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+         todo!()
     }
 }
 
@@ -287,10 +372,11 @@ macro_rules! rewrite {
         $lhs:tt => $rhs:tt
         $(if $cond:expr)*
     )  => {{
+        let long_name = format!("{} => {}", stringify!($lhs), stringify!($rhs));
         let searcher = $crate::__rewrite!(@parse $lhs);
         let core_applier = $crate::__rewrite!(@parse $rhs);
         let applier = $crate::__rewrite!(@applier core_applier; $($cond,)*);
-        $crate::Rewrite::new($name, searcher, applier).unwrap()
+        $crate::Rewrite::old_new($name, long_name, searcher, applier).unwrap()
     }};
     (
         $name:expr;
@@ -317,7 +403,9 @@ macro_rules! __rewrite {
     (@applier $applier:expr; $cond:expr, $($conds:expr,)*) => {
         $crate::ConditionalApplier {
             condition: $cond,
-            applier: $crate::__rewrite!(@applier $applier; $($conds,)*)
+            applier: $crate::__rewrite!(@applier $applier; $($conds,)*),
+            phantom_l: Default::default(),
+            phantom_n: Default::default(),
         }
     };
 }

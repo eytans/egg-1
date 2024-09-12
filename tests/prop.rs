@@ -14,7 +14,7 @@ define_language! {
 type EGraph = egg::EGraph<Prop, ConstantFold>;
 type Rewrite = egg::Rewrite<Prop, ConstantFold>;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct ConstantFold;
 impl Analysis<Prop> for ConstantFold {
     type Data = Option<bool>;
@@ -76,13 +76,14 @@ fn prove_something(name: &str, start: &str, rewrites: &[Rewrite], goals: &[&str]
     let start_expr: RecExpr<_> = start.parse().unwrap();
     let goal_exprs: Vec<RecExpr<_>> = goals.iter().map(|g| g.parse().unwrap()).collect();
 
-    let egraph = Runner::default()
+    let mut egraph = Runner::default()
         .with_iter_limit(20)
         .with_node_limit(5_000)
         .with_expr(&start_expr)
         .run(rewrites)
         .egraph;
 
+    egraph.rebuild();
     for (i, (goal_expr, goal_str)) in goal_exprs.iter().zip(goals).enumerate() {
         println!("Trying to prove goal {}: {}", i, goal_str);
         let equivs = egraph.equivs(&start_expr, &goal_expr);

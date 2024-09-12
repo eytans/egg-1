@@ -13,24 +13,37 @@ categories = ["data-structures"]
 [dependencies]
 symbolic_expressions = "5"
 log = "0.4"
-smallvec = "1"
-indexmap = "1"
+smallvec = { version = "1", features = ["serde"] }
+indexmap = { version = "1.9", features = ["serde"] }
 instant = "0.1"
 once_cell = "1"
 # for the serde-1 feature
-serde = { version = "1", features = ["derive"], optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_cbor = "0.11.2"
 # for the reports feature
-serde_json = { version = "1", optional = true }
 multimap = "0.8.2"
 itertools = "0.9.0"
 global_counter = "0.2.1"
+bimap = {version = "0.6.2", features = ["serde"]}
+bitvec = "1.0.0"
+invariants = "0.1.3"
+# for very silly reasons
+num-traits = "0.2.15"
+ordered-float = { version = "1", features = ["serde"] }
+lazy_static = "1.4.0"
 
 [dev-dependencies]
 env_logger = {version = "0.7", default-features = false}
 ordered-float = "1"
 
 [features]
+default = ["colored"]
+#default = ["colored", "colored_no_cremove"]
+#default = ["colored", "colored_no_cmemo"]
 upward-merging = []
 wasm-bindgen = [ "instant/wasm-bindgen" ]
-serde-1 = [ "serde", "indexmap/serde-1" ]
-reports = [ "serde-1", "serde_json" ]
+reports = [ ]
+colored = []
+colored_no_cremove = ["colored"]
+colored_no_cmemo = ["colored", "colored_no_cremove"]
+keep_splits = []

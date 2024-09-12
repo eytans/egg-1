@@ -170,8 +170,8 @@ pub struct Runner<L: Language, N: Analysis<L>, IterData = ()> {
 
 impl<L, N> Default for Runner<L, N, ()>
 where
-    L: Language,
-    N: Analysis<L> + Default,
+    L: Language + 'static,
+    N: Analysis<L> + Default + 'static,
 {
     fn default() -> Self {
         Runner::new(N::default())
@@ -181,8 +181,7 @@ where
 /// Error returned by [`Runner`] when it stops.
 ///
 /// [`Runner`]: struct.Runner.html
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde-1", derive(serde::Serialize))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum StopReason {
     /// The egraph saturated, i.e., there was an iteration where we
     /// didn't learn anything new from applying the rules.
@@ -205,8 +204,7 @@ pub enum StopReason {
 ///
 /// [`Runner`]: struct.Runner.html
 /// [ser]: https://docs.rs/serde/latest/serde/trait.Serialize.html
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde-1", derive(serde::Serialize))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Iteration<IterData> {
     /// The number of enodes in the egraph at the start of this
@@ -241,16 +239,16 @@ type RunnerResult<T> = std::result::Result<T, StopReason>;
 
 impl<L, N, IterData> Runner<L, N, IterData>
 where
-    L: Language,
-    N: Analysis<L>,
+    L: Language + 'static,
+    N: Analysis<L> + 'static,
     IterData: IterationData<L, N>,
 {
     /// Create a new `Runner` with the given analysis and default parameters.
-    pub fn new(analysis: N) -> Self {
+pub fn new(analysis: N) -> Self {
         Self {
             iter_limit: 30,
-            node_limit: 10_000,
-            time_limit: Duration::from_secs(5),
+            node_limit: 100_000,
+            time_limit: Duration::from_secs(500),
 
             egraph: EGraph::new(analysis),
             roots: vec![],
@@ -259,7 +257,7 @@ where
             hooks: vec![],
 
             start_time: None,
-            scheduler: Box::new(BackoffScheduler::default()),
+            scheduler: Box::new(SimpleScheduler::default()),
         }
     }
 
@@ -321,6 +319,11 @@ where
         Self { scheduler, ..self }
     }
 
+    #[allow(dead_code)]
+    fn with_boxed_scheduler(self, scheduler: Box<dyn RewriteScheduler<L, N> + 'static>) -> Self {
+        Self { scheduler, ..self }
+    }
+
     /// Add an expression to the egraph to be run.
     ///
     /// The eclass id of this addition will be recorded in the
@@ -328,6 +331,7 @@ where
     /// insertion order.
     pub fn with_expr(mut self, expr: &RecExpr<L>) -> Self {
         let id = self.egraph.add_expr(expr);
+        self.egraph.rebuild();
         self.roots.push(id);
         self
     }
@@ -347,10 +351,26 @@ where
         L: 'a,
         N: 'a,
     {
-        let rules: Vec<&Rewrite<L, N>> = rules.into_iter().collect();
+
+        let rules = rules.into_iter().collect::<Vec<_>>();
+        #[cfg(feature = "keep_splits")]
+        {
+            assert!(self.hooks.is_empty(), "hooks must be added before run");
+            let mut sched = std::mem::replace(&mut self.scheduler, Box::new(SimpleScheduler::default()));
+            for g in self.egraph.all_splits.iter_mut() {
+                let mut runner: Runner<L, N> = Runner::new(g.analysis.clone())
+                    .with_iter_limit(self.iter_limit)
+                    .with_node_limit(self.node_limit)
+                    .with_time_limit(self.time_limit)
+                    .with_egraph(std::mem::replace(g, EGraph::new(g.analysis.clone())))
+                    .with_boxed_scheduler(sched);
+                sched = std::mem::replace(&mut runner.scheduler, Box::new(SimpleScheduler::default()));
+                let runner = runner.run(rules.iter().cloned());
+                *g = runner.egraph;
+            }
+        }
         check_rules(&rules);
         self.egraph.rebuild();
-        // TODO check that we haven't
         loop {
             if let Err(stop_reason) = self.run_one(&rules) {
                 info!("Stopping: {:?}", stop_reason);
@@ -429,6 +449,7 @@ where
 
         let mut matches = Vec::new();
         for rule in rules {
+            trace!("Searching with rule {:?}", rule.name());
             let ms = self.scheduler.search_rewrite(i, &self.egraph, rule);
             matches.push(ms);
             if self.check_limits().is_err() {
@@ -530,7 +551,7 @@ where
     }
 }
 
-fn check_rules<L, N>(rules: &[&Rewrite<L, N>]) {
+fn check_rules<L: Language, N: Analysis<L>>(rules: &[&Rewrite<L, N>]) {
     let mut name_counts = IndexMap::new();
     for rw in rules {
         *name_counts.entry(rw.name()).or_default() += 1
@@ -561,8 +582,8 @@ the [`EGraph`] and dominating how much time is spent while running the
 #[allow(unused_variables)]
 pub trait RewriteScheduler<L, N>
 where
-    L: Language,
-    N: Analysis<L>,
+    L: Language + 'static,
+    N: Analysis<L> + 'static,
 {
     /// Whether or not the [`Runner`](struct.Runner.html) is allowed
     /// to say it has saturated.
@@ -616,12 +637,13 @@ where
 /// method.
 ///
 /// [`RewriteScheduler`]: trait.RewriteScheduler.html
+#[derive(Default, Clone)]
 pub struct SimpleScheduler;
 
 impl<L, N> RewriteScheduler<L, N> for SimpleScheduler
 where
-    L: Language,
-    N: Analysis<L>,
+    L: Language + 'static,
+    N: Analysis<L> + 'static,
 {
 }
 
@@ -713,8 +735,8 @@ impl Default for BackoffScheduler {
 
 impl<L, N> RewriteScheduler<L, N> for BackoffScheduler
 where
-    L: Language,
-    N: Analysis<L>,
+    L: Language + 'static,
+    N: Analysis<L> + 'static,
 {
     fn can_stop(&mut self, iteration: usize) -> bool {
         let n_stats = self.stats.len();

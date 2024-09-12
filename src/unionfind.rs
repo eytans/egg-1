@@ -2,12 +2,13 @@ use crate::Id;
 use std::cell::Cell;
 use std::fmt::Debug;
 use indexmap::{IndexMap, IndexSet};
+use log::trace;
 
 // The Key bound on UnionFind is necessary to derive clone. We only
 // instantiate UnionFind in one place (EGraph), so this type bound
 // isn't intrusive
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct UnionFind {
     parents: Vec<Cell<Id>>,
 }
@@ -16,6 +17,12 @@ impl UnionFind {
     pub fn make_set(&mut self) -> Id {
         let id = Id::from(self.parents.len());
         self.parents.push(Cell::new(id));
+        id
+    }
+
+    /// This is needed for deserialization
+    pub(crate) fn make_set_at(&mut self, id: Id) -> Id {
+        while self.parents.len() <= usize::from(id) { self.make_set(); }
         id
     }
 
@@ -55,6 +62,7 @@ impl UnionFind {
                 std::mem::swap(&mut root1, &mut root2);
             }
             self.set_parent(root2, root1);
+            trace!("union {:?} {:?}", root1, root2);
             (root1, root2)
         }
     }
