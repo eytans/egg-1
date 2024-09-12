@@ -196,7 +196,7 @@ where
     pub fn find_best(&mut self, eclass: Id) -> (CF::Cost, RecExpr<L>) {
         let mut expr = RecExpr::default();
         // added_memo maps eclass id to id in expr
-        let mut added_memo: HashMap<Id, Id> = Default::default();
+        let mut added_memo: IndexMap<Id, Id> = Default::default();
         let (_, cost) = self.find_best_rec(&mut expr, eclass, &mut added_memo);
         (cost, expr)
     }
@@ -211,7 +211,7 @@ where
         &mut self,
         expr: &mut RecExpr<L>,
         eclass: Id,
-        added_memo: &mut HashMap<Id, Id>,
+        added_memo: &mut IndexMap<Id, Id>,
     ) -> (Id, CF::Cost) {
         let id = self.egraph.find(eclass);
         let (best_cost, best_node) = match self.costs.get(&id) {

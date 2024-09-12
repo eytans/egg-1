@@ -1,7 +1,7 @@
 use std::fmt;
 use std::{any::Any, sync::Arc};
 
-use crate::{Analysis, DisplayAsDebug, EGraph, Id, Language, Pattern, SearchMatches, Subst, Var, ColorId};
+use crate::{Analysis, EGraph, Id, Language, Pattern, SearchMatches, Subst, Var, ColorId};
 use std::fmt::{Formatter, Debug};
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -45,13 +45,13 @@ impl<L, N> fmt::Debug for Rewrite<L, N>
         d.field("name", &self.name);
 
         if let Some(pat) = <dyn Any>::downcast_ref::<Pattern<L>>(&self.searcher) {
-            d.field("searcher", &DisplayAsDebug(pat));
+            d.field("searcher", &(pat));
         } else {
             d.field("searcher", &"<< searcher >>");
         }
 
         if let Some(pat) = <dyn Any>::downcast_ref::<Pattern<L>>(&self.applier) {
-            d.field("applier", &DisplayAsDebug(pat));
+            d.field("applier", &(pat));
         } else {
             d.field("applier", &"<< applier >>");
         }
@@ -73,7 +73,7 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> Rewrite<L, N> {
     ///
     /// [`Rewrite`]: struct.Rewrite.html
     /// [`rewrite!`]: macro.rewrite.html
-    pub fn old_new(
+    pub fn new(
         name: impl Into<String>,
         searcher: impl Searcher<L, N> + 'static,
         applier: impl Applier<L, N> + 'static,
@@ -81,37 +81,6 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> Rewrite<L, N> {
         let name = name.into();
         let searcher = Arc::new(searcher);
         let applier = Arc::new(applier);
-
-        let bound_vars = searcher.vars();
-        for v in applier.vars() {
-            if !bound_vars.contains(&v) {
-                return Err(format!("Rewrite {} refers to unbound var {}", name, v));
-            }
-        }
-
-        Ok(Self {
-            name,
-            long_name,
-            searcher,
-            applier,
-        })
-    }
-
-    /// Create a new [`Rewrite`]. You typically want to use the
-    /// [`rewrite!`] macro instead.
-    ///
-    /// [`Rewrite`]: struct.Rewrite.html
-    /// [`rewrite!`]: macro.rewrite.html
-    pub fn new(
-        name: impl Into<String>,
-        // long_name: impl Into<String>,
-        searcher: impl Searcher<L, N> + 'static,
-        applier: impl Applier<L, N> + 'static,
-    ) -> Result<Self, String> {
-        let name = name.into();
-        let long_name = name.clone();
-        let searcher = Rc::new(searcher);
-        let applier = Rc::new(applier);
 
         let bound_vars = searcher.vars();
         for v in applier.vars() {
@@ -710,11 +679,11 @@ pub trait ToCondRc<L, N> where
     L: Language,
     N: Analysis<L>,
 {
-    fn into_rc(self) -> Rc<dyn ImmutableCondition<L, N>>
+    fn into_rc(self) -> Arc<dyn ImmutableCondition<L, N>>
         where
             Self: Sized, Self: ImmutableCondition<L, N>, Self: 'static,
     {
-        Rc::new(self)
+        Arc::new(self)
     }
 }
 
@@ -783,7 +752,7 @@ pub trait ImmutableCondition<L, N>: ToCondRc<L, N> where
     }
 }
 
-pub type RcImmutableCondition<L, N> = Rc<dyn ImmutableCondition<L, N>>;
+pub type RcImmutableCondition<L, N> = Arc<dyn ImmutableCondition<L, N>>;
 
 // pub struct ImmutableFunctionCondition<L, N> where
 //     L: Language,
