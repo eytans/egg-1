@@ -128,6 +128,51 @@ Many methods of [`EGraph`] deal with [`Id`]s, which represent eclasses.
 Because eclasses are frequently merged, many [`Id`]s will refer to the
 same eclass.
 
+# Colored E-Graphs
+
+Colored e-graphs extend the traditional e-graph structure to efficiently represent multiple
+congruence relations in a single e-graph. Each color represents a different assumption or
+context under which equalities hold. This allows for more efficient case splitting and
+conditional reasoning.
+
+Key features of colored e-graphs:
+- Multiple congruence relations (colors) in a single e-graph structure
+- Efficient representation of coarsened equality relations
+- Support for hierarchical color relationships
+- Memory-efficient sharing of common structure between colors
+
+# Invariants and Rebuilding
+
+Colored e-graphs maintain similar invariants to traditional e-graphs, but with additional
+complexity due to the multiple congruence relations:
+
+1. **Uniqueness of enodes within each color**
+2. **Congruence closure for each color**
+
+The `rebuild` method restores these invariants, taking into account the multiple colors.
+
+# API Changes
+
+The colored e-graph API extends the traditional e-graph API with color-aware operations:
+
+- `create_color`: Create a new color
+- `colored_add`: Add an enode to the e-graph under a specific color
+- `colored_union`: Union two eclasses under a specific color
+- `colored_find`: Find the canonical representative of an eclass under a specific color
+- `colored_lookup`: Lookup an enode in the e-graph under a specific color
+
+# Example
+
+```rust
+use egg::{*, SymbolLang as S};
+let mut egraph = EGraph::<S, ()>::default();
+let x = egraph.add(S::leaf("x"));
+let y = egraph.add(S::leaf("y"));
+let color = egraph.create_color(None);
+egraph.colored_union(color, x, y);
+assert_eq!(egraph.colored_find(color, x), egraph.colored_find(color, y));
+```
+
 [`EGraph`]: struct.EGraph.html
 [`EClass`]: struct.EClass.html
 [`Rewrite`]: struct.Rewrite.html
