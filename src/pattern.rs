@@ -1,12 +1,15 @@
+use std::collections::{BTreeMap, BTreeSet};
 use log::*;
 use std::convert::TryFrom;
 use std::fmt;
 
-use crate::{machine, Analysis, Applier, EGraph, Id, Language, RecExpr, Searcher, Subst, Var, OpId, ColorId};
+use crate::{machine, Analysis, Applier, EGraph, Id, Language, RecExpr, Searcher, Subst, Var, OpId, ColorId, FromOp, RecExprParseError};
 use std::fmt::Formatter;
 use std::str::FromStr;
+use invariants::dassert;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 /// A pattern that can function as either a [`Searcher`] or [`Applier`].
 ///
@@ -55,7 +58,7 @@ use serde::{Deserialize, Serialize};
 /// egraph.rebuild();
 ///
 /// // This is the search method from the Searcher trait
-/// let matches = same_add.search(&egraph);
+/// let matches = same_add.search(&egraph).unwrap();
 /// let matched_eclasses: Vec<Id> = matches.iter().map(|m| m.eclass).collect();
 /// assert_eq!(matched_eclasses, vec![a11, a22]);
 /// ```
@@ -69,7 +72,7 @@ use serde::{Deserialize, Serialize};
 /// [`Searcher`]: trait.Searcher.html
 /// [`Applier`]: trait.Applier.html
 /// [`Language`]: trait.Language.html
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Pattern<L> {
     /// The actual pattern as a [`RecExpr`](struct.RecExpr.html)
     pub ast: PatternAst<L>,
@@ -112,7 +115,7 @@ impl<L: Language> Pattern<L> {
 /// The language of [`Pattern`]s.
 ///
 /// [`Pattern`]: struct.Pattern.html
-#[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ENodeOrVar<L> {
     /// An enode from the underlying [`Language`](trait.Language.html)
     ENode(L, Option<String>),
@@ -177,9 +180,39 @@ impl<L: Language> Language for ENodeOrVar<L> {
         }
     }
 }
+#[derive(Debug, Error)]
+pub enum ENodeOrVarParseError<E> {
+    #[error(transparent)]
+    BadVar(<Var as FromStr>::Err),
 
-impl<L: Language> std::str::FromStr for Pattern<L> {
-    type Err = String;
+    #[error("tried to parse pattern variable {0:?} as an operator")]
+    UnexpectedVar(String),
+
+    #[error(transparent)]
+    BadOp(E),
+}
+
+impl<L: FromOp> FromOp for ENodeOrVar<L> {
+    type Error = ENodeOrVarParseError<L::Error>;
+
+    fn from_op(op: &str, children: Vec<Id>) -> Result<Self, Self::Error> {
+        use ENodeOrVarParseError::*;
+
+        if op.starts_with('?') && op.len() > 1 {
+            if children.is_empty() {
+                op.parse().map(Self::Var).map_err(BadVar)
+            } else {
+                Err(UnexpectedVar(op.to_owned()))
+            }
+        } else {
+            L::from_op(op, children).map(|x| ENodeOrVar::ENode(x, None)).map_err(BadOp)
+        }
+    }
+}
+
+impl<L: FromOp> std::str::FromStr for Pattern<L> {
+    type Err = RecExprParseError<ENodeOrVarParseError<L::Error>>;
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         PatternAst::from_str(s).map(Self::from)
     }
@@ -220,6 +253,17 @@ impl<L: Language> fmt::Display for Pattern<L> {
     }
 }
 
+pub struct Matches<'a> {
+    pub eclass: Id,
+    pub substs: &'a BTreeSet<Subst>,
+}
+
+impl<'a> Matches<'a> {
+    pub fn new(eclass: Id, substs: &'a BTreeSet<Subst>) -> Self {
+        Self {eclass, substs}
+    }
+}
+
 /// The result of searching a [`Searcher`] over one eclass.
 ///
 /// Note that one [`SearchMatches`] can contain many found
@@ -231,14 +275,76 @@ impl<L: Language> fmt::Display for Pattern<L> {
 /// [`Searcher`]: trait.Searcher.html
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SearchMatches {
-    /// The eclass id that these matches were found in.
-    pub eclass: Id,
-    /// The matches themselves.
-    pub substs: Vec<Subst>,
+    /// Mapping of eclasses to their matches.
+    pub matches: BTreeMap<Id, BTreeSet<Subst>>,
+}
+
+impl SearchMatches {
+    fn merge(self, other: Self) -> Self {
+        let mut matches = self.matches;
+        for (eclass, substs) in other.matches {
+            matches.entry(eclass).or_default().extend(substs);
+        }
+        Self { matches }
+    }
+
+    pub fn substs(&self) -> impl Iterator<Item = &Subst> {
+        self.matches.values().map(|s| s.iter()).flatten()
+    }
+
+    pub fn len(&self) -> usize {
+        self.matches.len()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = Matches> {
+        self.matches.iter().map(|(eclass, subs)| Matches::new(*eclass, subs))
+    }
+
+    pub fn first(&self) -> Option<Matches> {
+        self.iter().next()
+    }
+
+    pub fn total_substs(&self) -> usize {
+        self.matches.values().map(|x| x.len()).sum()
+    }
+
+    pub fn merge_matches(res: Vec<SearchMatches>) -> Option<SearchMatches> {
+        res.into_iter().fold(None, |acc, x| {
+            if let Some(acc) = acc {
+                Some(acc.merge(x))
+            } else {
+                Some(x)
+            }
+        })
+    }
+
+    pub fn collect_matches<L: Language, A: Analysis<L>>(egraph: &EGraph<L, A>, eclass: Id, substs: Vec<Subst>) -> SearchMatches {
+        let mut matches: BTreeMap<Id, BTreeSet<Subst>> = BTreeMap::default();
+        for mut s in substs {
+            s.fix(egraph);
+            matches.entry(egraph.opt_colored_find(s.color(), eclass)).or_default().insert(s);
+        }
+        let sms = SearchMatches { matches };
+        sms
+    }
 }
 
 impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
-    fn search(&self, egraph: &EGraph<L, A>) -> Vec<SearchMatches> {
+    fn search_eclass(&self, egraph: &EGraph<L, A>, eclass: Id) -> Option<SearchMatches> {
+        let substs = if cfg!(feature = "colored") {
+            self.program.colored_run(egraph, eclass, None)
+        }  else {
+            self.program.run(egraph, eclass)
+        };
+        if substs.is_empty() {
+            None
+        } else {
+            let sms = SearchMatches::collect_matches(egraph, eclass, substs);
+            Some(sms)
+        }
+    }
+
+    fn search(&self, egraph: &EGraph<L, A>) -> Option<SearchMatches> {
         let res = match self.ast.as_ref().last().unwrap() {
             ENodeOrVar::ENode(e, _) => {
                 let key = e.op_id();
@@ -255,31 +361,14 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
                 .filter_map(|e| self.search_eclass(egraph, e.id))
                 .collect(),
         };
-        res
-    }
-
-    fn search_eclass(&self, egraph: &EGraph<L, A>, eclass: Id) -> Option<SearchMatches> {
-        let substs = if cfg!(feature = "colored") {
-            self.program.colored_run(egraph, eclass, None)
-        }  else {
-            self.program.run(egraph, eclass)
-        };
-        if substs.is_empty() {
-            None
-        } else {
-            Some(SearchMatches { eclass, substs: substs.into_iter().unique().collect_vec() })
-        }
+        SearchMatches::merge_matches(res)
     }
 
     /// Searches all equivalent EClasses under the colored assumption. Returns all results under
     /// the representative of eclass in color.
     fn colored_search_eclass(&self, egraph: &EGraph<L, A>, eclass: Id, color: ColorId) -> Option<SearchMatches> {
-        let eq_classes = egraph.get_color(color).unwrap().black_ids(eclass);
-        let todo: Box<dyn Iterator<Item=Id>> = if let Some(ids) = eq_classes {
-            Box::new(ids.iter().copied())
-        } else {
-            Box::new(std::iter::once(eclass))
-        };
+        let todo = egraph.get_base_equalities(Some(color), eclass)
+            .map(|x| x.collect_vec()).unwrap_or(vec![eclass]);
         let mut res = vec![];
         for id in todo {
             let substs = self.program.colored_run(egraph, id, Some(color));
@@ -287,8 +376,13 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
                 res.extend(substs)
             }
         }
-        let matches = SearchMatches { eclass: egraph.colored_find(color, eclass), substs: res.into_iter().unique().collect_vec() };
-        (!matches.substs.is_empty()).then(|| matches)
+        let matches = SearchMatches::collect_matches(egraph, eclass, res);
+        dassert!(matches.matches.values().all(|v| v.iter().all(|s| s.color == Some(color))));
+        if matches.substs().next().is_some() {
+            Some(matches)
+        } else {
+            None
+        }
     }
 
     fn vars(&self) -> Vec<Var> {
@@ -298,7 +392,7 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
 
 impl fmt::Display for SearchMatches {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "SearchMatches(class: {}, {})", self.eclass, self.substs.iter().map(|x| format!("{}", x)).join(", "))
+        write!(f, "SearchMatches({})", self.matches.iter().map(|(class, subs)| format!("class {:?}: {}", class, subs.iter().join(", "))).join(", "))
     }
 }
 impl<L, A> Applier<L, A> for Pattern<L>
@@ -316,7 +410,7 @@ where
     }
 }
 
-fn apply_pat<L: Language, A: Analysis<L>>(
+pub(crate) fn apply_pat<L: Language, A: Analysis<L>>(
     pat: &[ENodeOrVar<L>],
     egraph: &mut EGraph<L, A>,
     subst: &Subst,
@@ -324,7 +418,7 @@ fn apply_pat<L: Language, A: Analysis<L>>(
     trace!("apply_rec {:2?} {:?}", pat, subst);
 
     let result = match pat.last().unwrap() {
-        ENodeOrVar::Var(w) => subst[*w],
+        ENodeOrVar::Var(w) => egraph.opt_colored_find(subst.color, subst[*w]),
         ENodeOrVar::ENode(e, _) => {
             let n = e
                 .clone()
@@ -346,6 +440,7 @@ fn apply_pat<L: Language, A: Analysis<L>>(
 mod tests {
     use std::str::FromStr;
     use crate::{SymbolLang as S, *};
+    use crate::multipattern::MultiPattern;
 
     type EGraph = crate::EGraph<S, ()>;
 
@@ -371,14 +466,14 @@ mod tests {
         );
 
         let matches = commute_plus.search(&egraph);
-        let n_matches: usize = matches.iter().map(|m| m.substs.len()).sum();
+        let n_matches: usize = matches.iter().map(|m| m.substs().count()).sum();
         assert_eq!(n_matches, 2, "matches is wrong: {:#?}", matches);
 
         let applications = commute_plus.apply(&mut egraph, &matches);
         egraph.rebuild();
         assert_eq!(applications.len(), 2);
 
-        let actual_substs: Vec<Subst> = matches.iter().flat_map(|m| m.substs.clone()).collect();
+        let actual_substs: Vec<Subst> = matches.as_ref().unwrap().substs().cloned().collect();
 
         println!("Here are the substs!");
         for m in &actual_substs {
@@ -408,7 +503,7 @@ mod tests {
         let w = egraph.add(S::leaf("w"));
         let _plus2 = egraph.add(S::new("+", vec![z, w]));
 
-        let c = egraph.create_color();
+        let c = egraph.create_color(None);
         egraph.colored_union(c, y, z);
         egraph.rebuild();
 
@@ -418,32 +513,34 @@ mod tests {
         );
 
         let matches = commute_plus.search(&egraph);
-        assert!(!matches.is_empty());
-        assert!(matches.iter().all(|x| x.substs.iter().all(|s| !s.color.is_none())));
+        assert!(matches.is_some());
+        assert!(matches.unwrap().substs().all(|s| !s.color.is_none()));
     }
 
     #[test]
     fn named_subpattern_is_var() {
         crate::init_logger();
-        let p: Pattern<SymbolLang> = Pattern::from_str("(|@|?root|@|+ ?x ?y)").unwrap();
-        assert_eq!(p.vars().len(), 3);
+        let p: MultiPattern<SymbolLang> = MultiPattern::from_str("?root = (+ ?x ?y)").unwrap();
+        assert_eq!(Searcher::<SymbolLang, ()>::vars(&p).len(), 3);
     }
 
     #[test]
     fn name_enode_matches_correctly() {
         crate::init_logger();
-        let p: Pattern<SymbolLang> = Pattern::from_str("(|@|?root|@|+ ?x ?y)").unwrap();
+        let p: MultiPattern<SymbolLang> = "?root = (+ ?x ?y)".parse().unwrap();
         let mut egraph = EGraph::default();
         let x = egraph.add(S::leaf("x"));
         let y = egraph.add(S::leaf("y"));
         let plus = egraph.add(S::new("+", vec![x, y]));
         egraph.rebuild();
         let matches = p.search(&egraph);
+        assert!(matches.is_some());
+        let mut matches = matches.unwrap();
         assert_eq!(matches.len(), 1);
-        let m = &matches[0];
-        assert_eq!(m.eclass, plus);
-        assert_eq!(m.substs.len(), 1);
-        let s = &m.substs[0];
+        let m = &matches.matches.pop_first().unwrap();
+        assert_eq!(m.0, plus);
+        assert_eq!(m.1.len(), 1);
+        let s = &m.1.first().unwrap();
         assert_eq!(s[Var::from_str("?x").unwrap()], x);
         assert_eq!(s[Var::from_str("?y").unwrap()], y);
         assert_eq!(s[Var::from_str("?root").unwrap()], plus);
@@ -458,14 +555,16 @@ mod tests {
         let z = egraph.add(S::leaf("z"));
         let y = egraph.add(S::leaf("y"));
         let equ = egraph.add(S::new("=", vec![z, y]));
-        let c = egraph.create_color();
+        let c = egraph.create_color(None);
         egraph.colored_union(c, x, y);
         egraph.colored_union(c, x, z);
         egraph.rebuild();
         let p = Pattern::from_str("(= ?x ?x)").unwrap();
         let matches = p.search(&egraph);
+        assert!(matches.is_some());
+        let matches = matches.unwrap();
         assert_eq!(matches.len(), 1);
-        let m = &matches[0];
+        let m = &matches.first().unwrap();
         assert_eq!(m.eclass, equ);
         assert_eq!(m.substs.len(), 1);
     }
@@ -478,7 +577,7 @@ mod tests {
         let mut egraph = EGraph::default();
         let x = egraph.add(S::leaf("x"));
         let y = egraph.add(S::leaf("y"));
-        let c = egraph.create_color();
+        let c = egraph.create_color(None);
         let fx = egraph.colored_add(c, S::new("f", vec![x]));
         egraph.colored_union(c, fx, y);
         egraph.rebuild();
@@ -488,8 +587,10 @@ mod tests {
         let matches = p_f_z.colored_search_eclass(&egraph, y, c);
         assert!(matches.is_some());
         let matches = matches.unwrap();
+        assert_eq!(matches.len(), 1);
+        let matches = matches.first().unwrap();
         assert_eq!(matches.substs.len(), 1);
-        assert_eq!(matches.substs[0][Var::from_str("?z").unwrap()], x);
+        assert_eq!(matches.substs.first().unwrap()[Var::from_str("?z").unwrap()], x);
         assert_eq!(egraph.colored_find(c, matches.eclass), egraph.colored_find(c, y));
     }
 }

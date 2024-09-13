@@ -104,49 +104,28 @@ fn var(s: &str) -> Var {
     s.parse().unwrap()
 }
 
-struct IsNotSameVarCondition {
-    v1: Var,
-    v2: Var,
-}
-
-impl Condition<Lambda, LambdaAnalysis> for IsNotSameVarCondition {
-    fn check(&self, egraph: &mut egg::EGraph<Lambda, LambdaAnalysis>, _eclass: Id, subst: &Subst) -> bool {
-        egraph.find(subst[self.v1]) != egraph.find(subst[self.v2])
-    }
-
-    fn check_colored(&self, egraph: &mut egg::EGraph<Lambda, LambdaAnalysis>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
-        self.check(egraph, eclass, subst).then(|| vec![])
-    }
-
-    fn describe(&self) -> String {
-        "is_not_same_var".to_string()
-    }
-}
-
-fn is_not_same_var(v1: Var, v2: Var) -> impl Condition<Lambda, LambdaAnalysis> {
-    IsNotSameVarCondition { v1, v2 }
-}
-
-struct IsConstCondition {
+struct IsConstApplier {
     v: Var,
 }
 
-impl Condition<Lambda, LambdaAnalysis> for IsConstCondition {
-    fn check(&self, egraph: &mut egg::EGraph<Lambda, LambdaAnalysis>, _eclass: Id, subst: &Subst) -> bool {
-        egraph[subst[self.v]].data.constant.is_some()
-    }
-
-    fn check_colored(&self, egraph: &mut egg::EGraph<Lambda, LambdaAnalysis>, _eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
-        egraph[subst[self.v]].data.constant.as_ref().map(|_| vec![])
-    }
-
-    fn describe(&self) -> String {
-        "is_const".to_string()
+impl Display for IsConstApplier {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "is-const({})", self.v)
     }
 }
 
-fn is_const(v: Var) -> IsConstCondition {
-    IsConstCondition { v }
+impl Applier<Lambda, LambdaAnalysis> for IsConstApplier {
+    fn apply_one(&self, egraph: &mut egg::EGraph<Lambda, LambdaAnalysis>, _eclass: Id, subst: &Subst) -> Vec<Id> {
+        if egraph[subst[self.v]].data.constant.is_some() {
+            vec![subst[self.v]]
+        } else {
+            vec![]
+        }
+    }
+}
+
+fn is_const(v: Var) -> IsConstApplier {
+    IsConstApplier { v }
 }
 
 fn rules() -> Vec<Rewrite<Lambda, LambdaAnalysis>> {
@@ -154,8 +133,7 @@ fn rules() -> Vec<Rewrite<Lambda, LambdaAnalysis>> {
         // open term rules
         rw!("if-true";  "(if  true ?then ?else)" => "?then"),
         rw!("if-false"; "(if false ?then ?else)" => "?else"),
-        rw!("if-elim"; "(if (= (var ?x) ?e) ?then ?else)" => "?else"
-            if ConditionEqual::parse("(let ?x ?e ?then)", "(let ?x ?e ?else)")),
+        multi_rewrite!("if-elim"; "?var1 = (if (= (var ?x) ?e) ?then ?else), ?var2 = (let ?x ?e ?then), ?var2 = (let ?x ?e ?else)" => "?var1 = ?else"),
         rw!("add-comm";  "(+ ?a ?b)"        => "(+ ?b ?a)"),
         rw!("add-assoc"; "(+ (+ ?a ?b) ?c)" => "(+ ?a (+ ?b ?c))"),
         rw!("eq-comm";   "(= ?a ?b)"        => "(= ?b ?a)"),
@@ -166,27 +144,26 @@ fn rules() -> Vec<Rewrite<Lambda, LambdaAnalysis>> {
         rw!("let-add";  "(let ?v ?e (+   ?a ?b))" => "(+   (let ?v ?e ?a) (let ?v ?e ?b))"),
         rw!("let-eq";   "(let ?v ?e (=   ?a ?b))" => "(=   (let ?v ?e ?a) (let ?v ?e ?b))"),
         rw!("let-const";
-            "(let ?v ?e ?c)" => "?c" if is_const(var("?c"))),
+            "(let ?v ?e ?c)" => { is_const(var("?c")) }),
         rw!("let-if";
             "(let ?v ?e (if ?cond ?then ?else))" =>
             "(if (let ?v ?e ?cond) (let ?v ?e ?then) (let ?v ?e ?else))"
         ),
         rw!("let-var-same"; "(let ?v1 ?e (var ?v1))" => "?e"),
-        rw!("let-var-diff"; "(let ?v1 ?e (var ?v2))" => "(var ?v2)"
-            if is_not_same_var(var("?v1"), var("?v2"))),
+        multi_rewrite!("let-var-diff"; "?x = (let ?v1 ?e (var ?v2)), ?v1 != ?v2" => "?x = (var ?v2)"),
         rw!("let-lam-same"; "(let ?v1 ?e (lam ?v1 ?body))" => "(lam ?v1 ?body)"),
-        rw!("let-lam-diff";
-            "(let ?v1 ?e (lam ?v2 ?body))" =>
+        multi_rewrite!("let-lam-diff";
+            "?root = (let ?v1 ?e (lam ?v2 ?body)), ?v1 != ?v2" =>
             { CaptureAvoid {
-                fresh: var("?fresh"), v2: var("?v2"), e: var("?e"),
+                root: var("?root"), fresh: var("?fresh"), v2: var("?v2"), e: var("?e"),
                 if_not_free: "(lam ?v2 (let ?v1 ?e ?body))".parse().unwrap(),
                 if_free: "(lam ?fresh (let ?v1 ?e (let ?v2 (var ?fresh) ?body)))".parse().unwrap(),
-            }}
-            if is_not_same_var(var("?v1"), var("?v2"))),
+            }}),
     ]
 }
 
 struct CaptureAvoid {
+    root: Var,
     fresh: Var,
     v2: Var,
     e: Var,
@@ -195,10 +172,11 @@ struct CaptureAvoid {
 }
 
 impl Applier<Lambda, LambdaAnalysis> for CaptureAvoid {
-    fn apply_one(&self, egraph: &mut EGraph, eclass: Id, subst: &Subst) -> Vec<Id> {
+    fn apply_one(&self, egraph: &mut EGraph, _eclass: Id, subst: &Subst) -> Vec<Id> {
         let e = subst[self.e];
         let v2 = subst[self.v2];
         let v2_free_in_e = egraph[e].data.free.contains(&v2);
+        let eclass = subst[self.root];
         if v2_free_in_e {
             let mut subst = subst.clone();
             let sym = Lambda::Symbol(format!("_{}", eclass).into());

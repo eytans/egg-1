@@ -37,7 +37,7 @@ impl ColorPalette {
         match self.colors.get(&color) {
            Some(cid) => *cid,
            None => {
-               let v = g.create_color();
+               let v = g.create_color(None);
                self.colors.insert(color, v);
                v
            }
@@ -67,7 +67,7 @@ impl Serialization for EGraph<SymbolLang, ()> {
         // Write colors
         let id_start = self.classes().map(|e| e.id).max().unwrap();
         for (i, color) in self.colors().enumerate() {
-            let color_id =
+            let _color_id =
                 if let Some(color_entry) = palette.colors.iter().find(|e| e.1 == &color.get_id()) {
                     usize::from(*color_entry.0)
                 }
@@ -76,9 +76,11 @@ impl Serialization for EGraph<SymbolLang, ()> {
                     writeln!(out, "clr#{i} {color_id}")?;
                     color_id
                 };
-            for id in color.black_reps() {
-                writeln!(out, "?~ {color_id} {members}",
-                         members = color.black_ids(*id).unwrap().iter().join(" "))?;
+            todo!("Not supported with hierarchies");
+            #[allow(unreachable_code)]
+            for id in color.current_black_reps() {
+                writeln!(out, "?~ {_color_id} {members}",
+                         members = color.equality_class(self, *id).join(" "))?;
             }
         }
         Ok(())

@@ -5,6 +5,9 @@ pub mod tools {
     use itertools::MultiProduct;
     use itertools::Itertools;
     use indexmap::IndexMap;
+    use log::debug;
+    use crate::{ENodeOrVar, Id, Language, MultiPattern, Pattern, RecExpr};
+    use crate::ENodeOrVar::ENode;
 
 // fn combinations<'a, T: 'a, I: Iterator<Item = &'a T> + Clone>(mut sets: impl Iterator<Item = I>) -> impl Iterator<Item = Vec<&'a T>> {
 //     let first = sets.next();
@@ -78,6 +81,31 @@ pub mod tools {
             self.for_each(|t| res.entry(key(&t)).or_insert(Vec::new()).push(t));
             res
         }
+    }
+
+    pub fn vacuity_detector_from_ops<L: Language>(ops: Vec<L>) -> Vec<MultiPattern<L>> {
+        let v: crate::Var = "?multipattern_var".parse().unwrap();
+        let patterns = ops.into_iter().map(|o| {
+            let p: Pattern<L> = {
+                let mut rec_expr: RecExpr<ENodeOrVar<L>> = Default::default();
+                for i in 0..o.children().len() {
+                    let var: crate::Var = format!("?var_{}_{}", o.op_id(), i).parse().unwrap();
+                    rec_expr.add(ENodeOrVar::Var(var));
+                }
+                let mut new_node = o.clone();
+                new_node.children_mut().iter_mut().enumerate().for_each(|(i, c)| *c = Id::from(i));
+                rec_expr.add(ENode(new_node, None));
+                Pattern::from(rec_expr)
+            };
+            (v, p.ast)
+        }).collect_vec();
+        let res = (0..patterns.len()).map(|i| {
+            let mut new_patterns = patterns.iter().map(|(_v, x)| x).cloned().collect_vec();
+            let main = new_patterns.remove(i);
+            MultiPattern::new_with_specials(vec![(v, main)], vec![(v, new_patterns)], vec![])
+        }).collect_vec();
+        debug!("Vacuity detector: {}", res.iter().join(", "));
+        res
     }
 }
 

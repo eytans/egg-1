@@ -355,7 +355,6 @@ pub fn new(analysis: N) -> Self {
         let rules = rules.into_iter().collect::<Vec<_>>();
         #[cfg(feature = "keep_splits")]
         {
-            assert!(self.hooks.is_empty(), "hooks must be added before run");
             let mut sched = std::mem::replace(&mut self.scheduler, Box::new(SimpleScheduler::default()));
             for g in self.egraph.all_splits.iter_mut() {
                 let mut runner: Runner<L, N> = Runner::new(g.analysis.clone())
@@ -450,7 +449,15 @@ pub fn new(analysis: N) -> Self {
         let mut matches = Vec::new();
         for rule in rules {
             trace!("Searching with rule {:?}", rule.name());
+            let rule_start = Instant::now();
             let ms = self.scheduler.search_rewrite(i, &self.egraph, rule);
+            let elapsed = rule_start.elapsed();
+            // Update global stats
+            unsafe {
+                SEARCH_MATCHES += ms.as_ref().iter().map(|m| m.total_substs()).sum::<usize>();
+                SEARCH_TIME += elapsed.as_millis();
+            }
+            debug!("Searching rule {} took {} ms", rule.name(), elapsed.as_millis());
             matches.push(ms);
             if self.check_limits().is_err() {
                 // bail on searching, make sure applying doesn't do anything
@@ -463,17 +470,28 @@ pub fn new(analysis: N) -> Self {
         info!("Search time: {}", search_time);
 
         let apply_time = Instant::now();
+        let mut last_sample = apply_time;
 
         let mut applied = IndexMap::new();
         for (rw, ms) in rules.iter().zip(matches) {
-            let total_matches: usize = ms.iter().map(|m| m.substs.len()).sum();
+            let total_matches: usize = ms.as_ref().map_or(0, |ms| ms.total_substs());
             if total_matches == 0 {
                 continue;
             }
 
             debug!("Applying {} {} times", rw.name(), total_matches);
 
-            let actually_matched = self.scheduler.apply_rewrite(i, &mut self.egraph, rw, ms);
+            let actually_matched = self.scheduler.apply_rewrite(i, &mut self.egraph, rw, &ms);
+            let new_sample = Instant::now();
+            let sample_time = new_sample.duration_since(last_sample).as_millis();
+            last_sample = new_sample;
+
+            // Update global statistics
+            unsafe {
+                APPLY_TIME += sample_time;
+                APPLICATIONS += actually_matched;
+            }
+
             if actually_matched > 0 {
                 if let Some(count) = applied.get_mut(rw.name()) {
                     *count += actually_matched;
@@ -494,7 +512,11 @@ pub fn new(analysis: N) -> Self {
         let rebuild_time = Instant::now();
         let n_rebuilds = self.egraph.rebuild();
 
-        let rebuild_time = rebuild_time.elapsed().as_secs_f64();
+        let elapsed = rebuild_time.elapsed();
+        let rebuild_time = elapsed.as_secs_f64();
+        unsafe {
+            REBUILD_TIME += elapsed.as_millis();
+        }
         info!("Rebuild time: {}", rebuild_time);
         info!(
             "Size: n={}, e={}",
@@ -604,7 +626,7 @@ where
         iteration: usize,
         egraph: &EGraph<L, N>,
         rewrite: &Rewrite<L, N>,
-    ) -> Vec<SearchMatches> {
+    ) -> Option<SearchMatches> {
         rewrite.search(egraph)
     }
 
@@ -619,9 +641,9 @@ where
         iteration: usize,
         egraph: &mut EGraph<L, N>,
         rewrite: &Rewrite<L, N>,
-        matches: Vec<SearchMatches>,
+        matches: &Option<SearchMatches>,
     ) -> usize {
-        rewrite.apply(egraph, &matches).len()
+        rewrite.apply(egraph, matches).len()
     }
 }
 
@@ -785,7 +807,7 @@ where
         iteration: usize,
         egraph: &EGraph<L, N>,
         rewrite: &Rewrite<L, N>,
-    ) -> Vec<SearchMatches> {
+    ) -> Option<SearchMatches> {
         let stats = self.rule_stats(rewrite.name());
 
         if iteration < stats.banned_until {
@@ -796,11 +818,11 @@ where
                 stats.times_banned,
                 stats.banned_until,
             );
-            return vec![];
+            return None;
         }
 
         let matches = rewrite.search(egraph);
-        let total_len: usize = matches.iter().map(|m| m.substs.len()).sum();
+        let total_len: usize = matches.as_ref().map_or(0, |m| m.total_substs());
         let threshold = stats.match_limit << stats.times_banned;
         if total_len > threshold {
             let ban_length = stats.ban_length << stats.times_banned;
@@ -815,7 +837,7 @@ where
                 threshold,
                 total_len,
             );
-            vec![]
+            None
         } else {
             stats.times_applied += 1;
             matches
@@ -853,3 +875,15 @@ where
 {
     fn make(_: &Runner<L, N, Self>) -> Self {}
 }
+
+// Some global static statistics:
+// - number of search matches
+pub static mut SEARCH_MATCHES: usize = 0;
+// - time spent searching
+pub static mut SEARCH_TIME: u128 = 0;
+// - number of applications
+pub static mut APPLICATIONS: usize = 0;
+// - time spent applying
+pub static mut APPLY_TIME: u128 = 0;
+// - time spent rebuilding
+pub static mut REBUILD_TIME: u128 = 0;

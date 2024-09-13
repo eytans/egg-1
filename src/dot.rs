@@ -224,7 +224,7 @@ where
             let mut done = HashSet::new();
             // Collect all groups to put in subgraphs and filter classes using self.filter
             let mut groups = Vec::new();
-            for (black_id, ids) in &color.union_map {
+            for (black_id, ids) in &color.equality_classes {
                 let mut group = Vec::new();
                 for class in ids.iter().map(|id| &self.egraph[*id]) {
                     if !dropped.contains(&class.id) {
@@ -372,14 +372,16 @@ where
 mod test {
     use std::str::FromStr;
 
-    use crate::{SymbolLang, EGraph, RecExpr};
+    use crate::{SymbolLang, EGraph, RecExpr, init_logger};
 
     #[test]
     fn draw_if_xy_then_a_else_b() {
+        init_logger();
+
         let mut egraph: EGraph<SymbolLang, ()> = EGraph::new(());
         let if_statement = egraph.add_expr(&RecExpr::from_str("(if (< x y) hello world)").unwrap());
         egraph.dot().to_dot("if.dot").unwrap();
-        let color = egraph.create_color();
+        let color = egraph.create_color(None);
         let cond = egraph.add_expr(&RecExpr::from_str("(< x y)").unwrap());
         let tru = egraph.colored_add_expr(color, &RecExpr::from_str("true").unwrap());
         let hello = egraph.add_expr(&RecExpr::from_str("hello").unwrap());
@@ -394,6 +396,8 @@ mod test {
 
     #[test]
     fn draw_max() {
+        init_logger();
+
         let mut egraph: EGraph<SymbolLang, ()> = EGraph::new(());
         let max_st = egraph.add_expr(&RecExpr::from_str("(max x y)").unwrap());
         let min_st = egraph.add_expr(&RecExpr::from_str("(min x y)").unwrap());
@@ -418,7 +422,7 @@ mod test {
         smaller_egraph.union(smaller_abs, minus);
         smaller_egraph.rebuild();
         smaller_egraph.dot().to_dot("smaller_final.dot").unwrap();
-        let c_smaller = egraph.create_color();
+        let c_smaller = egraph.create_color(None);
         let smaller_then =
             egraph.colored_add_expr(c_smaller, &RecExpr::from_str("(< x y)").unwrap());
         let tru = egraph.colored_add_expr(c_smaller, &RecExpr::from_str("true").unwrap());
@@ -442,7 +446,7 @@ mod test {
             .set_print_color("blue".to_string())
             .to_dot("c_smaller_final.dot")
             .unwrap();
-        let c_bigger = egraph.create_color();
+        let c_bigger = egraph.create_color(None);
         let bigger_then = egraph.colored_add_expr(c_bigger, &RecExpr::from_str("(> x y)").unwrap());
         let tru = egraph.colored_add_expr(c_bigger, &RecExpr::from_str("true").unwrap());
         egraph.colored_union(c_bigger, bigger_then, tru);
@@ -467,6 +471,8 @@ mod test {
 
     #[test]
     fn filter_edges() {
+        init_logger();
+
         let mut egraph: EGraph<SymbolLang, ()> = EGraph::new(());
         let _max_st = egraph.add_expr(&RecExpr::from_str("(max x y)").unwrap());
         let _min_st = egraph.add_expr(&RecExpr::from_str("(min x y)").unwrap());

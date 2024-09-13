@@ -22,11 +22,6 @@ pub mod macros;
 #[macro_use]
 extern crate global_counter;
 
-extern crate core;
-
-#[macro_use]
-extern crate lazy_static;
-
 pub mod tutorials;
 
 mod dot;
@@ -46,7 +41,7 @@ mod util;
 /// A key to identify [`EClass`](struct.EClass.html)es within an
 /// [`EGraph`](struct.EGraph.html).
 #[derive(Clone, Copy, Default, Ord, PartialOrd, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct Id(u32);
+pub struct Id(pub u32);
 
 
 #[derive(Clone, Copy, Default, Ord, PartialOrd, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
@@ -62,6 +57,18 @@ impl From<usize> for Id {
 impl From<Id> for usize {
     fn from(id: Id) -> usize {
         id.0 as usize
+    }
+}
+
+impl Into<Id> for u32 {
+    fn into(self) -> Id {
+        Id(self)
+    }
+}
+
+impl Into<Id> for i32 {
+    fn into(self) -> Id {
+        Id(self as u32)
     }
 }
 
@@ -110,8 +117,8 @@ pub use {
     extract::*,
     language::*,
     pattern::{ENodeOrVar, Pattern, PatternAst, SearchMatches},
-    rewrite::{Applier, ImmutableCondition, Condition, ConditionEqual, ConditionalApplier, Rewrite, Searcher, RcImmutableCondition, ToCondRc},
-    // rewrite::{Applier, ImmutableCondition, ImmutableFunctionCondition, Condition, ConditionEqual, ConditionalApplier, Rewrite, Searcher, RcImmutableCondition, ToCondRc},
+    multipattern::MultiPattern,
+    rewrite::{Applier, Rewrite, Searcher},
     run::*,
     ser::{Serialization, Deserialization},
     subst::{Subst, Var},
@@ -121,7 +128,8 @@ pub use {
 
 #[cfg(test)]
 fn init_logger() {
-    let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Info).try_init();
+    invariants::set_max_level(log::LevelFilter::Trace);
+    let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Debug).try_init();
 }
 
 #[doc(hidden)]
@@ -129,4 +137,6 @@ pub mod test;
 mod colors;
 mod eggstentions;
 pub mod tools;
+pub mod colored_union_find;
+mod multipattern;
 

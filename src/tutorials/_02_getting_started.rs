@@ -116,7 +116,7 @@ let pat: Pattern<SymbolLang> = "(foo ?x ?x)".parse().unwrap();
 // since we use ?x twice, it must match the same thing,
 // so this search will return nothing
 let matches = pat.search(&egraph);
-assert!(matches.is_empty());
+assert!(matches.is_none());
 
 egraph.union(a, b);
 // recall that rebuild must be called to "see" the effects of unions
@@ -124,7 +124,7 @@ egraph.rebuild();
 
 // now we can find a match since a = b
 let matches = pat.search(&egraph);
-assert!(!matches.is_empty())
+assert!(matches.is_some())
 ```
 
 

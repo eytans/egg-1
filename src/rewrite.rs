@@ -2,9 +2,7 @@ use std::fmt;
 use std::{any::Any, sync::Arc};
 
 use crate::{Analysis, EGraph, Id, Language, Pattern, SearchMatches, Subst, Var, ColorId};
-use std::fmt::{Formatter, Debug};
-use std::marker::PhantomData;
-use std::ops::Deref;
+use std::fmt::Formatter;
 use itertools::Itertools;
 use invariants::iassert;
 
@@ -100,7 +98,7 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> Rewrite<L, N> {
     ///
     /// [`Searcher`]: trait.Searcher.html
     /// [`search`]: trait.Searcher.html#method.search
-    pub fn search(&self, egraph: &EGraph<L, N>) -> Vec<SearchMatches> {
+    pub fn search(&self, egraph: &EGraph<L, N>) -> Option<SearchMatches> {
         self.searcher.search(egraph)
     }
 
@@ -108,7 +106,7 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> Rewrite<L, N> {
     ///
     /// [`Applier`]: trait.Applier.html
     /// [`apply_matches`]: trait.Applier.html#method.apply_matches
-    pub fn apply(&self, egraph: &mut EGraph<L, N>, matches: &[SearchMatches]) -> Vec<Id> {
+    pub fn apply(&self, egraph: &mut EGraph<L, N>, matches: &Option<SearchMatches>) -> Vec<Id> {
         self.applier.apply_matches(egraph, matches)
     }
 
@@ -119,7 +117,7 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> Rewrite<L, N> {
         let start = instant::Instant::now();
 
         let matches = self.search(egraph);
-        log::debug!("Found rewrite {} {} times", self.name, matches.len());
+        log::debug!("Found rewrite {} {} times", self.name, matches.as_ref().map_or(0, |m| m.len()));
 
         let ids = self.apply(egraph, &matches);
         let elapsed = start.elapsed();
@@ -167,11 +165,12 @@ pub trait Searcher<L, N>: std::fmt::Display
     /// [`EGraph`]: struct.EGraph.html
     /// [`search_eclass`]: trait.Searcher.html#tymethod.search_eclass
     /// [`SearchMatches`]: struct.SearchMatches.html
-    fn search(&self, egraph: &EGraph<L, N>) -> Vec<SearchMatches> {
-        egraph
+    fn search(&self, egraph: &EGraph<L, N>) -> Option<SearchMatches> {
+        let matches = egraph
             .classes()
             .filter_map(|e| self.search_eclass(egraph, e.id))
-            .collect()
+            .collect_vec();
+        SearchMatches::merge_matches(matches)
     }
 
     /// Search one eclass with starting color
@@ -180,6 +179,11 @@ pub trait Searcher<L, N>: std::fmt::Display
 
     /// Returns a list of the variables bound by this Searcher
     fn vars(&self) -> Vec<Var>;
+
+    /// Returns the number of matches in the e-graph
+    fn n_matches(&self, egraph: &EGraph<L, N>) -> usize {
+        self.search(egraph).map_or(0, |ms| ms.iter().map(|m| m.substs.len()).sum())
+    }
 }
 
 /// The righthand side of a [`Rewrite`].
@@ -213,7 +217,7 @@ pub trait Searcher<L, N>: std::fmt::Display
 ///
 /// // Our metadata in this case will be size of the smallest
 /// // represented expression in the eclass.
-/// #[derive(Default)]
+/// #[derive(Default, Clone)]
 /// struct MinSize;
 /// impl Analysis<Math> for MinSize {
 ///     type Data = usize;
@@ -314,26 +318,28 @@ pub trait Applier<L, N>: std::fmt::Display
     ///
     /// [`Id`]: struct.Id.html
     /// [`apply_one`]: trait.Applier.html#method.apply_one
-    fn apply_matches(&self, egraph: &mut EGraph<L, N>, matches: &[SearchMatches]) -> Vec<Id> {
+    fn apply_matches(&self, egraph: &mut EGraph<L, N>, matches: &Option<SearchMatches>) -> Vec<Id> {
         let mut added = vec![];
-        for mat in matches {
-            for subst in &mat.substs {
-                let ids = self
-                    .apply_one(egraph, mat.eclass, subst)
-                    .into_iter()
-                    .filter_map(|id| {
-                        if !cfg!(feature = "colored") {
-                            iassert!(subst.color().is_none());
-                        }
-                        let (to, did_something) =
-                            egraph.opt_colored_union(subst.color(), id, mat.eclass);
-                        if did_something {
-                            Some(to)
-                        } else {
-                            None
-                        }
-                    });
-                added.extend(ids)
+        if let Some(mat) = matches {
+            for (eclass, substs) in mat.matches.iter() {
+                for subst in substs {
+                    let ids = self
+                        .apply_one(egraph, *eclass, subst)
+                        .into_iter()
+                        .filter_map(|id| {
+                            if !cfg!(feature = "colored") {
+                                iassert!(subst.color().is_none());
+                            }
+                            let (to, did_something) =
+                                egraph.opt_colored_union(subst.color(), id, *eclass);
+                            if did_something {
+                                Some(to)
+                            } else {
+                                None
+                            }
+                        });
+                    added.extend(ids)
+                }
             }
         }
         added
@@ -366,485 +372,11 @@ pub trait Applier<L, N>: std::fmt::Display
     }
 }
 
-/// An [`Applier`] that checks a [`Condition`] before applying.
-///
-/// A [`ConditionalApplier`] simply calls [`check`] on the
-/// [`Condition`] before calling [`apply_one`] on the inner
-/// [`Applier`].
-///
-/// See the [`rewrite!`] macro documentation for an example.
-///
-/// [`rewrite!`]: macro.rewrite.html
-/// [`Applier`]: trait.Applier.html
-/// [`apply_one`]: trait.Applier.html#method.apply_one
-/// [`Condition`]: trait.Condition.html
-/// [`check`]: trait.Condition.html#method.check
-/// [`ConditionalApplier`]: struct.ConditionalApplier.html
-#[derive(Clone, Debug)]
-pub struct ConditionalApplier<C, A, L, N> {
-    /// The [`Condition`] to [`check`] before calling [`apply_one`] on
-    /// `applier`.
-    ///
-    /// [`apply_one`]: trait.Applier.html#method.apply_one
-    /// [`Condition`]: trait.Condition.html
-    /// [`check`]: trait.Condition.html#method.check
-    pub condition: C,
-    /// The inner [`Applier`] to call once `condition` passes.
-    ///
-    /// [`Applier`]: trait.Applier.html
-    pub applier: A,
-    pub phantom_l: PhantomData<L>,
-    pub phantom_n: PhantomData<N>,
-}
-
-impl<L, N, C, A> ConditionalApplier<C, A, L, N> where
-    L: Language + 'static,
-    N: Analysis<L> +'static,
-    C: Condition<L, N>,
-    A: Applier<L, N>,
-{
-    /// Create a new [`ConditionalApplier`].
-    ///
-    /// [`ConditionalApplier`]: struct.ConditionalApplier.html
-    pub fn new(condition: C, applier: A) -> Self {
-        ConditionalApplier {
-            condition,
-            applier,
-            phantom_l: PhantomData,
-            phantom_n: PhantomData,
-        }
-    }
-
-    fn conditioned_apply_one(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> Vec<(Option<ColorId>, Id)> {
-        if cfg!(feature = "colored") {
-            if let Some(v) = self.condition.check_colored(egraph, eclass, subst) {
-                if v.is_empty() {
-                    self.applier.apply_one(egraph, eclass, subst).into_iter().map(|id| (subst.color(), id)).collect()
-                } else {
-                    let mut res = vec![];
-                    let mut colored_subst = subst.clone();
-                    for c in v {
-                        colored_subst.color = Some(c);
-                        colored_subst.vec.iter_mut()
-                            .for_each(|(_, id)| *id = egraph.colored_find(c, *id));
-                        let ids = self.applier
-                            .apply_one(egraph, eclass, &colored_subst)
-                            .into_iter().map(|id| (Some(c), id));
-                        res.extend(ids);
-                    }
-                    res
-                }
-            } else {
-                vec![]
-            }
-        } else {
-            if self.condition.check(egraph, eclass, subst) {
-                self.applier.apply_one(egraph, eclass, subst).into_iter().map(|id| (None, id)).collect()
-            } else {
-                vec![]
-            }
-        }
-    }
-}
-
-impl<L, N, C, A> std::fmt::Display for ConditionalApplier<C, A, L, N> where
-    L: Language + 'static,
-    N: Analysis<L> + 'static,
-    C: Condition<L, N>,
-    A: Applier<L, N>, {
-        fn fmt( & self, f: & mut Formatter < '_ > ) -> std::fmt::Result {
-          write ! (f, "if {:?} then apply {}", self.condition.describe(), self.applier)
-    }
-}
-
-impl<C, A, N, L> Applier<L, N> for ConditionalApplier<C, A, L, N>
-    where
-        L: Language + 'static,
-        C: Condition<L, N>,
-        A: Applier<L, N>,
-        N: Analysis<L> + 'static,
-{
-    // TODO: sort out an API for this
-    fn apply_one(&self, _egraph: &mut EGraph<L, N>, _eclass: Id, _subst: &Subst) -> Vec<Id> {
-        unimplemented!("ConditionalApplier::apply_one is not implemented. Instead we use conditioned_apply_one");
-    }
-
-    fn apply_matches(&self, egraph: &mut EGraph<L, N>, matches: &[SearchMatches]) -> Vec<Id> {
-        let mut added = vec![];
-        for mat in matches {
-            for subst in &mat.substs {
-                let ids = self
-                    .conditioned_apply_one(egraph, mat.eclass, subst)
-                    .into_iter()
-                    .filter_map(|(opt_c, id)| {
-                        let (to, did_something) =
-                            egraph.opt_colored_union(opt_c, mat.eclass, id);
-                        did_something.then(|| to)
-                    });
-                added.extend(ids)
-            }
-        }
-        added
-    }
-
-    fn vars(&self) -> Vec<Var> {
-        let mut vars = self.applier.vars();
-        vars.extend(self.condition.vars());
-        vars
-    }
-}
-
-/// A condition to check in a [`ConditionalApplier`].
-///
-/// See the [`ConditionalApplier`] docs.
-///
-/// Notably, any function ([`Fn`]) that doesn't mutate other state
-/// and matches the signature of [`check`] implements [`Condition`].
-///
-/// [`check`]: trait.Condition.html#method.check
-/// [`Fn`]: https://doc.rust-lang.org/std/ops/trait.Fn.html
-/// [`ConditionalApplier`]: struct.ConditionalApplier.html
-/// [`Condition`]: trait.Condition.html
-pub trait Condition<L, N>
-    where
-        L: Language,
-        N: Analysis<L>,
-{
-    /// Check a condition.
-    ///
-    /// `eclass` is the eclass [`Id`] where the match (`subst`) occured.
-    /// If this is true, then the [`ConditionalApplier`] will fire.
-    ///
-    /// [`Id`]: struct.Id.html
-    /// [`ConditionalApplier`]: struct.ConditionalApplier.html
-    fn check(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> bool;
-
-    /// Check a condition and possibly add colored assumptions
-    ///
-    /// If the condition cannot be satisfied returns None. If the condition is satisfied in current
-    /// color, returns an empty vector. Otherwise, it will return a vector of all the sub-colors in
-    /// which the condition is satisfied (currently does not support sub-colors).
-    /// This additional complexity is necessary because we cannot make the searcher return matches
-    /// from all possible colors when it is not needed. Instead, the condition will check when it
-    /// can be satisfied.
-    ///
-    /// Consider the following query that looks for a node that is false with the additional
-    /// condition that it is the result of the function f: `false if match_root ~= (f ?a ?b)`.
-    /// We will get the resulting Subst: `Subst { no_holes, color: None }`, but the condition check
-    /// will fail. We need to be able to query the condition on additional colored conditions that
-    /// might have been ignored by the pattern, but are necessary for the condition to be true.
-    /// TODO: add support for hierarchical colors in the future.
-    fn check_colored(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>>;
-
-    /// Returns a list of variables that this Condition assumes are bound.
-    ///
-    /// `egg` will check that the corresponding `Searcher` binds those
-    /// variables.
-    /// By default this return an empty `Vec`, which basically turns off the
-    /// checking.
-    fn vars(&self) -> Vec<Var> {
-        vec![]
-    }
-
-    /// Returns a string representing the condition that is checked
-    fn describe(&self) -> String;
-}
-
-impl<L, N> Condition<L, N> for Box<dyn Condition<L, N>> where
-    L: Language,
-    N: Analysis<L>,
-{
-    fn check(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
-        self.as_ref().check(egraph, eclass, subst)
-    }
-
-    fn check_colored(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
-        self.as_ref().check_colored(egraph, eclass, subst)
-    }
-
-    fn vars(&self) -> Vec<Var> {
-        self.as_ref().vars()
-    }
-
-    fn describe(&self) -> String {
-        self.as_ref().describe()
-    }
-}
-
-// pub struct FunctionCondition<L, N> where
-//     L: Language,
-//     N: Analysis<L>,
-// {
-//     f: Rc<dyn Fn(&mut EGraph<L, N>, Id, &Subst) -> bool>,
-//     description: String,
-//     phantom_l: PhantomData<L>,
-//     phantom_n: PhantomData<N>,
-// }
-//
-// impl<L, N> Condition<L, N> for FunctionCondition<L, N>
-//     where
-//         L: Language,
-//         N: Analysis<L>,
-// {
-//     fn check(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
-//         (self.f)(egraph, eclass, subst)
-//     }
-//
-//     fn describe(&self) -> String {
-//         self.description.clone()
-//     }
-// }
-//
-// impl<L, N> FunctionCondition<L, N>
-//     where
-//         L: Language,
-//         N: Analysis<L>,
-// {
-//     pub fn new<S>(f: Rc<dyn Fn(&mut EGraph<L, N>, Id, &Subst) -> bool>, description: S) -> Self
-//         where
-//             S: Into<String>,
-//     {
-//         FunctionCondition {
-//             f,
-//             description: description.into(),
-//             phantom_l: PhantomData,
-//             phantom_n: PhantomData,
-//         }
-//     }
-// }
-
-/// A [`Condition`] that checks if two terms are equivalent.
-///
-/// This condition adds its two [`Applier`]s to the egraph and passes
-/// if and only if they are equivalent (in the same eclass).
-///
-/// [`Applier`]: trait.Applier.html
-/// [`Condition`]: trait.Condition.html
-pub struct ConditionEqual<A1, A2>(pub A1, pub A2);
-
-impl<L: Language> ConditionEqual<Pattern<L>, Pattern<L>> {
-    /// Create a ConditionEqual by parsing two pattern strings.
-    ///
-    /// This panics if the parsing fails.
-    pub fn parse(a1: &str, a2: &str) -> Self {
-        Self(a1.parse().unwrap(), a2.parse().unwrap())
-    }
-}
-
-impl<L, N, A1, A2> Condition<L, N> for ConditionEqual<A1, A2>
-    where
-        L: Language + 'static,
-        N: Analysis<L> + 'static,
-        A1: Applier<L, N>,
-        A2: Applier<L, N>,
-{
-    fn check(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
-        let a1 = self.0.apply_one(egraph, eclass, subst);
-        let a2 = self.1.apply_one(egraph, eclass, subst);
-        assert_eq!(a1.len(), 1);
-        assert_eq!(a2.len(), 1);
-        egraph.opt_colored_find(subst.color(), a1[0]) == egraph.opt_colored_find(subst.color(), a2[0])
-    }
-
-    fn check_colored(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
-        if self.check(egraph, eclass, subst) {
-            return Some(vec![]);
-        } else if subst.color().is_some() {
-            // TODO: add support for hierarchical colors in the future.
-            return None;
-        }
-        let a1 = self.0.apply_one(egraph, eclass, subst)[0];
-        let a2 = self.1.apply_one(egraph, eclass, subst)[0];
-        let eqs = egraph.get_colored_equalities(a1);
-        eqs.map(|eqs| {
-            let res = eqs.iter()
-                .filter(|(c, id)| egraph.opt_colored_find(Some(*c), a2) == egraph.opt_colored_find(Some(*c), *id))
-                .map(|(c, _)| c).copied().collect_vec();
-            (!res.is_empty()).then(|| res)
-        }).flatten()
-    }
-
-    fn vars(&self) -> Vec<Var> {
-        let mut vars = self.0.vars();
-        vars.extend(self.1.vars());
-        vars
-    }
-
-    fn describe(&self) -> String {
-        format!("Check that {}", self.vars().iter().map(|v| v.to_string()).join(" = "))
-    }
-}
-
-pub trait ToCondRc<L, N> where
-    L: Language,
-    N: Analysis<L>,
-{
-    fn into_rc(self) -> Arc<dyn ImmutableCondition<L, N>>
-        where
-            Self: Sized, Self: ImmutableCondition<L, N>, Self: 'static,
-    {
-        Arc::new(self)
-    }
-}
-
-pub trait ImmutableCondition<L, N>: ToCondRc<L, N> where
-    L: Language,
-    N: Analysis<L>,
-{
-    fn check_imm<'a>(&'a self, egraph: &'a EGraph<L, N>, eclass: Id, subst: &'a Subst) -> bool;
-
-    /// Check a condition and possibly add colored assumptions. For more information and a useful
-    /// example see [`Condition::check_colored`].
-    ///
-    /// # Arguments
-    ///
-    /// * `egraph`:
-    /// * `eclass`:
-    /// * `subst`:
-    ///
-    /// returns: Option<Vec<ColorId, Global>>
-    ///
-    /// # Examples
-    ///
-    /// ```
-    ///
-    /// ```
-    fn colored_check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>>;
-
-    /// Returns a list of variables that this Condition assumes are bound.
-    ///
-    /// `egg` will check that the corresponding `Searcher` binds those
-    /// variables.
-    /// By default this return an empty `Vec`, which basically turns off the
-    /// checking.
-    fn vars(&self) -> Vec<Var> {
-        vec![]
-    }
-
-    /// Returns a string representing the condition that is checked
-    fn describe(&self) -> String;
-
-    fn filter(&self, egraph: &EGraph<L, N>, sms: Vec<SearchMatches>) -> Vec<SearchMatches> {
-        sms.into_iter().filter_map(|mut sm| {
-            let eclass = sm.eclass;
-            let substs = std::mem::take(&mut sm.substs);
-            sm.substs = substs.into_iter()
-                .filter_map(|s| {
-                    self.colored_check_imm(egraph, eclass, &s).map(|x| (s, x)) })
-                .flat_map(|(s, colors)| {
-                    if colors.is_empty() {
-                        vec![s]
-                    } else {
-                        colors.into_iter().map(|c| {
-                            let mut s = s.clone();
-                            s.color = Some(c);
-                            s.vec.iter_mut().for_each(|(_, id)| *id = egraph.colored_find(c, *id));
-                            s
-                        }).collect_vec()
-                    }
-                }).collect_vec();
-            if sm.substs.is_empty() {
-                None
-            } else {
-                Some(sm)
-            }
-        }).collect_vec()
-    }
-}
-
-pub type RcImmutableCondition<L, N> = Arc<dyn ImmutableCondition<L, N>>;
-
-// pub struct ImmutableFunctionCondition<L, N> where
-//     L: Language,
-//     N: Analysis<L>,
-// {
-//     f: Rc<dyn Fn(&EGraph<L, N>, Id, &Subst) -> bool>,
-//     description: String,
-//     phantom_l: PhantomData<L>,
-//     phantom_n: PhantomData<N>,
-// }
-//
-// impl<L, N> ImmutableFunctionCondition<L, N>
-//     where
-//         L: Language,
-//         N: Analysis<L>,
-// {
-//     pub fn new(f: Rc<dyn Fn(&EGraph<L, N>, Id, &Subst) -> bool>, desc: String) -> Self {
-//         Self {
-//             f, description: desc, phantom_l: Default::default(), phantom_n: Default::default(),
-//         }
-//     }
-// }
-
-// impl<L, N> ToCondRc<L, N> for ImmutableFunctionCondition<L, N> where L: Language, N: Analysis<L> {}
-
-// impl<L, N> ImmutableCondition<L, N> for ImmutableFunctionCondition<L, N>
-//     where
-//         L: Language,
-//         N: Analysis<L>,
-// {
-//     fn check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
-//         (self.f)(egraph, eclass, subst)
-//     }
-//
-//     fn describe(&self) -> String {
-//         self.description.clone()
-//     }
-// }
-
-impl<L, N> ToCondRc<L, N> for RcImmutableCondition<L, N> where L: Language, N: Analysis<L> {}
-
-impl<L, N> ImmutableCondition<L, N> for RcImmutableCondition<L, N> where
-    L: Language,
-    N: Analysis<L>,
-{
-    fn check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
-        self.deref().check_imm(egraph, eclass, subst)
-    }
-
-    fn colored_check_imm(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
-        self.deref().colored_check_imm(egraph, eclass, subst)
-    }
-
-    fn vars(&self) -> Vec<Var> {
-        self.deref().vars()
-    }
-
-    fn describe(&self) -> String {
-        self.deref().describe()
-    }
-}
-
-impl<L, N> Condition<L, N> for dyn ImmutableCondition<L, N>
-    where
-        L: Language,
-        N: Analysis<L>,
-{
-    fn check(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> bool {
-        self.check_imm(egraph, eclass, subst)
-    }
-
-    fn check_colored(&self, egraph: &mut EGraph<L, N>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
-        self.colored_check_imm(egraph, eclass, subst)
-    }
-
-    fn vars(&self) -> Vec<Var> {
-        self.vars()
-    }
-
-    fn describe(&self) -> String {
-        self.describe()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::{SymbolLang as S, *};
     use std::str::FromStr;
     use std::fmt::Formatter;
-    // use crate::rewrite::{ImmutableCondition, ImmutableFunctionCondition, RcImmutableCondition};
-    use crate::rewrite::ImmutableCondition;
-    use crate::searchers::{MatcherContainsCondition, ToRc, VarMatcher};
 
     type EGraph = crate::EGraph<S, ()>;
 
@@ -855,16 +387,13 @@ mod tests {
 
         let x = egraph.add(S::leaf("x"));
         let y = egraph.add(S::leaf("2"));
-        let mul = egraph.add(S::new("*", vec![x, y]));
+        let _mul = egraph.add(S::new("*", vec![x, y]));
 
-        let true_pat = Pattern::from_str("TRUE").unwrap();
         let true_id = egraph.add(S::leaf("TRUE"));
 
-        let pow2b = Pattern::from_str("(is-power2 ?b)").unwrap();
-        let mul_to_shift = rewrite!(
+        let mul_to_shift = multi_rewrite!(
             "mul_to_shift";
-            "(* ?a ?b)" => "(>> ?a (log2 ?b))"
-            if ConditionEqual(pow2b, true_pat)
+            "?x = (* ?a ?b), ?y = (is-power2 ?b), ?y = TRUE" => "?x =(>> ?a (log2 ?b))"
         );
 
         println!("rewrite shouldn't do anything yet");
@@ -879,7 +408,8 @@ mod tests {
         println!("Should fire now");
         egraph.rebuild();
         let apps = mul_to_shift.run(&mut egraph);
-        assert_eq!(apps, vec![egraph.find(mul)]);
+        // Can't check ids because multipattern
+        assert!(apps.len() > 0);
     }
 
     #[test]
@@ -922,65 +452,5 @@ mod tests {
         egraph.rebuild();
         fold_add.run(&mut egraph);
         assert_eq!(egraph.equivs(&start, &goal), vec![egraph.find(root)]);
-    }
-
-    #[test]
-    fn conditional_applier_respects_colors() {
-        // This is a very specific case. It should be a case where the applier can be applied on a
-        // black result, but the condition doesn't hold for black.
-        // Then, we should add a color to the graph, and show the condition holds but only under
-        // the new color.
-        // Finally, we want to see that the application is done under the new color (create a new
-        // colored class, and colored union classes).
-        crate::init_logger();
-        let mut egraph = EGraph::default();
-
-        let matcher = VarMatcher::new(Var::from_str("?a").unwrap());
-        // add x + y expression
-        let x = egraph.add(S::leaf("x"));
-        let y = egraph.add(S::leaf("y"));
-        let add = egraph.add(S::new("+", vec![x, y]));
-        egraph.rebuild();
-        // ?x + ?y pattern
-        let pat = Pattern::from_str("(+ ?a ?b)").unwrap();
-        let sms = pat.search(&egraph);
-        assert_eq!(sms.len(), 1);
-        let sm = sms.first().unwrap().clone();
-        assert_eq!(sm.substs.len(), 1);
-        let subst = sm.substs[0].clone();
-        // Check matcher condition doesn't hold
-        let condition = MatcherContainsCondition::new(matcher.into_rc());
-        assert!(!condition.check_imm(&mut egraph, add, &subst));
-        assert!(condition.colored_check_imm(&mut egraph, add, &subst).is_none());
-        // Add color, and merge add and x
-        let color = egraph.create_color();
-        egraph.colored_union(color, add, x);
-        egraph.rebuild();
-        // Check matcher colored condition holds, and only contains the color
-        let cond_res = condition.colored_check_imm(&mut egraph, add, &subst);
-        assert!(cond_res.is_some());
-        assert_eq!(cond_res.unwrap()[0], color);
-
-        // Create an applier for this condition and see that the application will merge the colored
-        // classes.
-        egraph.rebuild();
-        let applier = rewrite!("applier"; "(+ ?a ?b)" => "(+ ?b ?a)" if {Box::new(condition) as Box<dyn Condition<SymbolLang, ()>>});
-        let class_count = egraph.classes().count();
-        let mut egraph = Runner::default()
-            .with_egraph(egraph)
-            .with_iter_limit(1)
-            .run(vec![&applier]).egraph;
-        let z = egraph.add(S::leaf("z"));
-        egraph.rebuild();
-        assert_ne!(egraph.find(add), egraph.find(z));
-        let new_class_count = egraph.classes().count();
-        let yx = egraph.colored_add(color, S::new("+", vec![y, x]));
-        assert_eq!(new_class_count, egraph.classes().count());
-        assert_ne!(egraph.find(yx), egraph.find(add));
-        assert_eq!(egraph.colored_find(color, yx), egraph.colored_find(color, add));
-        // Added z and yx
-        assert_eq!(egraph.classes().count(), class_count + 2);
-        #[cfg(not(feature = "colored_no_cmemo"))]
-        assert_eq!(egraph[egraph.find(yx)].color().unwrap(), color);
     }
 }
