@@ -19,7 +19,6 @@ use invariants::iassert;
 /// [`Searcher`]: trait.Searcher.html
 /// [`Applier`]: trait.Applier.html
 /// [`Condition`]: trait.Condition.html
-/// [`ConditionalApplier`]: struct.ConditionalApplier.html
 /// [`Rewrite`]: struct.Rewrite.html
 /// [`Pattern`]: struct.Pattern.html
 #[derive(Clone)]
@@ -195,9 +194,6 @@ pub trait Searcher<L, N>: std::fmt::Display
 ///
 /// Notably, [`Pattern`] implements [`Applier`], which suffices in
 /// most cases.
-/// Additionally, `egg` provides [`ConditionalApplier`] to stack
-/// [`Condition`]s onto an [`Applier`], which in many cases can save
-/// you from having to implement your own applier.
 ///
 /// # Example
 /// ```
@@ -296,7 +292,6 @@ pub trait Searcher<L, N>: std::fmt::Display
 /// [`Pattern`]: struct.Pattern.html
 /// [`EClass`]: struct.EClass.html
 /// [`Rewrite`]: struct.Rewrite.html
-/// [`ConditionalApplier`]: struct.ConditionalApplier.html
 /// [`Subst`]: struct.Subst.html
 /// [`Applier`]: trait.Applier.html
 /// [`Condition`]: trait.Condition.html

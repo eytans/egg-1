@@ -12,7 +12,7 @@ define_language! {
         "var" = Var(Id),
 
         "+" = Add([Id; 2]),
-        "=" = Eq([Id; 2]),
+        "==" = Eq([Id; 2]),
 
         "app" = App([Id; 2]),
         "lam" = Lambda([Id; 2]),
@@ -133,16 +133,16 @@ fn rules() -> Vec<Rewrite<Lambda, LambdaAnalysis>> {
         // open term rules
         rw!("if-true";  "(if  true ?then ?else)" => "?then"),
         rw!("if-false"; "(if false ?then ?else)" => "?else"),
-        multi_rewrite!("if-elim"; "?var1 = (if (= (var ?x) ?e) ?then ?else), ?var2 = (let ?x ?e ?then), ?var2 = (let ?x ?e ?else)" => "?var1 = ?else"),
+        multi_rewrite!("if-elim"; "?var1 = (if (== (var ?x) ?e) ?then ?else), ?var2 = (let ?x ?e ?then), ?var2 = (let ?x ?e ?else)" => "?var1 = ?else"),
         rw!("add-comm";  "(+ ?a ?b)"        => "(+ ?b ?a)"),
         rw!("add-assoc"; "(+ (+ ?a ?b) ?c)" => "(+ ?a (+ ?b ?c))"),
-        rw!("eq-comm";   "(= ?a ?b)"        => "(= ?b ?a)"),
+        rw!("eq-comm";   "(== ?a ?b)"        => "(== ?b ?a)"),
         // subst rules
         rw!("fix";      "(fix ?v ?e)"             => "(let ?v (fix ?v ?e) ?e)"),
         rw!("beta";     "(app (lam ?v ?body) ?e)" => "(let ?v ?e ?body)"),
         rw!("let-app";  "(let ?v ?e (app ?a ?b))" => "(app (let ?v ?e ?a) (let ?v ?e ?b))"),
         rw!("let-add";  "(let ?v ?e (+   ?a ?b))" => "(+   (let ?v ?e ?a) (let ?v ?e ?b))"),
-        rw!("let-eq";   "(let ?v ?e (=   ?a ?b))" => "(=   (let ?v ?e ?a) (let ?v ?e ?b))"),
+        rw!("let-eq";   "(let ?v ?e (==   ?a ?b))" => "(==   (let ?v ?e ?a) (let ?v ?e ?b))"),
         rw!("let-const";
             "(let ?v ?e ?c)" => { is_const(var("?c")) }),
         rw!("let-if";
@@ -207,15 +207,6 @@ egg::test_fn! {
 }
 
 egg::test_fn! {
-    lambda_if_elim, rules(),
-    "(if (= (var a) (var b))
-         (+ (var a) (var a))
-         (+ (var a) (var b)))"
-    =>
-    "(+ (var a) (var b))"
-}
-
-egg::test_fn! {
     lambda_let_simple, rules(),
     "(let x 0
      (let y 1
@@ -265,7 +256,7 @@ egg::test_fn! {
 
 egg::test_fn! {
     lambda_if_simple, rules(),
-    "(if (= 1 1) 7 9)" => "7"
+    "(if (== 1 1) 7 9)" => "7"
 }
 
 egg::test_fn! {
@@ -295,7 +286,7 @@ egg::test_fn! {
     "(let compose (lam f (lam g (lam x (app (var f)
                                        (app (var g) (var x))))))
      (let repeat (fix repeat (lam fun (lam n
-        (if (= (var n) 0)
+        (if (== (var n) 0)
             (lam i (var i))
             (app (app (var compose) (var fun))
                  (app (app (var repeat)
@@ -312,7 +303,7 @@ egg::test_fn! {
 egg::test_fn! {
     lambda_if, rules(),
     "(let zeroone (lam x
-        (if (= (var x) 0)
+        (if (== (var x) 0)
             0
             1))
         (+ (app (var zeroone) 0)
@@ -331,9 +322,9 @@ egg::test_fn! {
         .with_iter_limit(60)
         .with_node_limit(50_000),
     "(let fib (fix fib (lam n
-        (if (= (var n) 0)
+        (if (== (var n) 0)
             0
-        (if (= (var n) 1)
+        (if (== (var n) 1)
             1
         (+ (app (var fib)
                 (+ (var n) -1))

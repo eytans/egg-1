@@ -66,7 +66,7 @@ define_language! {
         // This is the ultimate fallback, it will parse any operator (as a string)
         // and any number of children.
         // Note that if there were 0 children, the previous branch would have succeeded
-        Other(Symbol, Vec<Id>),
+        // Other(Symbol, Vec<Id>),
     }
 }
 ```
@@ -274,6 +274,7 @@ If you pass in a literal to the `b` or `c` position, the macro will
 try to parse it as a [`Pattern`] which implements both [`Searcher`]
 and [`Applier`].
 
+This now uses negative patterns:
 The macro also accepts any number of `if <expr>` forms at the end,
 where the given expression should implement [`Condition`].
 For each of these, the macro will wrap the given applier in a
@@ -306,7 +307,7 @@ let mut rules: Vec<Rewrite<SimpleLanguage, ()>> = vec![
     rewrite!("silly"; "(* ?a 1)" => { MySillyApplier("foo") }),
 
     multi_rewrite!("something_conditional";
-             "(/ ?a ?b), ?b != 0" => "(* ?a (/ 1 ?b))"),
+             "?c = (/ ?a ?b), ?b != 0" => "?c = (* ?a (/ 1 ?b))"),
 ];
 
 // rewrite! supports bidirectional rules too

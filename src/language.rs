@@ -2,6 +2,7 @@
 use std::convert::{Infallible, TryFrom};
 use std::fmt::{self, Debug, Display};
 use std::hash::Hash;
+use std::ops::{Index, IndexMut};
 use std::str::FromStr;
 use indexmap::{IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
