@@ -26,6 +26,7 @@ pub use crate::colors::{Color, ColorId};
 use itertools::Itertools;
 use multimap::MultiMap;
 use serde::{Deserialize, Serialize};
+use crate::tools::tools::Grouped;
 use crate::unionfind::UnionFind;
 use crate::util::UniqueQueue;
 
@@ -230,6 +231,8 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     pub all_splits: Vec<EGraph<L, N>>,
     /// Collect how many e-nodes were deleted during rebuilds.
     pub deleted_enodes: usize,
+    // TODO: Really should not be public but in a hurry right now so it will be external
+    pub cases_colors: Vec<Vec<ColorId>>
 }
 
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
@@ -305,6 +308,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             #[cfg(feature = "keep_splits")]
             all_splits: vec![],
             deleted_enodes: 0,
+            cases_colors: Default::default(),
         }
     }
 }
@@ -353,6 +357,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             #[cfg(feature = "keep_splits")]
             all_splits: vec![],
             deleted_enodes: 0,
+            cases_colors: Default::default(),
         }
     }
 
@@ -1264,6 +1269,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             let _merged = self.process_unions();
             self.memo_black_canonized();
             self.process_colored_unions();
+            self.merge_case_splits_conclusions();
         }
 
         let new_colored_equives = self.classes().map(|class| (
@@ -1301,6 +1307,60 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         dassert!(self.no_two_colored_classes_in_ec());
         assert!(self.dirty_unions.is_empty());
         iassert!(self.colors().all(|c| !c.is_dirty()));
+    }
+
+    fn merge_case_splits_conclusions(&mut self) {
+        let mut to_merge = vec![];
+        // If we have color splits and conclusions we can take to their parent lets do it here
+        for cs in &self.cases_colors {
+            // Check they all have the same parent
+            assert_eq!(cs.iter().map(|c| self.get_colors_parents(*c)[0]).collect::<IndexSet<ColorId>>().len(), 1);
+            assert!(cs.len() > 1);
+            let cparent = self.get_colors_parents(cs[0]);
+            // Get all their "extra" equivalences
+            let mut grouped: IndexMap<Vec<Id>, IndexSet<Id>> = Default::default();
+            for (id, group) in &self.get_color(cs[0]).unwrap().equality_classes {
+                assert!(group.len() > 1);
+                // Need to only check parent color classes
+                let group = group.iter()
+                    .filter(|id| self[**id].color.is_none() ||
+                        cparent.contains(&self[**id].color().unwrap()))
+                    .copied().collect();
+                grouped.insert(vec![*id], group);
+            }
+            for c in cs.iter().dropping(1) {
+                // Each e-class can be at most at one group. I think it is enough to iterate 
+                // through all merged black eclasses from one color, and find the relevant
+                // group in all other colors.
+                // If we group by the leaders on each color, we don't need to intersect and then
+                // the complexity is |colored_unions(c)|*|cs|
+                // A nice optimization would be to drop groups of size one before moving to the
+                // next color.
+                let mut new_grouped = IndexMap::new();
+                for (leads, group) in grouped {
+                    let split = group.iter().grouped(|id| self.colored_find(*c, **id));
+                    for (lead, group) in split {
+                        if group.len() > 1 {
+                            let mut new_key = leads.clone();
+                            new_key.push(lead);
+                            new_grouped.insert(new_key, group.into_iter().copied().collect());
+                        }
+                    }
+                }
+                grouped = new_grouped;
+            }
+            let cparent = cparent.last().copied();
+            // Now we have all the groups, we can merge them
+            for (_, group) in grouped {
+                let first = group.first().unwrap();
+                for id in group.iter().skip(1) {
+                    to_merge.push((cparent, *first, *id));
+                }
+            }
+        }
+        for (cparent, id1, id2) in to_merge {
+            self.opt_colored_union(cparent, id1, id2);
+        }
     }
 
     pub(crate) fn colored_update_node(&self, color: ColorId, e: &mut L) {
