@@ -42,9 +42,14 @@ impl UnionFind {
     }
 
     /// Given two leader ids, unions the two eclasses making root1 the leader.
-    pub fn union(&mut self, root1: Id, root2: Id) -> Id {
+    pub fn union(&mut self, root1: Id, root2: Id) -> (Id, Id) {
+        let root1= self.find_mut(root1);
+        let root2= self.find_mut(root2);
+        if root1 > root2 {
+            return self.union(root2, root1);
+        }
         *self.parent_mut(root2) = root1;
-        root1
+        (root1, root2)
     }
 
     /// This is needed for deserialization

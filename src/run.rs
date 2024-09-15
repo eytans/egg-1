@@ -230,8 +230,6 @@ pub struct Iteration<IterData> {
     pub total_time: f64,
     /// The user provided annotation for this iteration
     pub data: IterData,
-    /// The number of rebuild iterations done after this iteration completed.
-    pub n_rebuilds: usize,
     /// If the runner stopped on this iterations, this is the reason
     pub stop_reason: Option<StopReason>,
 }
@@ -387,7 +385,6 @@ pub fn new(analysis: N) -> Self {
                     apply_time: Default::default(),
                     rebuild_time: Default::default(),
                     total_time: Default::default(),
-                    n_rebuilds: Default::default(),
                 });
                 break;
             }
@@ -405,7 +402,6 @@ pub fn new(analysis: N) -> Self {
         let total_time: f64 = self.iterations.iter().map(|i| i.total_time).sum();
 
         let iters = self.iterations.len();
-        let rebuilds: usize = self.iterations.iter().map(|i| i.n_rebuilds).sum();
 
         let eg = &self.egraph;
         println!("Runner report");
@@ -413,7 +409,6 @@ pub fn new(analysis: N) -> Self {
         println!("  Stop reason: {:?}", self.stop_reason.as_ref().unwrap());
         println!("  Iterations: {}", iters);
         println!("  Egraph size: {} nodes, {} classes, {} memo", eg.total_number_of_nodes(), eg.number_of_classes(), eg.total_size());
-        println!("  Rebuilds: {}, {:.2} per iter", rebuilds, (rebuilds as f64) / (iters as f64));
         println!("  Total time: {}", total_time);
         println!("    Search:  ({:.2}) {}", search_time / total_time, search_time);
         println!("    Apply:   ({:.2}) {}", apply_time / total_time, apply_time);
@@ -529,7 +524,6 @@ pub fn new(analysis: N) -> Self {
             search_time,
             apply_time,
             rebuild_time,
-            n_rebuilds,
             data: IterData::make(&self),
             total_time: start_time.elapsed().as_secs_f64(),
             stop_reason: None,

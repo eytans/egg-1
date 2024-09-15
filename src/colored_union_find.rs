@@ -1,5 +1,7 @@
 #[allow(unused_imports)]
 use std::borrow::BorrowMut;
+#[allow(unused_imports)]
+use std::cell::Cell;
 use std::fmt::Debug;
 #[allow(unused_imports)]
 use std::sync::atomic::{AtomicU32, Ordering};

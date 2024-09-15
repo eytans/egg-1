@@ -26,6 +26,7 @@ pub use crate::colors::{Color, ColorId};
 use itertools::Itertools;
 use multimap::MultiMap;
 use serde::{Deserialize, Serialize};
+use crate::util::UniqueQueue;
 
 /** A data structure to keep track of equalities between expressions.
 
@@ -196,8 +197,13 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     pub(crate) memo: IndexMap<L, Id>,
     unionfind: UnionFind,
     classes: SparseVec<EClass<L, N::Data>>,
+    /// Nodes which need to be processed for rebuilding. The `Id` is the `Id` of the enode,
+    /// not the canonical id of the eclass.
     dirty_unions: Vec<Id>,
-    repairs_since_rebuild: usize,
+    // TODO: Make use of htis and make analysis work here
+    analysis_pending: UniqueQueue<Id>,
+    
+    
     pub(crate) classes_by_op: BTreeMap<OpId, IndexSet<Id>>,
 
     /// To be used as a mechanism for case splitting.
@@ -284,7 +290,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             unionfind: uf,
             classes,
             dirty_unions: vec![],
-            repairs_since_rebuild: 0,
+            analysis_pending: Default::default(),
             classes_by_op: Default::default(),
             #[cfg(feature = "colored")]
             colors: vec![],
@@ -338,8 +344,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             colors: Default::default(),
             base_colors: Default::default(),
             dirty_unions: Default::default(),
+            analysis_pending: Default::default(),
             classes_by_op: Default::default(),
-            repairs_since_rebuild: 0,
             colored_memo: Default::default(),
             colored_equivalences: Default::default(),
             vacuity_ops: Default::default(),
@@ -719,6 +725,8 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             colord_changed_parents: Default::default(),
         });
 
+        self.dirty_unions.push(id);
+
         assert_eq!(self.classes.len(), usize::from(id));
         self.classes.push(Some(class));
         id
@@ -790,8 +798,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             to.extend(from);
         }
 
-        let to = self.unionfind.union(id1, id2);
-        let from= if to == id1 { id2 } else { id1 };
+        let (to, from) = self.unionfind.union(id1, id2);
         let changed = to != from;
         tassert!(to == self.find(id1));
         tassert!(to == self.find(id2));
@@ -854,21 +861,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// Both results are canonical.
     pub fn union(&mut self, id1: Id, id2: Id) -> (Id, bool) {
         let union = self.union_impl(id1, id2);
-        if union.1 && cfg!(feature = "upward-merging") {
-            // let merged = self.process_unions().iter()
-            //     // .filter(|&tup| tup.2.is_none())
-            //     .map(|(id1, id2, color)| (*id1, *id2)).collect_vec();
-            let _merged = self.process_unions();
-            if cfg!(feature = "colored") {
-                if !self.colors.is_empty() {
-                    self.process_colored_unions();
-                    assert!(
-                        false,
-                        "Need to clean colors returned by process_colored_unions"
-                    );
-                }
-            }
-        }
         self.memo_classes_agree();
         union
     }
@@ -1133,7 +1125,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             assert!(!todo.is_empty());
 
             for id in todo {
-                self.repairs_since_rebuild += 1;
                 for (n, p_id) in std::mem::take(&mut self[id].changed_parents) {
                     if let Some(m_id) = self.memo.remove(&n) {
                         // We might have already unioned these two, so we need to check
@@ -1259,7 +1250,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     /// assert_eq!(egraph.number_of_classes(), 3);
     /// assert_eq!(egraph.find(ax), egraph.find(ay));
     /// ```
-    pub fn rebuild(&mut self) -> usize {
+    pub fn rebuild(&mut self) {
         let old_hc_size = self.memo.len();
         let old_n_eclasses = self.number_of_classes();
 
@@ -1286,7 +1277,6 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
         ).collect();
         self.colored_equivalences = new_colored_equives;
 
-        let n_unions = std::mem::take(&mut self.repairs_since_rebuild);
         let trimmed_nodes = self.rebuild_classes();
         self.memo_all_canonized();
         self.memo_black_canonized();
@@ -1296,7 +1286,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
                 "REBUILT! in {}.{:03}s\n",
                 "  Old: hc size {}, eclasses: {}\n",
                 "  New: hc size {}, eclasses: {}\n",
-                "  unions: {}, trimmed nodes: {}"
+                "  trimmed nodes: {}"
             ),
             elapsed.as_secs(),
             elapsed.subsec_millis(),
@@ -1304,16 +1294,12 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             old_n_eclasses,
             self.memo.len(),
             self.number_of_classes(),
-            n_unions,
             trimmed_nodes,
         );
 
         dassert!(self.no_two_colored_classes_in_ec());
         assert!(self.dirty_unions.is_empty());
         iassert!(self.colors().all(|c| !c.is_dirty()));
-
-        // debug_assert!(self.check_memo());
-        n_unions
     }
 
     pub(crate) fn colored_update_node(&self, color: ColorId, e: &mut L) {
