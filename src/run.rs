@@ -428,10 +428,17 @@ pub fn new(analysis: N) -> Self {
 
         let hook_time = Instant::now();
         let mut hooks = std::mem::take(&mut self.hooks);
+        let mut error = None;
         for hook in &mut hooks {
-            hook(self).map_err(StopReason::Other)?
+            if let Err(r) = hook(self).map_err(StopReason::Other) {
+                error = Some(r);
+                break;
+            }
         }
         self.hooks = hooks;
+        if let Some(e) = error {
+            return Err(e);
+        }
         let hook_time = hook_time.elapsed().as_secs_f64();
 
         let egraph_nodes_after_hooks = self.egraph.total_size();
