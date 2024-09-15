@@ -108,7 +108,7 @@ impl std::fmt::Display for ColorId {
     }
 }
 
-pub(crate) use unionfind::UnionFind;
+pub(crate) use unionfind::SimpleUnionFind;
 
 pub use {
     dot::Dot,

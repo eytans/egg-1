@@ -15,13 +15,13 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Alot of missing api from main is here and we now support parallel ematching">
+    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Fixed uf to work for my egg version">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/colored_union_find.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/colored_union_find.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/colors.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/colors.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/egraph.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/egraph.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ser.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/ser.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/unionfind.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/unionfind.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/util.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/util.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -98,7 +98,10 @@
   </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
+    "Cargo.Test egraph::tests::black_merge_color_congruent.executor": "Run",
+    "Cargo.Test egraph::tests::color_new_child_unions.executor": "Run",
     "Cargo.Test egraph::tests::test_memo_nodes_agree.executor": "Run",
+    "Cargo.Test lambda.executor": "Run",
     "Cargo.Test macros.executor": "Run",
     "Cargo.test.executor": "Run",
     "RunOnceActivity.OpenProjectViewOnStart": "true",
@@ -123,17 +126,34 @@
   <component name="RsExternalLinterProjectSettings">
     <option name="runOnTheFly" value="true" />
   </component>
-  <component name="RunManager" selected="Cargo.test">
+  <component name="RunManager" selected="Cargo.Test egraph::tests::color_new_child_unions">
     <configuration default="true" type="CLionExternalRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true">
       <method v="2">
         <option name="CLION.EXTERNAL.BUILD" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test egraph::tests::colored_drop_take" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --release --package egg --lib egraph::tests::colored_drop_take -- --exact" />
+    <configuration name="Test egraph::tests::black_merge_color_congruent" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib egraph::tests::black_merge_color_congruent -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <envs />
       <option name="emulateTerminal" value="false" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test egraph::tests::color_new_child_unions" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --lib egraph::tests::color_new_child_unions -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <envs />
+      <option name="emulateTerminal" value="true" />
       <option name="channel" value="DEFAULT" />
       <option name="requiredFeatures" value="true" />
       <option name="allFeatures" value="false" />
@@ -163,25 +183,8 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test egraph::tests::test_plus_reduction_in_hierarchy" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package egg --lib egraph::tests::test_plus_reduction_in_hierarchy -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
-      <envs />
-      <option name="emulateTerminal" value="false" />
-      <option name="channel" value="DEFAULT" />
-      <option name="requiredFeatures" value="true" />
-      <option name="allFeatures" value="false" />
-      <option name="withSudo" value="false" />
-      <option name="buildTarget" value="REMOTE" />
-      <option name="backtrace" value="SHORT" />
-      <option name="isRedirectInput" value="false" />
-      <option name="redirectInputPath" value="" />
-      <method v="2">
-        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
-      </method>
-    </configuration>
-    <configuration name="Test macros" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package egg --lib macros" />
+    <configuration name="Test lambda" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package egg --test lambda &quot;&quot;" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <envs />
       <option name="emulateTerminal" value="false" />
@@ -215,19 +218,19 @@
       </method>
     </configuration>
     <list>
+      <item itemvalue="Cargo.Test egraph::tests::black_merge_color_congruent" />
+      <item itemvalue="Cargo.Test egraph::tests::color_new_child_unions" />
       <item itemvalue="Cargo.Test egraph::tests::test_memo_nodes_agree" />
-      <item itemvalue="Cargo.Test macros" />
+      <item itemvalue="Cargo.Test lambda" />
       <item itemvalue="Cargo.test" />
-      <item itemvalue="Cargo.Test egraph::tests::colored_drop_take" />
-      <item itemvalue="Cargo.Test egraph::tests::test_plus_reduction_in_hierarchy" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test egraph::tests::color_new_child_unions" />
         <item itemvalue="Cargo.test" />
+        <item itemvalue="Cargo.Test egraph::tests::black_merge_color_congruent" />
+        <item itemvalue="Cargo.Test lambda" />
         <item itemvalue="Cargo.Test egraph::tests::test_memo_nodes_agree" />
-        <item itemvalue="Cargo.Test macros" />
-        <item itemvalue="Cargo.Test egraph::tests::colored_drop_take" />
-        <item itemvalue="Cargo.Test egraph::tests::test_plus_reduction_in_hierarchy" />
       </list>
     </recent_temporary>
   </component>
@@ -512,7 +515,15 @@
       <option name="project" value="LOCAL" />
       <updated>1726386427488</updated>
     </task>
-    <option name="localTasksCounter" value="35" />
+    <task id="LOCAL-00035" summary="Fixed uf to work for my egg version">
+      <option name="closed" value="true" />
+      <created>1726396537107</created>
+      <option name="number" value="00035" />
+      <option name="presentableId" value="LOCAL-00035" />
+      <option name="project" value="LOCAL" />
+      <updated>1726396537107</updated>
+    </task>
+    <option name="localTasksCounter" value="36" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -545,7 +556,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="colored_add_expr should actually return black id" />
     <MESSAGE value="Bug fix in colored_equivalence update. Added invariant" />
     <MESSAGE value="Added uniquify for multipattern results" />
     <MESSAGE value="Fixed multipattern to string and cleanup" />
@@ -570,7 +580,8 @@
     <MESSAGE value="Some extra fixes after merge" />
     <MESSAGE value="Finally updated doc" />
     <MESSAGE value="Alot of missing api from main is here and we now support parallel ematching" />
-    <option name="LAST_COMMIT_MESSAGE" value="Alot of missing api from main is here and we now support parallel ematching" />
+    <MESSAGE value="Fixed uf to work for my egg version" />
+    <option name="LAST_COMMIT_MESSAGE" value="Fixed uf to work for my egg version" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -582,8 +593,18 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
           <url>file://$PROJECT_DIR$/src/egraph.rs</url>
-          <line>2904</line>
+          <line>2879</line>
           <option name="timeStamp" value="79" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
+          <url>file://$PROJECT_DIR$/src/egraph.rs</url>
+          <line>2268</line>
+          <option name="timeStamp" value="83" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
+          <url>file://$PROJECT_DIR$/src/colors.rs</url>
+          <line>200</line>
+          <option name="timeStamp" value="84" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

@@ -7,6 +7,7 @@ use itertools::Itertools;
 use std::fmt::Formatter;
 use indexmap::{IndexMap, IndexSet};
 use crate::colored_union_find::ColoredUnionFind;
+use crate::unionfind::{SimpleUnionFind, UnionFindWrapper};
 
 global_counter!(COLOR_IDS, usize, usize::default());
 
@@ -19,7 +20,7 @@ pub struct Color<L: Language, N: Analysis<L>> {
     pub(crate) equality_classes: IndexMap<Id, IndexSet<Id>>,
     /// Used to implement a union find. Opposite function of `equality_classes`.
     /// Supports removal of elements when they are not needed.
-    union_find: ColoredUnionFind,
+    union_find: UnionFindWrapper<(), Id>,
     /// Used to determine for each a colored equality class what is the black colored class.
     /// Relevant when a colored edge was added.
     pub(crate) black_colored_classes: IndexMap<Id, Id>,
@@ -74,7 +75,7 @@ impl<L: Language, N: Analysis<L>> Color<L, N> {
     pub(crate) fn verify_uf_minimal(&self, egraph: &EGraph<L, N>) {
         let mut parents: IndexMap<Id, usize> = IndexMap::default();
         for (k, _v) in self.union_find.iter() {
-            let v = self.find(egraph, k);
+            let v = self.find(egraph, *k);
             *parents.entry(v).or_default() += 1;
         }
         for (k, v) in parents {
@@ -153,8 +154,8 @@ impl<L: Language, N: Analysis<L>> Color<L, N> {
             // This part only needs to happen if one of the two is in the union find.
             let orig_to = orig_to.unwrap_or(base_to);
             let orig_from = orig_from.unwrap_or(base_from);
-            self.union_find.insert(orig_to);
-            self.union_find.insert(orig_from);
+            self.union_find.insert(orig_to, ());
+            self.union_find.insert(orig_from, ());
             self.union_find.union(&orig_to, &orig_from).unwrap()
         } else {
             (base_to, base_from)
@@ -195,8 +196,8 @@ impl<L: Language, N: Analysis<L>> Color<L, N> {
     // Assumed id1 and id2 are parent canonized
     pub(crate) fn inner_colored_union(&mut self, id1: Id, id2: Id) -> (Id, Id, bool, Vec<(Id, Id)>) {
         // Parent classes will be updated in black union to come.
-        self.union_find.insert(id1);
-        self.union_find.insert(id2);
+        self.union_find.insert(id1, ());
+        self.union_find.insert(id2, ());
         let (to, from) = self.union_find.union(&id1, &id2).unwrap();
         let changed = to != from;
         let g_todo = self.update_black_classes(to, from).into_iter().collect_vec();

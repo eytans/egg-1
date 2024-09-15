@@ -2,7 +2,7 @@ use std::io::{Read, Write, BufReader, Result, BufRead};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use crate::{EGraph, Analysis, Language, Id, EClass, SymbolLang, ColorId};
-use crate::unionfind::UnionFind;
+use crate::unionfind::SimpleUnionFind;
 
 /// A trait for EGraphs that can be serialized.
 pub trait Serialization {
@@ -149,7 +149,7 @@ impl Deserialization for EGraph<SymbolLang, ()> {
 
 #[derive(Debug, Clone, Default)]
 struct EGraphBuilder {
-    unionfind: UnionFind,
+    unionfind: SimpleUnionFind,
     classes: Vec<Option<Box<EClass<SymbolLang, ()>>>>,
     memo: IndexMap<SymbolLang, Id>,
     _palette: ColorPalette,

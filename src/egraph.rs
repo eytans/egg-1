@@ -19,13 +19,14 @@ use crate::Pattern;
 use crate::RecExpr;
 use crate::Searcher;
 use crate::Subst;
-use crate::UnionFind;
+use crate::SimpleUnionFind;
 use crate::{OpId, SymbolLang};
 
 pub use crate::colors::{Color, ColorId};
 use itertools::Itertools;
 use multimap::MultiMap;
 use serde::{Deserialize, Serialize};
+use crate::unionfind::UnionFind;
 use crate::util::UniqueQueue;
 
 /** A data structure to keep track of equalities between expressions.
@@ -195,7 +196,7 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     /// The `Analysis` given when creating this `EGraph`.
     pub analysis: N,
     pub(crate) memo: IndexMap<L, Id>,
-    unionfind: UnionFind,
+    unionfind: SimpleUnionFind,
     classes: SparseVec<EClass<L, N::Data>>,
     /// Nodes which need to be processed for rebuilding. The `Id` is the `Id` of the enode,
     /// not the canonical id of the eclass.
@@ -248,7 +249,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     pub(crate) fn inner_new(
-        uf: UnionFind,
+        uf: SimpleUnionFind,
         classes: Vec<Option<Box<EClass<SymbolLang, ()>>>>,
         memo: IndexMap<SymbolLang, Id>,
     ) -> EGraph<SymbolLang, ()> {
