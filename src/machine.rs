@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeSet;
 use std::rc::Rc;
 use crate::*;
@@ -6,10 +6,21 @@ use indexmap::{IndexMap, IndexSet};
 use invariants::dassert;
 use itertools::{Either, Itertools};
 use itertools::Either::{Right, Left};
+use lazy_static::lazy_static;
 use log::trace;
 use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
 use crate::expression_ops::{IntoTree, RecExpSlice, Tree};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+
+lazy_static! {
+    static ref BIND_LIMIT: AtomicUsize = AtomicUsize::new(5000);
+}
+
+pub fn set_global_bind_limit(limit: usize) {
+    BIND_LIMIT.store(limit, Ordering::Relaxed);
+}
 
 type EarlyStopFn<'a, L, N> = Rc<RefCell<dyn FnMut(&Machine<'a, L, N>) -> bool>>;
 
@@ -26,6 +37,7 @@ struct Machine<'a, L: Language, N: Analysis<L>> {
     add_colors: bool,
     stack: Vec<MachineContext>,
     early_stop: Option<EarlyStopFn<'a, L, N>>,
+    bind_limit: usize,
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -134,6 +146,7 @@ impl<'a, L: Language, A: Analysis<L>> Machine<'a, L, A> {
             add_colors,
             stack,
             early_stop: None,
+            bind_limit: BIND_LIMIT.load(Ordering::Relaxed),
         }
     }
 
@@ -166,6 +179,11 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
             self.early_stop = early;
             let mut index = current_state.instruction_index;
             while index < instructions.len() {
+                if self.bind_limit <= 0 {
+                    self.stack.clear();
+                    trace!("Breaking due to bind limit");
+                    break;
+                }
                 let instruction = &instructions[index];
                 match instruction {
                     Instruction::Bind { eclass, out, node } => {
@@ -177,6 +195,7 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
                             let out = *out;
                             trace!("Pusing to stack color: {:?}, truncate to {} and push {}", self.color, out.0, matched.children().iter().join(", "));
                             let to_push = SmallVec::from_slice(matched.children());
+                            self.bind_limit -= 1;
                             self.stack.push(MachineContext::new(index + 1, self.color, out.0 as usize, to_push));
                         });
                         break;

@@ -124,6 +124,7 @@ pub use {
     subst::{Subst, Var},
     util::*,
     eggstentions::*,
+    machine::set_global_bind_limit,
 };
 
 #[cfg(test)]

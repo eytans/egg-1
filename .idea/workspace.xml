@@ -15,13 +15,10 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Fixed uf to work for my egg version">
+    <list default="true" id="33735c99-6d26-4385-a3bd-d62c1c9b0eae" name="Changes" comment="Added some support for case split conclusions in rebuild">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/colors.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/colors.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/egraph.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/egraph.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ser.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/ser.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/unionfind.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/unionfind.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/machine.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/machine.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -126,7 +123,7 @@
   <component name="RsExternalLinterProjectSettings">
     <option name="runOnTheFly" value="true" />
   </component>
-  <component name="RunManager" selected="Cargo.Test egraph::tests::color_new_child_unions">
+  <component name="RunManager" selected="Cargo.test">
     <configuration default="true" type="CLionExternalRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true">
       <method v="2">
         <option name="CLION.EXTERNAL.BUILD" enabled="true" />
@@ -226,8 +223,8 @@
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Cargo.Test egraph::tests::color_new_child_unions" />
         <item itemvalue="Cargo.test" />
+        <item itemvalue="Cargo.Test egraph::tests::color_new_child_unions" />
         <item itemvalue="Cargo.Test egraph::tests::black_merge_color_congruent" />
         <item itemvalue="Cargo.Test lambda" />
         <item itemvalue="Cargo.Test egraph::tests::test_memo_nodes_agree" />
@@ -523,7 +520,31 @@
       <option name="project" value="LOCAL" />
       <updated>1726396537107</updated>
     </task>
-    <option name="localTasksCounter" value="36" />
+    <task id="LOCAL-00036" summary="A better colored union find for parallel runs">
+      <option name="closed" value="true" />
+      <created>1726406429466</created>
+      <option name="number" value="00036" />
+      <option name="presentableId" value="LOCAL-00036" />
+      <option name="project" value="LOCAL" />
+      <updated>1726406429466</updated>
+    </task>
+    <task id="LOCAL-00037" summary="Dont drop hooks">
+      <option name="closed" value="true" />
+      <created>1726407012334</created>
+      <option name="number" value="00037" />
+      <option name="presentableId" value="LOCAL-00037" />
+      <option name="project" value="LOCAL" />
+      <updated>1726407012334</updated>
+    </task>
+    <task id="LOCAL-00038" summary="Added some support for case split conclusions in rebuild">
+      <option name="closed" value="true" />
+      <created>1726416490370</created>
+      <option name="number" value="00038" />
+      <option name="presentableId" value="LOCAL-00038" />
+      <option name="project" value="LOCAL" />
+      <updated>1726416490370</updated>
+    </task>
+    <option name="localTasksCounter" value="39" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -556,9 +577,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Bug fix in colored_equivalence update. Added invariant" />
-    <MESSAGE value="Added uniquify for multipattern results" />
-    <MESSAGE value="Fixed multipattern to string and cleanup" />
     <MESSAGE value="Removed DiffSearcher" />
     <MESSAGE value="Machine is now a user stack instead of recursive machine!" />
     <MESSAGE value="Fixed bug in colored equality tracking. Insert was missing on black union" />
@@ -581,7 +599,10 @@
     <MESSAGE value="Finally updated doc" />
     <MESSAGE value="Alot of missing api from main is here and we now support parallel ematching" />
     <MESSAGE value="Fixed uf to work for my egg version" />
-    <option name="LAST_COMMIT_MESSAGE" value="Fixed uf to work for my egg version" />
+    <MESSAGE value="A better colored union find for parallel runs" />
+    <MESSAGE value="Dont drop hooks" />
+    <MESSAGE value="Added some support for case split conclusions in rebuild" />
+    <option name="LAST_COMMIT_MESSAGE" value="Added some support for case split conclusions in rebuild" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -593,13 +614,8 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
           <url>file://$PROJECT_DIR$/src/egraph.rs</url>
-          <line>2879</line>
+          <line>2939</line>
           <option name="timeStamp" value="79" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
-          <url>file://$PROJECT_DIR$/src/egraph.rs</url>
-          <line>2268</line>
-          <option name="timeStamp" value="83" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
           <url>file://$PROJECT_DIR$/src/colors.rs</url>
