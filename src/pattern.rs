@@ -3,7 +3,7 @@ use log::*;
 use std::borrow::Cow;
 use std::fmt::{self, Display};
 use std::{convert::TryFrom, str::FromStr};
-
+use std::sync::Arc;
 use thiserror::Error;
 
 use crate::*;
@@ -64,7 +64,7 @@ use crate::*;
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Pattern<L> {
     /// The actual pattern as a [`RecExpr`]
-    pub ast: PatternAst<L>,
+    pub ast: Arc<PatternAst<L>>,
     program: machine::Program<L>,
 }
 
@@ -105,13 +105,13 @@ impl<L: Language> Pattern<L> {
     pub fn new(ast: PatternAst<L>) -> Self {
         let ast = ast.compact();
         let program = machine::Program::compile_from_pat(&ast);
-        Pattern { ast, program }
+        Pattern { ast: Arc::new(ast), program }
     }
 
     /// Returns a list of the [`Var`]s in this pattern.
     pub fn vars(&self) -> Vec<Var> {
         let mut vars = vec![];
-        for n in self.ast.as_ref() {
+        for n in self.ast.as_ref().as_ref() {
             if let ENodeOrVar::Var(v) = n {
                 if !vars.contains(v) {
                     vars.push(*v)
@@ -246,7 +246,7 @@ impl<L: Language> From<PatternAst<L>> for Pattern<L> {
 impl<L: Language> TryFrom<Pattern<L>> for RecExpr<L> {
     type Error = Var;
     fn try_from(pat: Pattern<L>) -> Result<Self, Self::Error> {
-        let nodes = pat.ast.as_ref().iter().cloned();
+        let nodes = pat.ast.as_ref().as_ref().iter().cloned();
         let ns: Result<Vec<_>, _> = nodes
             .map(|n| match n {
                 ENodeOrVar::ENode(n) => Ok(n),
@@ -270,14 +270,14 @@ impl<L: Language + Display> Display for Pattern<L> {
 /// tells you how many eclasses something was matched in, _not_ how
 /// many matches were found total.
 ///
-#[derive(Debug)]
-pub struct SearchMatches<'a, L: Language> {
+#[derive(Debug, Clone)]
+pub struct SearchMatches<L: Language> {
     /// The eclass id that these matches were found in.
     pub eclass: Id,
     /// The substitutions for each match.
     pub substs: Vec<Subst>,
     /// Optionally, an ast for the matches used in proof production.
-    pub ast: Option<Cow<'a, PatternAst<L>>>,
+    pub ast: Option<Arc<PatternAst<L>>>,
 }
 
 impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
@@ -286,7 +286,7 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
     }
 
     fn search_with_limit(&self, egraph: &EGraph<L, A>, limit: usize) -> Vec<SearchMatches<L>> {
-        match self.ast.as_ref().last().unwrap() {
+        match self.ast.as_ref().as_ref().last().unwrap() {
             ENodeOrVar::ENode(e) => {
                 let key = e.discriminant();
                 match egraph.classes_by_op.get(&key) {
@@ -318,7 +318,7 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
         if substs.is_empty() {
             None
         } else {
-            let ast = Some(Cow::Borrowed(&self.ast));
+            let ast = Some(self.ast.clone());
             Some(SearchMatches {
                 eclass,
                 substs,
@@ -348,16 +348,16 @@ where
         rule_name: Symbol,
     ) -> Vec<Id> {
         let mut added = vec![];
-        let ast = self.ast.as_ref();
+        let ast = self.ast.as_ref().as_ref();
         let mut id_buf = vec![0.into(); ast.len()];
         for mat in matches {
-            let sast = mat.ast.as_ref().map(|cow| cow.as_ref());
+            let sast = mat.ast.as_ref();
             for subst in &mat.substs {
                 let did_something;
                 let id;
                 if egraph.are_explanations_enabled() {
                     let (id_temp, did_something_temp) =
-                        egraph.union_instantiations(sast.unwrap(), &self.ast, subst, rule_name);
+                        egraph.union_instantiations(sast.unwrap(), self.ast.as_ref(), subst, rule_name);
                     did_something = did_something_temp;
                     id = id_temp;
                 } else {
@@ -378,10 +378,10 @@ where
         egraph: &mut EGraph<L, A>,
         eclass: Id,
         subst: &Subst,
-        searcher_ast: Option<&PatternAst<L>>,
+        searcher_ast: Option<&Arc<PatternAst<L>>>,
         rule_name: Symbol,
     ) -> Vec<Id> {
-        let ast = self.ast.as_ref();
+        let ast = self.ast.as_ref().as_ref();
         let mut id_buf = vec![0.into(); ast.len()];
         let id = apply_pat(&mut id_buf, ast, egraph, subst);
 

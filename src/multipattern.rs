@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use std::sync::Arc;
 use thiserror::Error;
 
 use crate::*;
@@ -152,7 +153,7 @@ impl<L: Language, A: Analysis<L>> Applier<L, A> for MultiPattern<L> {
         _egraph: &mut EGraph<L, A>,
         _eclass: Id,
         _subst: &Subst,
-        _searcher_ast: Option<&PatternAst<L>>,
+        _searcher_ast: Option<&Arc<PatternAst<L>>>,
         _rule_name: Symbol,
     ) -> Vec<Id> {
         panic!("Multipatterns do not support apply_one")

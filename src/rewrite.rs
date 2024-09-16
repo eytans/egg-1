@@ -128,7 +128,7 @@ pub(crate) fn search_eclasses_with_limit<'a, I, S, L, N>(
     egraph: &EGraph<L, N>,
     eclasses: I,
     mut limit: usize,
-) -> Vec<SearchMatches<'a, L>>
+) -> Vec<SearchMatches<L>>
 where
     L: Language,
     N: Analysis<L>,
@@ -339,7 +339,7 @@ where
         let mut added = vec![];
         for mat in matches {
             let ast = if egraph.are_explanations_enabled() {
-                mat.ast.as_ref().map(|cow| cow.as_ref())
+                mat.ast.as_ref()
             } else {
                 None
             };
@@ -373,7 +373,7 @@ where
         egraph: &mut EGraph<L, N>,
         eclass: Id,
         subst: &Subst,
-        searcher_ast: Option<&PatternAst<L>>,
+        searcher_ast: Option<&Arc::<PatternAst<L>>>,
         rule_name: Symbol,
     ) -> Vec<Id>;
 
@@ -427,7 +427,7 @@ where
         egraph: &mut EGraph<L, N>,
         eclass: Id,
         subst: &Subst,
-        searcher_ast: Option<&PatternAst<L>>,
+        searcher_ast: Option<&Arc<PatternAst<L>>>,
         rule_name: Symbol,
     ) -> Vec<Id> {
         if self.condition.check(egraph, eclass, subst) {
@@ -524,10 +524,10 @@ where
     N: Analysis<L>,
 {
     fn check(&self, egraph: &mut EGraph<L, N>, _eclass: Id, subst: &Subst) -> bool {
-        let mut id_buf_1 = vec![0.into(); self.p1.ast.as_ref().len()];
-        let mut id_buf_2 = vec![0.into(); self.p2.ast.as_ref().len()];
-        let a1 = apply_pat(&mut id_buf_1, self.p1.ast.as_ref(), egraph, subst);
-        let a2 = apply_pat(&mut id_buf_2, self.p2.ast.as_ref(), egraph, subst);
+        let mut id_buf_1 = vec![0.into(); self.p1.ast.as_ref().as_ref().len()];
+        let mut id_buf_2 = vec![0.into(); self.p2.ast.as_ref().as_ref().len()];
+        let a1 = apply_pat(&mut id_buf_1, self.p1.ast.as_ref().as_ref(), egraph, subst);
+        let a2 = apply_pat(&mut id_buf_2, self.p2.ast.as_ref().as_ref(), egraph, subst);
         a1 == a2
     }
 
@@ -543,6 +543,7 @@ mod tests {
 
     use crate::{SymbolLang as S, *};
     use std::str::FromStr;
+    use std::sync::Arc;
 
     type EGraph = crate::EGraph<S, ()>;
 
@@ -609,7 +610,7 @@ mod tests {
                 egraph: &mut EGraph,
                 eclass: Id,
                 subst: &Subst,
-                searcher_ast: Option<&PatternAst<SymbolLang>>,
+                searcher_ast: Option<&Arc<PatternAst<SymbolLang>>>,
                 rule_name: Symbol,
             ) -> Vec<Id> {
                 let a: Var = "?a".parse().unwrap();

@@ -155,10 +155,10 @@ where
 
     eprintln!("{} patterns", patterns.len());
 
-    patterns.retain(|p| p.ast.as_ref().len() > 1);
+    patterns.retain(|p| p.ast.as_ref().as_ref().len() > 1);
     patterns.sort_by_key(|p| p.to_string());
     patterns.dedup();
-    patterns.sort_by_key(|p| p.ast.as_ref().len());
+    patterns.sort_by_key(|p| p.ast.as_ref().as_ref().len());
 
     let iter_limit = env_var("EGG_ITER_LIMIT").unwrap_or(1);
     let node_limit = env_var("EGG_NODE_LIMIT").unwrap_or(1_000_000);
