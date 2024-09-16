@@ -15,7 +15,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
 lazy_static! {
-    static ref BIND_LIMIT: AtomicUsize = AtomicUsize::new(5000);
+    static ref BIND_LIMIT: AtomicUsize = AtomicUsize::new(1000);
 }
 
 pub fn set_global_bind_limit(limit: usize) {
@@ -164,6 +164,11 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
         let instructions = self.instructions;
         let add_colors = self.add_colors;
         while !self.stack.is_empty() {
+            if self.bind_limit <= 0 {
+                self.stack.clear();
+                trace!("Breaking due to bind limit");
+                break;
+            }
             let mut current_state = self.stack.pop().unwrap();
             trace!("Instruction index {} - Popped state with color {:?}", current_state.instruction_index, current_state.color);
             self.reg.truncate(current_state.truncate);
@@ -179,11 +184,6 @@ impl<'a, L: Language, A: Analysis<L>> Iterator for Machine<'a, L, A> {
             self.early_stop = early;
             let mut index = current_state.instruction_index;
             while index < instructions.len() {
-                if self.bind_limit <= 0 {
-                    self.stack.clear();
-                    trace!("Breaking due to bind limit");
-                    break;
-                }
                 let instruction = &instructions[index];
                 match instruction {
                     Instruction::Bind { eclass, out, node } => {
