@@ -1095,7 +1095,7 @@ impl<L, N> RewriteScheduler<L, N> for ParallelBackoffScheduler where
 /// A wrapper for a ['RewriteScheduler'] that runs rewrite_search in parallel
 /// but also manages multiple egraphs at once such that conclusions are collected.
 #[cfg(feature = "parallel")]
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ParallelBackoffSchedulerWithCases<L, N>
 where
     L: Language,
@@ -1109,7 +1109,17 @@ where
     case_matches: BTreeMap<String, Vec<Vec<Vec<SearchMatches<L>>>>>,
 }
 
-impl<'a, L, N> crate::ParallelBackoffSchedulerWithCases<L, N>
+impl<L, N> Default for ParallelBackoffSchedulerWithCases<L, N>
+where
+    L: Language,
+    N: Analysis<L>,
+{
+    fn default() -> Self {
+        ParallelBackoffSchedulerWithCases::new(Default::default(), vec![])
+    }
+}
+
+impl<L, N> crate::ParallelBackoffSchedulerWithCases<L, N>
 where
     L: Language,
     N: Analysis<L>,
@@ -1239,14 +1249,15 @@ impl<L, N> RewriteScheduler<L, N> for ParallelBackoffSchedulerWithCases<L, N> wh
     }
 
     fn apply_rewrites(&mut self, egraph: &mut EGraph<L, N>, rules: &[&Rewrite<L, N>], i: usize, matches: Vec<Vec<SearchMatches<L>>>, mut applied: &mut IndexMap<GlobalSymbol, usize>) {
-        RewriteScheduler::apply_rewrites(self, egraph, rules, i, matches, applied);
+        let mut s = SimpleScheduler {};
+        s.apply_rewrites(egraph, rules, i, matches, applied);
         let mut cases = std::mem::take(&mut self.cases);
         let mut case_matches = std::mem::take(&mut self.case_matches);
         for (r, cases) in &mut cases {
             for case in cases {
                 let mut applied = IndexMap::default();
                 let matches = case_matches.get_mut(r).unwrap().remove(0);
-                RewriteScheduler::apply_rewrites(self, case, rules, i, matches, &mut applied);
+                s.apply_rewrites(case, rules, i, matches, &mut applied);
                 case.rebuild();
             }
         }
