@@ -4,6 +4,8 @@ use log::debug;
 
 type Result = result::Result<(), ()>;
 
+pub(crate) const BIND_LIMIT: usize = 1000;
+
 struct Machine {
     reg: Vec<Id>,
     // a buffer to re-use for lookups

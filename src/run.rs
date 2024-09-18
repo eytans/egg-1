@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
+use derive_new::new;
 use log::*;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -1008,6 +1009,7 @@ where L: Language + Send + Sync,
 
 /// A wrapper for a ['RewriteScheduler'] that runs rewrite_search in parallel.
 #[cfg(feature = "parallel")]
+#[derive(new)]
 pub struct ParallelBackoffScheduler {
     scheduler: BackoffScheduler,
     thread_limit: usize,

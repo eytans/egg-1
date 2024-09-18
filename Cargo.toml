@@ -23,6 +23,7 @@ symbolic_expressions = "5.0.3"
 thiserror = "1.0.31"
 num-bigint = "0.4"
 num-traits = "0.2"
+derive-new = "0.7.0"
 
 # for the lp feature
 coin_cbc = { version = "0.1.6", optional = true }
