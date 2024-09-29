@@ -195,6 +195,7 @@ where
         // define all the nodes, clustered by eclass
         for class in self.egraph.classes() {
             writeln!(f, "  subgraph cluster_{} {{", class.id)?;
+            writeln!(f, "    label={}", class.id)?;
             writeln!(f, "    style=dotted")?;
             for (i, node) in class.iter().enumerate() {
                 writeln!(f, "    {}.{}[label = \"{}\"]", class.id, i, node)?;
