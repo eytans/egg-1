@@ -45,7 +45,7 @@ impl<L: Language> MultiPattern<L> {
     /// Creates a new multipattern, binding the given patterns to the corresponding variables.
     ///
     /// ```
-    /// use egg::*;
+    /// use easter_egg::*;
     ///
     /// let mut egraph = EGraph::<SymbolLang, ()>::default();
     /// egraph.add_expr(&"(f a a)".parse().unwrap());
@@ -162,12 +162,7 @@ impl<L: Language + 'static, N: Analysis<L>> ToDyn<L, N> for MultiPattern<L> {
 
 impl<L: Language, A: Analysis<L>> Searcher<L, A> for MultiPattern<L> {
     fn search_eclass_with_limit(&self, egraph: &EGraph<L, A>, eclass: Id, limit: usize) -> Option<SearchMatches> {
-        let substs = self.program.colored_run_with_limit(egraph, eclass, None, limit).into_iter().unique().collect_vec();
-        if substs.is_empty() {
-            None
-        } else {
-            Some(SearchMatches::collect_matches(egraph, eclass, substs))
-        }
+        self.program.colored_run_with_limit(egraph, eclass, None, limit)
     }
 
     fn colored_search_eclass(&self, egraph: &EGraph<L, A>, eclass: Id, color: ColorId) -> Option<SearchMatches> {
@@ -176,17 +171,24 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for MultiPattern<L> {
 
     fn colored_search_eclass_with_limit(&self, egraph: &EGraph<L, A>, eclass: Id, color: ColorId, mut limit: usize) -> Option<SearchMatches> {
         let todo = egraph.get_color(color).unwrap().equality_class(egraph, eclass);
-        let mut res = vec![];
-        for id in todo {
-            let substs = self.program.colored_run_with_limit(egraph, id, Some(color), limit);
-            if !substs.is_empty() {
-                limit -= substs.len();
-                res.extend(substs);
+        let matches = todo.into_iter().fold(None, |acc: Option<SearchMatches>, id| {
+            if let Some(new_matches) = self.program.colored_run_with_limit(egraph, id, Some(color), limit) {
+                limit -= new_matches.total_substs();
+                if let Some(acc) = acc {
+                    Some(acc.merge(new_matches))
+                } else {
+                    Some(new_matches)
+                }
+            } else {
+                acc
             }
+        });
+        
+        if let Some(ref matches) = matches {
+            dassert!(matches.matches.values().all(|v| v.iter().all(|s| s.color == Some(color))));
         }
-        let matches = SearchMatches::collect_matches(egraph, eclass, res);
-        dassert!(matches.matches.values().all(|v| v.iter().all(|s| s.color == Some(color))));
-        (!matches.matches.is_empty()).then(|| matches)
+        
+        matches
     }
 
     fn vars(&self) -> Vec<Var> {

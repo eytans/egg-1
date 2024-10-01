@@ -1,4 +1,4 @@
-use egg::{rewrite as rw, *};
+use easter_egg::{rewrite as rw, *};
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,7 @@ define_language! {
 
         "if" = If([Id; 3]),
 
-        Symbol(egg::Symbol),
+        Symbol(easter_egg::Symbol),
     }
 }
 
@@ -34,7 +34,7 @@ impl Lambda {
     }
 }
 
-type EGraph = egg::EGraph<Lambda, LambdaAnalysis>;
+type EGraph = easter_egg::EGraph<Lambda, LambdaAnalysis>;
 
 #[derive(Default, Clone)]
 struct LambdaAnalysis;
@@ -115,7 +115,7 @@ impl Display for IsConstApplier {
 }
 
 impl Applier<Lambda, LambdaAnalysis> for IsConstApplier {
-    fn apply_one(&self, egraph: &mut egg::EGraph<Lambda, LambdaAnalysis>, _eclass: Id, subst: &Subst) -> Vec<Id> {
+    fn apply_one(&self, egraph: &mut easter_egg::EGraph<Lambda, LambdaAnalysis>, _eclass: Id, subst: &Subst) -> Vec<Id> {
         if egraph[subst[self.v]].data.constant.is_some() {
             vec![subst[self.v]]
         } else {
@@ -195,7 +195,7 @@ impl Display for CaptureAvoid {
 }
 
 #[cfg(test)]
-egg::test_fn! {
+easter_egg::test_fn! {
     lambda_under, rules(),
     "(lam x (+ 4
                (app (lam y (var y))
@@ -206,7 +206,7 @@ egg::test_fn! {
     "(lam x 8))",
 }
 
-egg::test_fn! {
+easter_egg::test_fn! {
     lambda_let_simple, rules(),
     "(let x 0
      (let y 1
@@ -218,19 +218,19 @@ egg::test_fn! {
     "1",
 }
 
-egg::test_fn! {
+easter_egg::test_fn! {
     #[should_panic(expected = "Could not prove goal 0")]
     lambda_capture, rules(),
     "(let x 1 (lam x (var x)))" => "(lam x 1)"
 }
 
-egg::test_fn! {
+easter_egg::test_fn! {
     #[should_panic(expected = "Could not prove goal 0")]
     lambda_capture_free, rules(),
     "(let y (+ (var x) (var x)) (lam x (var y)))" => "(lam x (+ (var x) (var x)))"
 }
 
-egg::test_fn! {
+easter_egg::test_fn! {
     #[should_panic(expected = "Could not prove goal 0")]
     lambda_closure_not_seven, rules(),
     "(let five 5
@@ -241,7 +241,7 @@ egg::test_fn! {
     "7"
 }
 
-egg::test_fn! {
+easter_egg::test_fn! {
     lambda_compose, rules(),
     "(let compose (lam f (lam g (lam x (app (var f)
                                        (app (var g) (var x))))))
@@ -254,12 +254,12 @@ egg::test_fn! {
     "(lam ?x (+ (var ?x) 2))"
 }
 
-egg::test_fn! {
+easter_egg::test_fn! {
     lambda_if_simple, rules(),
     "(if (== 1 1) 7 9)" => "7"
 }
 
-egg::test_fn! {
+easter_egg::test_fn! {
     lambda_compose_many, rules(),
     "(let compose (lam f (lam g (lam x (app (var f)
                                        (app (var g) (var x))))))
@@ -275,7 +275,7 @@ egg::test_fn! {
     "(lam ?x (+ (var ?x) 7))"
 }
 
-egg::test_fn! {
+easter_egg::test_fn! {
     #[cfg_attr(feature = "upward-merging", ignore)]
     #[ignore]
     lambda_function_repeat, rules(),
@@ -300,7 +300,7 @@ egg::test_fn! {
     "(lam ?x (+ (var ?x) 2))"
 }
 
-egg::test_fn! {
+easter_egg::test_fn! {
     lambda_if, rules(),
     "(let zeroone (lam x
         (if (== (var x) 0)
@@ -314,7 +314,7 @@ egg::test_fn! {
     "1",
 }
 
-egg::test_fn! {
+easter_egg::test_fn! {
     #[cfg_attr(feature = "upward-merging", ignore)]
     #[ignore]
     lambda_fib, rules(),

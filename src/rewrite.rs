@@ -116,7 +116,7 @@ impl<L: Language + 'static, N: Analysis<L> + 'static> Rewrite<L, N> {
     }
 
     /// This `run` is for testing use only. You should use things
-    /// from the `egg::run` module
+    /// from the `easter_egg::run` module
     #[cfg(test)]
     pub(crate) fn run(&self, egraph: &mut EGraph<L, N>) -> Vec<Id> {
         let start = instant::Instant::now();
@@ -259,7 +259,7 @@ pub trait Searcher<L, N>: std::fmt::Display
 ///
 /// # Example
 /// ```
-/// use egg::{rewrite as rw, *};
+/// use easter_egg::{rewrite as rw, *};
 /// use std::fmt::{Display, Formatter};
 ///
 /// define_language! {
@@ -271,7 +271,7 @@ pub trait Searcher<L, N>: std::fmt::Display
 ///     }
 /// }
 ///
-/// type EGraph = egg::EGraph<Math, MinSize>;
+/// type EGraph = easter_egg::EGraph<Math, MinSize>;
 ///
 /// // Our metadata in this case will be size of the smallest
 /// // represented expression in the eclass.

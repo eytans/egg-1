@@ -38,7 +38,7 @@ use thiserror::Error;
 /// This is probably how you'll create most [`Pattern`]s.
 ///
 /// ```
-/// use egg::*;
+/// use easter_egg::*;
 /// define_language! {
 ///     enum Math {
 ///         Num(i32),
@@ -277,15 +277,32 @@ impl<'a> Matches<'a> {
 pub struct SearchMatches {
     /// Mapping of eclasses to their matches.
     pub matches: BTreeMap<Id, BTreeSet<Subst>>,
+    /// A measure of runtime is how many e-nodes were bound during search
+    pub binds_done: usize,
+}
+
+impl Default for SearchMatches {
+    fn default() -> Self {
+        SearchMatches {
+            matches: BTreeMap::new(),
+            binds_done: 0,
+        }
+    }
 }
 
 impl SearchMatches {
-    fn merge(self, other: Self) -> Self {
+    pub fn merge(self, other: Self) -> Self {
         let mut matches = self.matches;
+        let binds_done = self.binds_done + other.binds_done;
         for (eclass, substs) in other.matches {
-            matches.entry(eclass).or_default().extend(substs);
+            // Don't recreate the set if not needed
+            if let Some(set) = matches.get_mut(&eclass) {
+                set.extend(substs);
+            } else {
+                matches.insert(eclass, substs);
+            }
         }
-        Self { matches }
+        Self { matches, binds_done }
     }
 
     pub fn substs(&self) -> impl Iterator<Item = &Subst> {
@@ -318,29 +335,23 @@ impl SearchMatches {
         })
     }
 
-    pub fn collect_matches<L: Language, A: Analysis<L>>(egraph: &EGraph<L, A>, eclass: Id, substs: Vec<Subst>) -> SearchMatches {
+    pub fn collect_matches<L: Language, A: Analysis<L>>(egraph: &EGraph<L, A>, eclass: Id, substs: Vec<Subst>, binds_done: usize) -> SearchMatches {
         let mut matches: BTreeMap<Id, BTreeSet<Subst>> = BTreeMap::default();
         for mut s in substs {
             s.fix(egraph);
             matches.entry(egraph.opt_colored_find(s.color(), eclass)).or_default().insert(s);
         }
-        let sms = SearchMatches { matches };
+        let sms = SearchMatches { matches, binds_done };
         sms
     }
 }
 
 impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
     fn search_eclass_with_limit(&self, egraph: &EGraph<L, A>, eclass: Id, limit: usize) -> Option<SearchMatches> {
-        let substs = if cfg!(feature = "colored") {
+        if cfg!(feature = "colored") {
             self.program.colored_run_with_limit(egraph, eclass, None, limit)
         }  else {
             self.program.run_with_limit(egraph, eclass, limit)
-        };
-        if substs.is_empty() {
-            None
-        } else {
-            let sms = SearchMatches::collect_matches(egraph, eclass, substs);
-            Some(sms)
         }
     }
 
@@ -369,20 +380,15 @@ impl<L: Language, A: Analysis<L>> Searcher<L, A> for Pattern<L> {
     fn colored_search_eclass_with_limit(&self, egraph: &EGraph<L, A>, eclass: Id, color: ColorId, limit: usize) -> Option<SearchMatches> {
         let todo = egraph.get_base_equalities(Some(color), eclass)
             .map(|x| x.collect_vec()).unwrap_or(vec![eclass]);
-        let mut res = vec![];
-        for id in todo {
-            let substs = self.program.colored_run_with_limit(egraph, id, Some(color), limit);
-            if !substs.is_empty() {
-                res.extend(substs)
-            }
-        }
-        let matches = SearchMatches::collect_matches(egraph, eclass, res);
-        dassert!(matches.matches.values().all(|v| v.iter().all(|s| s.color == Some(color))));
-        if matches.substs().next().is_some() {
-            Some(matches)
-        } else {
-            None
-        }
+        todo.into_iter()
+            .filter_map(|id| self.program.colored_run_with_limit(egraph, id, Some(color), limit))
+            .fold(None, |acc, x| 
+                if let Some(acc) = acc {
+                    Some(acc.merge(x))
+                } else {
+                    Some(x)
+                }
+            )
     }
 
     fn vars(&self) -> Vec<Var> {

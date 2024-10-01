@@ -7,7 +7,7 @@ use crate::{Analysis, EClass, EGraph, Id, Language, RecExpr};
 /** Extracting a single [`RecExpr`] from an [`EGraph`].
 
 ```
-use egg::*;
+use easter_egg::*;
 
 define_language! {
     enum SimpleLanguage {
@@ -55,7 +55,7 @@ The example below illustrates a silly but realistic example of
 implementing a cost function that is essentially AST size weighted by
 the operator:
 ```
-# use egg::*;
+# use easter_egg::*;
 struct SillyCostFn;
 impl CostFunction<SymbolLang> for SillyCostFn {
     type Cost = f64;
@@ -118,7 +118,7 @@ pub trait CostFunction<L: Language> {
 /** A simple [`CostFunction`] that counts total ast size.
 
 ```
-# use egg::*;
+# use easter_egg::*;
 let e: RecExpr<SymbolLang> = "(do_it foo bar baz)".parse().unwrap();
 assert_eq!(AstSize.cost_rec(&e), 4);
 ```
@@ -139,7 +139,7 @@ impl<L: Language> CostFunction<L> for AstSize {
 /** A simple [`CostFunction`] that counts maximum ast depth.
 
 ```
-# use egg::*;
+# use easter_egg::*;
 let e: RecExpr<SymbolLang> = "(do_it foo bar baz)".parse().unwrap();
 assert_eq!(AstDepth.cost_rec(&e), 2);
 ```

@@ -41,8 +41,8 @@ fn store_id(id: &AtomicId, new: u32) {
 /// # Examples
 ///
 /// ```
-/// use egg::colored_union_find::ColoredUnionFind;
-/// use egg::Id;
+/// use easter_egg::colored_union_find::ColoredUnionFind;
+/// use easter_egg::Id;
 ///
 /// let n = 10;
 ///

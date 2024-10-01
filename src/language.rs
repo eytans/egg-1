@@ -121,7 +121,7 @@ pub trait Language: Debug + Clone + Eq + Ord + Hash + 'static {
     ///
     /// # Example
     /// ```
-    /// # use egg::*;
+    /// # use easter_egg::*;
     /// let a_plus_2: RecExpr<SymbolLang> = "(+ a 2)".parse().unwrap();
     /// // here's an enode with some meaningless child ids
     /// let enode = SymbolLang::new("*", vec![Id::from(0), Id::from(0)]);
@@ -161,7 +161,7 @@ pub trait Language: Debug + Clone + Eq + Ord + Hash + 'static {
     /// You could use this method to perform an "ad-hoc" extraction from the e-graph,
     /// where you already know which node you want pick for each class:
     /// ```
-    /// # use egg::*;
+    /// # use easter_egg::*;
     /// let mut egraph = EGraph::<SymbolLang, ()>::default();
     /// let expr = "(foo (bar1 (bar2 (bar3 baz))))".parse().unwrap();
     /// let root = egraph.add_expr(&expr);
@@ -399,7 +399,7 @@ impl<L: Language> RecExpr<L> {
     ///
     /// # Example
     /// ```
-    /// # use egg::*;
+    /// # use easter_egg::*;
     /// let e: RecExpr<SymbolLang> = "(* (+ 2 2) (+ x y))".parse().unwrap();
     /// assert_eq!(e.pretty(10), "
     /// (*
@@ -534,7 +534,7 @@ just use that.
 # Example
 
 ```
-use egg::{*, rewrite as rw};
+use easter_egg::{*, rewrite as rw};
 
 define_language! {
     enum SimpleMath {
@@ -553,7 +553,7 @@ impl Analysis<SimpleMath> for ConstantFolding {
     type Data = Option<i32>;
 
     fn merge(&self, to: &mut Self::Data, from: Self::Data) -> bool {
-        egg::merge_if_different(to, to.or(from))
+        easter_egg::merge_if_different(to, to.or(from))
     }
 
     fn make(egraph: &EGraph<SimpleMath, Self>, enode: &SimpleMath) -> Self::Data {
@@ -638,7 +638,7 @@ pub trait Analysis<L: Language>: Sized + Clone {
 /// [`Analysis::merge`](trait.Analysis.html#tymethod.merge).
 ///
 /// ```
-/// # use egg::*;
+/// # use easter_egg::*;
 /// let mut x = 6;
 /// assert!(!merge_if_different(&mut x, 6));
 /// assert!(merge_if_different(&mut x, 7));
@@ -727,7 +727,7 @@ impl Language for SymbolLang {
 /// [`from_op`]:
 ///
 /// ```
-/// # use egg::*;
+/// # use easter_egg::*;
 /// # use std::fmt::Display;
 /// fn from_op_display_compatible<T: FromOp + Display>(node: T) {
 ///     let op = node.to_string();
@@ -742,7 +742,7 @@ impl Language for SymbolLang {
 /// # Examples
 /// `define_language!` implements [`FromOp`] and [`Display`] automatically:
 /// ```
-/// # use egg::*;
+/// # use easter_egg::*;
 ///
 /// define_language! {
 ///     enum Calc {

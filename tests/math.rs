@@ -1,9 +1,9 @@
-// use egg::{rewrite as rw, *};
+// use easter_egg::{rewrite as rw, *};
 // use ordered_float::NotNan;
 // use serde::{Deserialize, Serialize};
 //
-// pub type EGraph = egg::EGraph<Math, ConstantFold>;
-// pub type Rewrite = egg::Rewrite<Math, ConstantFold>;
+// pub type EGraph = easter_egg::EGraph<Math, ConstantFold>;
+// pub type Rewrite = easter_egg::Rewrite<Math, ConstantFold>;
 //
 // pub type Constant = NotNan<f64>;
 //
@@ -28,10 +28,10 @@
 //     }
 // }
 //
-// // You could use egg::AstSize, but this is useful for debugging, since
+// // You could use easter_egg::AstSize, but this is useful for debugging, since
 // // it will really try to get rid of the Diff operator
 // pub struct MathCostFn;
-// impl egg::CostFunction<Math> for MathCostFn {
+// impl easter_egg::CostFunction<Math> for MathCostFn {
 //     type Cost = usize;
 //     fn cost<C>(&mut self, enode: &Math, mut costs: C) -> Self::Cost
 //     where
@@ -95,7 +95,7 @@
 // }
 //
 // impl Condition<Math, ConstantFold> for IsConstOrDistinctCondition {
-//     fn check(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, _eclass: Id, subst: &Subst) -> bool {
+//     fn check(&self, egraph: &mut easter_egg::EGraph<Math, ConstantFold>, _eclass: Id, subst: &Subst) -> bool {
 //         egraph.find(subst[self.v]) != egraph.find(subst[self.w])
 //             && egraph[subst[self.v]]
 //             .nodes
@@ -103,7 +103,7 @@
 //             .any(|n| matches!(n, Math::Constant(..) | Math::Symbol(..)))
 //     }
 //
-//     fn check_colored(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
+//     fn check_colored(&self, egraph: &mut easter_egg::EGraph<Math, ConstantFold>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
 //         self.check(egraph, eclass, subst).then(|| vec![])
 //     }
 //
@@ -123,14 +123,14 @@
 // }
 //
 // impl Condition<Math, ConstantFold> for IsConstCondition {
-//     fn check(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, _eclass: Id, subst: &Subst) -> bool {
+//     fn check(&self, egraph: &mut easter_egg::EGraph<Math, ConstantFold>, _eclass: Id, subst: &Subst) -> bool {
 //         egraph[subst[self.v]]
 //             .nodes
 //             .iter()
 //             .any(|n| matches!(n, Math::Constant(..)))
 //     }
 //
-//     fn check_colored(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
+//     fn check_colored(&self, egraph: &mut easter_egg::EGraph<Math, ConstantFold>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
 //         self.check(egraph, eclass, subst).then(|| vec![])
 //     }
 //
@@ -149,14 +149,14 @@
 // }
 //
 // impl Condition<Math, ConstantFold> for IsSymCondition {
-//     fn check(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, _eclass: Id, subst: &Subst) -> bool {
+//     fn check(&self, egraph: &mut easter_egg::EGraph<Math, ConstantFold>, _eclass: Id, subst: &Subst) -> bool {
 //         egraph[subst[self.v]]
 //             .nodes
 //             .iter()
 //             .any(|n| matches!(n, Math::Symbol(..)))
 //     }
 //
-//     fn check_colored(&self, egraph: &mut egg::EGraph<Math, ConstantFold>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
+//     fn check_colored(&self, egraph: &mut easter_egg::EGraph<Math, ConstantFold>, eclass: Id, subst: &Subst) -> Option<Vec<ColorId>> {
 //         self.check(egraph, eclass, subst).then(|| vec![])
 //     }
 //
@@ -237,7 +237,7 @@
 //         "(- (* ?a (i ?b ?x)) (i (* (d ?x ?a) (i ?b ?x)) ?x))"),
 // ]}
 //
-// egg::test_fn! {
+// easter_egg::test_fn! {
 //     math_associate_adds, [
 //         rw!("comm-add"; "(+ ?a ?b)" => "(+ ?b ?a)"),
 //         rw!("assoc-add"; "(+ ?a (+ ?b ?c))" => "(+ (+ ?a ?b) ?c)"),
@@ -251,21 +251,21 @@
 //     @check |r: Runner<Math, ()>| assert_eq!(r.egraph.number_of_classes(), 127)
 // }
 //
-// egg::test_fn! {
+// easter_egg::test_fn! {
 //     #[should_panic(expected = "Could not prove goal 0")]
 //     math_fail, rules(),
 //     "(+ x y)" => "(/ x y)"
 // }
 //
-// egg::test_fn! {math_simplify_add, rules(), "(+ x (+ x (+ x x)))" => "(* 4 x)" }
-// egg::test_fn! {math_powers, rules(), "(* (pow 2 x) (pow 2 y))" => "(pow 2 (+ x y))"}
+// easter_egg::test_fn! {math_simplify_add, rules(), "(+ x (+ x (+ x x)))" => "(* 4 x)" }
+// easter_egg::test_fn! {math_powers, rules(), "(* (pow 2 x) (pow 2 y))" => "(pow 2 (+ x y))"}
 //
-// egg::test_fn! {
+// easter_egg::test_fn! {
 //     math_simplify_const, rules(),
 //     "(+ 1 (- a (* (- 2 1) a)))" => "1"
 // }
 //
-// egg::test_fn! {
+// easter_egg::test_fn! {
 //     math_simplify_root, rules(),
 //     runner = Runner::default().with_node_limit(75_000),
 //     r#"
@@ -278,25 +278,25 @@
 //     "(/ 1 (sqrt five))"
 // }
 //
-// egg::test_fn! {
+// easter_egg::test_fn! {
 //     math_simplify_factor, rules(),
 //     "(* (+ x 3) (+ x 1))"
 //     =>
 //     "(+ (+ (* x x) (* 4 x)) 3)"
 // }
 //
-// egg::test_fn! {math_diff_same,      rules(), "(d x x)" => "1"}
-// egg::test_fn! {math_diff_different, rules(), "(d x y)" => "0"}
-// egg::test_fn! {math_diff_simple1,   rules(), "(d x (+ 1 (* 2 x)))" => "2"}
-// egg::test_fn! {math_diff_simple2,   rules(), "(d x (+ 1 (* y x)))" => "y"}
-// egg::test_fn! {math_diff_ln,        rules(), "(d x (ln x))" => "(/ 1 x)"}
+// easter_egg::test_fn! {math_diff_same,      rules(), "(d x x)" => "1"}
+// easter_egg::test_fn! {math_diff_different, rules(), "(d x y)" => "0"}
+// easter_egg::test_fn! {math_diff_simple1,   rules(), "(d x (+ 1 (* 2 x)))" => "2"}
+// easter_egg::test_fn! {math_diff_simple2,   rules(), "(d x (+ 1 (* y x)))" => "y"}
+// easter_egg::test_fn! {math_diff_ln,        rules(), "(d x (ln x))" => "(/ 1 x)"}
 //
-// egg::test_fn! {
+// easter_egg::test_fn! {
 //     diff_power_simple, rules(),
 //     "(d x (pow x 3))" => "(* 3 (pow x 2))"
 // }
 //
-// egg::test_fn! {
+// easter_egg::test_fn! {
 //     diff_power_harder, rules(),
 //     runner = Runner::default()
 //         .with_time_limit(std::time::Duration::from_secs(10))
@@ -309,27 +309,27 @@
 //     "(* x (- (* 3 x) 14))"
 // }
 //
-// egg::test_fn! {
+// easter_egg::test_fn! {
 //     integ_one, rules(), "(i 1 x)" => "x"
 // }
 //
-// egg::test_fn! {
+// easter_egg::test_fn! {
 //     integ_sin, rules(), "(i (cos x) x)" => "(sin x)"
 // }
 //
-// egg::test_fn! {
+// easter_egg::test_fn! {
 //     integ_x, rules(), "(i (pow x 1) x)" => "(/ (pow x 2) 2)"
 // }
 //
-// egg::test_fn! {
+// easter_egg::test_fn! {
 //     integ_part1, rules(), "(i (* x (cos x)) x)" => "(+ (* x (sin x)) (cos x))"
 // }
 //
-// egg::test_fn! {
+// easter_egg::test_fn! {
 //     integ_part2, rules(),
 //     "(i (* (cos x) x) x)" => "(+ (* x (sin x)) (cos x))"
 // }
 //
-// egg::test_fn! {
+// easter_egg::test_fn! {
 //     integ_part3, rules(), "(i (ln x) x)" => "(- (* x (ln x)) x)"
 // }

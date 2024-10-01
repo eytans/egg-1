@@ -1,4 +1,4 @@
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::rc::Rc;
 use crate::*;
@@ -710,7 +710,7 @@ impl<L: Language> Program<L> {
         egraph: &EGraph<L, A>,
         eclass: Id,
         limit: usize,
-    ) -> Vec<Subst>
+    ) -> Option<SearchMatches>
     where
         A: Analysis<L>,
     {
@@ -722,8 +722,8 @@ impl<L: Language> Program<L> {
         &self,
         egraph: &EGraph<L, A>,
         eclass: Id,
-    ) -> Vec<Subst>
-        where
+    ) -> Option<SearchMatches>
+    where
             A: Analysis<L>,
     {
         self.run_with_limit(egraph, eclass, usize::MAX)
@@ -734,8 +734,8 @@ impl<L: Language> Program<L> {
                           eclass: Id,
                           color: Option<ColorId>,
                           limit: usize,
-    ) -> Vec<Subst>
-        where
+                        ) -> Option<SearchMatches>
+                        where
             A: Analysis<L>,
     {
         self.inner_run(egraph, eclass, color, true, limit)
@@ -748,7 +748,7 @@ impl<L: Language> Program<L> {
         opt_color: Option<ColorId>,
         run_color: bool,
         limit: usize,
-    ) -> Vec<Subst>
+    ) -> Option<SearchMatches>
         where
             A: Analysis<L>,
     {
@@ -759,12 +759,17 @@ impl<L: Language> Program<L> {
                  opt_color, class_color);
         let opt_color = class_color;
         let mut machine = Machine::new(opt_color, egraph, &self.instructions, self.subst.clone(), run_color);
+        let bind_limit = machine.bind_limit;
         assert_eq!(machine.reg.len(), 0);
         machine.reg.push(eclass);
-
-        let matches = machine.take(limit).collect_vec();
+        let matches = (&mut machine).take(limit).collect_vec();
+        let bound = bind_limit - machine.bind_limit;
         log::trace!("Ran program, found {:?}", matches);
-        matches
+        if matches.is_empty() {
+            None
+        } else {
+            Some(SearchMatches::collect_matches(egraph, eclass, matches, bound))
+        }
     }
 
     fn inner_run_from<'a, A>(

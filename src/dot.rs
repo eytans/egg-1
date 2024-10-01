@@ -27,7 +27,7 @@ The [`EGraph::dot`](struct.EGraph.html#method.dot) method creates `Dot`s.
 # Example
 
 ```
-use egg::{*, rewrite as rw};
+use easter_egg::{*, rewrite as rw};
 
 let rules = &[
     rw!("mul-commutes"; "(* ?x ?y)" => "(* ?y ?x)"),
@@ -117,7 +117,7 @@ where
     ///
     /// Can be used to run a different binary than `dot`:
     /// ```no_run
-    /// # use egg::*;
+    /// # use easter_egg::*;
     /// # let mut egraph: EGraph<SymbolLang, ()> = Default::default();
     /// egraph.dot().run(
     ///     "/path/to/my/dot",

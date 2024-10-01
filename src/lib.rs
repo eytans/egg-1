@@ -1,18 +1,20 @@
 
 /*!
 
-`egg` (**e**-**g**raphs **g**ood) is a e-graph library optimized for equality saturation.
+`easter-egg` is a colored e-graphs implementation on top of egg (https://github.com/mwillsey/egg)
+(**e**-**g**raphs **g**ood) is a e-graph library optimized for equality saturation.
 
 This is the API documentation.
 
 The [tutorial](tutorials/index.html) is a good starting point if you're new to
 e-graphs, equality saturation, or Rust.
 
-The [tests](https://github.com/mwillsey/egg/tree/master/tests)
+The [tests](https://github.com/eytans/easter-egg/tree/master/tests)
 on Github provide some more elaborate examples.
 
 There is also a [paper](https://arxiv.org/abs/2004.03082)
-describing `egg` and some of its technical novelties.
+describing `egg` and some of its technical novelties, and a paper on easter egg can be found 
+[here](https://repositum.tuwien.at/bitstream/20.500.12708/200780/1/Singher-2024-Easter%20Egg%20Equality%20Reasoning%20Based%20on%20E-Graphs%20with%20Multipl...-vor.pdf).
 
 !*/
 
