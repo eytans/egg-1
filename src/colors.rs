@@ -6,8 +6,7 @@ use invariants::dassert;
 use itertools::Itertools;
 use std::fmt::Formatter;
 use indexmap::{IndexMap, IndexSet};
-use crate::colored_union_find::ColoredUnionFind;
-use crate::unionfind::{SimpleUnionFind, UnionFindWrapper};
+use crate::unionfind::UnionFindWrapper;
 
 global_counter!(COLOR_IDS, usize, usize::default());
 

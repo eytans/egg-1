@@ -20,6 +20,7 @@ describing `egg` and some of its technical novelties, and a paper on easter egg 
 
 /* needs to be public for trait `GetOp` */
 pub mod macros;
+pub mod explanation;
 
 #[macro_use]
 extern crate global_counter;
@@ -114,7 +115,7 @@ pub(crate) use unionfind::SimpleUnionFind;
 
 pub use {
     dot::Dot,
-    eclass::{EClass},
+    eclass::EClass,
     egraph::EGraph,
     extract::*,
     language::*,

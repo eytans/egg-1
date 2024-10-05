@@ -8,19 +8,22 @@ pub trait UnionFind {
     fn make_set(&mut self) -> Id;
 
     /// Returns the number of elements in the union find.
+    #[allow(dead_code)]
     fn size(&self) -> usize;
 
     /// Finds the leader of the set that `current` is in.
     fn find(&self, current: Id) -> Id;
 
+    /// Given two leader ids, unions the two eclasses.
+    /// This should run find to compress paths for efficiency.
+    /// Returns (new leader, other id found).
+    fn union(&mut self, root1: Id, root2: Id) -> (Id, Id);
+}
+
+pub trait MutUnionFind: UnionFind {
     /// Finds the leader of the set that `current` is in.
     /// This version updates the parents to compress the path.
     fn find_mut(&mut self, current: Id) -> Id;
-
-    /// Given two leader ids, unions the two eclasses.
-    /// This should run find to compress paths
-    /// Returns (new leader, other id found).
-    fn union(&mut self, root1: Id, root2: Id) -> (Id, Id);
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -50,26 +53,18 @@ impl UnionFind for SimpleUnionFind {
         self.parents.push(id);
         id
     }
+
     fn size(&self) -> usize {
         self.parents.len()
     }
+
     fn find(&self, mut current: Id) -> Id {
         while current != self.parent(current) {
             current = self.parent(current)
         }
         current
     }
-    fn find_mut(&mut self, mut current: Id) -> Id {
-        let mut collected = vec![];
-        while current != self.parent(current) {
-            collected.push(current);
-            current = self.parent(current);
-        }
-        for c in collected {
-            *self.parent_mut(c) = current;
-        }
-        current
-    }
+
     /// Given two leader ids, unions the two eclasses making root1 the leader.
     fn union(&mut self, root1: Id, root2: Id) -> (Id, Id) {
         let root1 = self.find_mut(root1);
@@ -79,6 +74,21 @@ impl UnionFind for SimpleUnionFind {
         }
         *self.parent_mut(root2) = root1;
         (root1, root2)
+    }
+}
+
+
+impl MutUnionFind for SimpleUnionFind {
+fn find_mut(&mut self, mut current: Id) -> Id {
+        let mut collected = vec![];
+        while current != self.parent(current) {
+            collected.push(current);
+            current = self.parent(current);
+        }
+        for c in collected {
+            *self.parent_mut(c) = current;
+        }
+        current
     }
 }
 
@@ -119,6 +129,7 @@ impl<T: Merge, K: Clone + Ord> UnionFindWrapper<T, K> {
 }
 
 impl<T: Merge, K: Clone + Ord> UnionFindWrapper<T, K> {
+    #[allow(dead_code)]
     fn get(&self, key: &K) -> Option<&T> {
         let res = self.trns.get_by_left(&key)
             .map(|&idx| &self.data[self.uf.find(idx.into()).0 as usize]);
@@ -126,6 +137,7 @@ impl<T: Merge, K: Clone + Ord> UnionFindWrapper<T, K> {
         res?.as_ref()
     }
 
+    #[allow(dead_code)]
     pub fn get_mut(&mut self, key: &K) -> Option<&T> {
         let idx = self.trns.get_by_left(&key)?;
         let res = &self.data[self.uf.find_mut((*idx).into()).0 as usize];
@@ -210,6 +222,7 @@ impl<T: Merge, K: Clone + Ord> UnionFindWrapper<T, K> {
 }
 
 impl<T:Default + Merge, K: Clone + Ord + Debug> UnionFindWrapper<T, K> {
+    #[allow(dead_code)]
     pub(crate) fn debug_print_all(&self) {
         for (k, v) in self.trns.iter() {
             println!("{:?}: {:?}", k, v);

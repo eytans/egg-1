@@ -6,7 +6,6 @@ use std::fmt;
 use crate::{machine, Analysis, Applier, EGraph, Id, Language, RecExpr, Searcher, Subst, Var, OpId, ColorId, FromOp, RecExprParseError};
 use std::fmt::Formatter;
 use std::str::FromStr;
-use invariants::dassert;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -252,6 +251,8 @@ impl<L: Language> fmt::Display for Pattern<L> {
         write!(f, "{}", self.ast)
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 
 pub struct Matches<'a> {
     pub eclass: Id,

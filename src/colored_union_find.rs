@@ -76,6 +76,7 @@ pub struct ColoredUnionFind {
 
 impl ColoredUnionFind {
     /// This should only be used for debug assertions and debugging
+    #[allow(dead_code)]
     pub(crate) fn iter(&self) -> impl Iterator<Item = (Id, Id)> + '_ {
         let mut parents = vec![];
         for p in &self.parents {

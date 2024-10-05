@@ -185,6 +185,7 @@ impl fmt::Debug for Symbol {
 }
 
 pub(crate) trait JoinDisp {
+    #[allow(dead_code)]
     fn disp_string(self) -> String;
     fn sep_string(self, sep: &str) -> String;
 }
@@ -238,6 +239,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 impl<T> UniqueQueue<T>
 where
     T: Eq + std::hash::Hash + Clone,

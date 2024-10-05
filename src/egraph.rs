@@ -8,7 +8,7 @@ use invariants::{dassert, iassert, tassert, wassert, AssertConfig, AssertLevel};
 use log::*;
 use std::rc::Rc;
 
-use crate::{Analysis, MultiPattern};
+use crate::{unionfind::{MutUnionFind, UnionFind}, Analysis, MultiPattern};
 use crate::AstSize;
 use crate::Dot;
 use crate::EClass;
@@ -27,7 +27,6 @@ use itertools::Itertools;
 use multimap::MultiMap;
 use serde::{Deserialize, Serialize};
 use crate::tools::tools::Grouped;
-use crate::unionfind::UnionFind;
 use crate::util::UniqueQueue;
 
 /** A data structure to keep track of equalities between expressions.
@@ -232,7 +231,9 @@ pub struct EGraph<L: Language, N: Analysis<L>> {
     /// Collect how many e-nodes were deleted during rebuilds.
     pub deleted_enodes: usize,
     // TODO: Really should not be public but in a hurry right now so it will be external
-    pub cases_colors: Vec<Vec<ColorId>>
+    pub cases_colors: Vec<Vec<ColorId>>,
+    // /// Explanation object collects all information needed to explain existance and equality of enodes in the egraph.
+    // pub explanation: Explanation<L, N>,
 }
 
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
@@ -252,7 +253,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
 
 impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     pub(crate) fn inner_new(
-        uf: SimpleUnionFind,
+        mut uf: SimpleUnionFind,
         classes: Vec<Option<Box<EClass<SymbolLang, ()>>>>,
         memo: IndexMap<SymbolLang, Id>,
     ) -> EGraph<SymbolLang, ()> {
@@ -264,7 +265,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
             for n in &c.nodes {
                 // Check children are canonized
                 for c in n.children.iter() {
-                    assert_eq!(uf.find(*c), *c);
+                    assert_eq!(uf.find_mut(*c), *c);
                 }
                 // Check all parents exist as expected
                 for ch in n.children.iter() {
@@ -897,6 +898,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     }
 
     /// Performs the union between two egraphs.
+    #[allow(unused_variables, unreachable_code)]
     pub fn egraph_union(&mut self, other: &EGraph<L, N>) {
         unimplemented!();
         let mut translator = IndexMap::new();

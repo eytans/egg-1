@@ -202,7 +202,7 @@ pub enum StopReason {
 /// Struct for search metadata which is how many matches and binds each rule did
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, new, Default, Display)]
 #[display("{} matches {} binds", matches, binds)]
-struct SearchMetadata {
+pub struct SearchMetadata {
     matches: usize,
     binds: usize,
 }
@@ -945,7 +945,7 @@ where
 {
     fn search_rewrites<'a, 'b>(
         &mut self,
-        iteration: usize,
+        _iteration: usize,
         egraph: &EGraph<L, N>,
         rewrites: &[&'a Rewrite<L, N>],
         matches: &mut Vec<Option<SearchMatches>>,
@@ -954,7 +954,7 @@ where
     ) -> RunnerResult<()> {
         debug!("Searching rewrites in parallel. Creating channel with size {}", rewrites.len());
         let channel = crossbeam::channel::bounded(rewrites.len());
-        let res = rewrites.par_iter().enumerate().try_for_each(|(i, rw)| {
+        let _ = rewrites.par_iter().enumerate().try_for_each(|(i, rw)| {
             debug!("Searching rw {}", rw.name);
             let rule_start = Instant::now();
             let results = rw.search(egraph);
@@ -1046,14 +1046,12 @@ where
             (*rw, stats)
         }).collect::<Vec<_>>();
         let pool = rayon::ThreadPoolBuilder::new().num_threads(self.thread_limit).build().unwrap();
-        let res = pool.install(|| {
+        let _ = pool.install(|| {
             with_stats.par_iter_mut().enumerate().try_for_each(|(i, (rw, stats))| {
                 debug!("Searching rw {}", rw.name());
-                let rule_start = Instant::now();
                 let results = BackoffScheduler::search_with_stats(iteration, egraph, rw, stats);
-                let elapsed = rule_start.elapsed();
                 if let Some(results) = results {
-                    channel.0.send((i, results, elapsed)).expect("Channel should be big enough for all messages");
+                    channel.0.send((i, results)).expect("Channel should be big enough for all messages");
                 }
                 let elapsed = start_time.elapsed();
                 if elapsed > time_limit {
@@ -1066,7 +1064,7 @@ where
         drop(channel.0);
         debug!("Finished searching rewrites in parallel. Collecting results");
         matches.resize_with(rewrites.len(), || Default::default());
-        for (i, ms, time) in channel.1 {
+        for (i, ms) in channel.1 {
             matches[i] = Some(ms);
         }
         // Return stats
@@ -1306,7 +1304,7 @@ where
         egraphs.push((&default_reason, egraph, None));
         let pool = rayon::ThreadPoolBuilder::new().num_threads(self.thread_limit).build().unwrap();
         pool.install(|| {
-            iproduct!(0..rewrites.len(), 0..egraphs.len()).collect_vec().into_par_iter()
+            let _ = iproduct!(0..rewrites.len(), 0..egraphs.len()).collect_vec().into_par_iter()
                 .try_for_each(|(i, e_idx)| {
                     debug!("Searching rw {}", rewrites[i].name);
                     let (r, egraph, idx) = egraphs[e_idx];
@@ -1322,7 +1320,7 @@ where
                     } else {
                         Ok(())
                     }
-                })
+                });
         });
         drop(channel.0);
         debug!("Finished searching rewrites in parallel. Collecting results");
@@ -1338,7 +1336,7 @@ where
         Ok(())
     }
 
-    fn apply_rewrites(&mut self, egraph: &mut EGraph<L, N>, rules: &[&Rewrite<L, N>], iteration: usize, matches: Vec<Option<SearchMatches>>, mut applied: &mut IndexMap<Symbol, usize>) {
+    fn apply_rewrites(&mut self, egraph: &mut EGraph<L, N>, rules: &[&Rewrite<L, N>], iteration: usize, matches: Vec<Option<SearchMatches>>, applied: &mut IndexMap<Symbol, usize>) {
         let mut s = SimpleScheduler {};
         s.apply_rewrites(egraph, rules, iteration, matches, applied);
         if self.when <= iteration {
@@ -1356,8 +1354,8 @@ where
             self.case_matches = case_matches;
             // now collect all conclusions from cases and put in orig
             let conclusions = self.intersect_conclusions();
-            for (reason, mut ids) in conclusions {
-                let symbol: Symbol = reason.into();
+            for (_reason, mut ids) in conclusions {
+                // let symbol: Symbol = reason.into();
                 let node = ids.pop().unwrap();
                 for id in ids {
                     // egraph.union_trusted(id, node, symbol);
