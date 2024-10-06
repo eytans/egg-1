@@ -73,6 +73,18 @@ impl From<Id> for usize {
     }
 }
 
+impl Into<u32> for Id {
+    fn into(self) -> u32 {
+        self.0
+    }
+}
+
+impl Into<u32> for &Id {
+    fn into(self) -> u32 {
+        self.0
+    }
+}
+
 impl std::fmt::Debug for Id {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
