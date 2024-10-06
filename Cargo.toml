@@ -27,7 +27,7 @@ either = {version = "1.9.0", features = ["serde"] }
 global_counter = "0.2.1"
 bimap = {version = "0.6.2", features = ["serde"]}
 bitvec = "1.0.0"
-invariants = "0.1.3"
+invariants = {path = "../rust-invariants"}
 # for very silly reasons
 num-traits = "0.2.15"
 ordered-float = { version = "1", features = ["serde"] }
@@ -59,3 +59,4 @@ colored_no_cmemo = ["colored", "colored_no_cremove"]
 keep_splits = []
 parallel = ["rayon", "crossbeam", "concurrent_cufind"]
 concurrent_cufind = []
+invariants-off = ["invariants/off"]

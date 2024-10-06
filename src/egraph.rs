@@ -1600,7 +1600,7 @@ impl<L: Language, N: Analysis<L>> EGraph<L, N> {
     }
 
     fn memo_black_canonized(&self) {
-        debug_assert!(self
+        dassert!(self
             .memo
             .keys()
             .all(|n| self.memo.contains_key(&self.canonize(n))));
