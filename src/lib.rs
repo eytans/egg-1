@@ -79,9 +79,21 @@ impl Into<u32> for Id {
     }
 }
 
+impl Into<usize> for Id {
+    fn into(self) -> usize {
+        self.0 as usize
+    }
+}
+
 impl Into<u32> for &Id {
     fn into(self) -> u32 {
         self.0
+    }
+}
+
+impl Into<usize> for &Id {
+    fn into(self) -> usize {
+        self.0 as usize
     }
 }
 
