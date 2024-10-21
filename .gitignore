@@ -16,3 +16,5 @@ perf.data*
 *.bench
 .vscode/settings.json
 out.csv
+**/*.dot
+.idea/easter-egg.iml
